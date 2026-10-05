@@ -1,0 +1,110 @@
+/* แชทโปรเจค — ใช้ร่วมกันโดย components/project-chat.tsx (หน้าโปรเจคของ PM + หน้างานที่ได้รับของทีมงาน) (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+/*
+ * ═══ แชทโปรเจค — ปุ่มลอยมุมขวาล่างเปิดหน้าต่างแชท ทุกขนาดจอ (ผู้ใช้สั่ง 2 ต.ค. 2569) ═══
+ * แบบหน้าต่างแชทของเว็บทั่วไป (แชทบอท): จอคอมเป็นกล่องลอยเหนือปุ่ม · มือถือเต็มจอตามต้นแบบ pd-chat
+ * ค่าตั้งต้นด้านล่างคือแบบมือถือ แล้วจอ md ขึ้นไปทับเป็นกล่องลอย
+ */
+/* ── แชท: ซ่อนในหน้า · ปุ่มลอยแดง 58px · หน้าต่างเต็มจอเลื่อนขึ้นจากล่าง ── */
+
+.pd-chat-fab {
+  display: flex; position: fixed; right: 18px; bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  z-index: 38; width: 58px; height: 58px; padding: 0;
+  border: 0; border-radius: 50%; background: #c8102e; color: #fff;
+  align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 14px 24px -10px rgba(200, 16, 46, 0.9);
+}
+.pd-chat-fab .n {
+  position: absolute; top: -2px; right: -2px;
+  min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 10px; background: #fff; color: #c8102e;
+  font-size: 11.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* อยู่เหนือแถบล่าง (z 35) แต่ใต้ Sheet (z 80) — กดดูไฟล์ในแชทแล้วกล่องยังขึ้นทับได้ */
+.pd-chat-win {
+  display: flex; flex-direction: column; position: fixed; inset: 0; z-index: 60;
+  background: #f3eff0;
+  transform: translateY(100%); visibility: hidden;
+  transition: transform 0.22s ease, visibility 0s linear 0.22s;
+}
+.pd-chat-win[data-open] {
+  transform: none; visibility: visible;
+  transition: transform 0.22s ease, visibility 0s;
+}
+.pd-chat-hd {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+  background: #fff; border-bottom: 1px solid #efe6e8; color: #2a1f22;
+}
+.pd-chat-hd button {
+  flex: none; width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 50%; background: none; color: #2a1f22;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.pd-chat-hd .gav {
+  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  background: #fce3e7; color: #c8102e;
+  display: flex; align-items: center; justify-content: center;
+}
+.pd-chat-hd b { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 700; line-height: 1.25; }
+.pd-chat-hd b > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-chat-hd small { display: block; font-size: 12px; font-weight: 500; color: #8a7e81; }
+
+/* Chat ตัวเดิมเต็มพื้นที่ที่เหลือ: ข้อความเลื่อนได้ แถบส่งติดล่างพื้นขาว */
+.pd-chat-in-win { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pd-chat-in-win .pd-chat-box {
+  flex: 1; min-height: 0; padding: 0;
+  border: 0; border-radius: 0; background: none; box-shadow: none;
+}
+.pd-chat-in-win .pd-chat-msgs {
+  flex: 1; min-height: 0; max-height: none; height: auto;
+  overflow-y: auto; padding: 12px 12px 6px;
+}
+/* ข้อความของคนอื่นเป็นฟองขาวบนพื้นชมพูเทา */
+.pd-chat-in-win .pd-chat-msgs .bg-muted { background: #fff; }
+.pd-chat-in-win .pd-chat-pick { margin: 0; padding: 8px 12px; background: #fff; border-top: 1px solid #efe6e8; }
+.pd-chat-in-win .pd-chat-send {
+  flex: none; margin: 0;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: #fff; border-top: 1px solid #efe6e8;
+}
+.pd-chat-in-win .pd-chat-pick + .pd-chat-send { border-top: 0; }
+
+@media (min-width: 768px) {
+  .pd-chat-fab {
+    right: 28px;
+    bottom: 28px;
+    width: 60px;
+    height: 60px;
+    transition: transform 0.18s ease;
+  }
+  .pd-chat-fab:hover { transform: scale(1.06); }
+  /* กล่องลอยเหนือปุ่ม กว้าง 380 สูงไม่เกิน 600 — หน้าโปรเจคด้านหลังยังเลื่อนและกดได้ */
+  .pd-chat-win {
+    inset: auto 28px 102px auto;
+    width: min(380px, calc(100vw - 56px));
+    height: min(600px, calc(100dvh - 140px));
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid #efe6e8;
+    box-shadow: 0 24px 60px -18px rgba(60, 20, 30, 0.38), 0 2px 8px rgba(60, 20, 30, 0.08);
+    transform: translateY(12px) scale(0.96);
+    transform-origin: bottom right;
+    opacity: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0.2s;
+  }
+  .pd-chat-win[data-open] {
+    transform: none;
+    opacity: 1;
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s;
+  }
+  /* ไม่มีปุ่มลอย — หน้าต่างลงมาชิดมุมขวาล่างแบบ messenger (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+  .pd-chat-win.pd-chat-win-nofab { bottom: 28px; height: min(600px, calc(100dvh - 56px)); }
+  .pd-chat-hd { padding: 10px 10px 10px 14px; }
+  .pd-chat-in-win .pd-chat-send { padding: 8px 10px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pd-chat-fab, .pd-chat-win, .pd-chat-win[data-open] { transition: none; }
+}

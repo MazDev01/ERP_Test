@@ -1,0 +1,91 @@
+/*
+ * แผงแจ้งเตือนบนมือถือ (ต้นแบบ notifications.html) — NotificationMenu ยิงออกไปที่ body เฉพาะจอแคบกว่า md
+ * ทุกตัวเลือกอยู่ใต้ .nt-m — ไม่แตะกระดิ่ง/กล่องแจ้งเตือนบนจอใหญ่
+ * z-index 34 ต่ำกว่าแถบล่าง (.botnav z-35) แถบล่างของ shell จึงยังเห็นและกดได้
+ */
+@media (max-width: 767.98px) {
+  .nt-m {
+    position: fixed;
+    inset: 0;
+    z-index: 34;
+    background: #faf6f6;
+    color: #2a1f22;
+    /* ฟอนต์จาก next/font ชื่อจริงถูกเข้ารหัส เรียกชื่อ "Noto Sans Thai" ตรง ๆ ไม่เจอ ต้องใช้ตัวแปร */
+    font-family: var(--font-noto-thai), Tahoma, sans-serif;
+  }
+  .nt-m-scroll {
+    position: relative;
+    height: 100%;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: calc(28px + env(safe-area-inset-top)) 0 calc(var(--botbar, 84px) + 26px);
+  }
+  .nt-m-scroll::-webkit-scrollbar { display: none; }
+  .nt-m-glow {
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 320px;
+    pointer-events: none;
+    background:
+      radial-gradient(55% 55% at 90% 8%, #fcd3da 0%, rgba(252, 211, 218, 0) 70%),
+      radial-gradient(60% 50% at 15% 25%, #fff 0%, rgba(255, 255, 255, 0) 70%),
+      linear-gradient(180deg, #fbe1e6 0%, #faf6f6 85%);
+  }
+  .nt-m-scroll > :not(.nt-m-glow) { position: relative; flex: none; }
+
+  .nt-m-head { display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .nt-m-back {
+    flex: none; width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #2a1f22;
+    background: rgba(255, 255, 255, 0.8);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+  }
+  .nt-m-back svg { width: 20px; height: 20px; }
+  .nt-m-head h1 { margin: 0; flex-grow: 1; font-size: 22px; font-weight: 700; }
+  .nt-m-readall {
+    flex: none; height: 36px; padding: 0 12px; border-radius: 999px; border: 0;
+    background: rgba(255, 255, 255, 0.85);
+    font: inherit; font-size: 13px; font-weight: 600; color: #c8102e;
+  }
+  .nt-m-readall:disabled { opacity: 0.4; }
+
+  .nt-m-sec { display: flex; align-items: center; gap: 8px; padding: 0 20px; }
+  .nt-m-sec h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .nt-m-sec span {
+    font-size: 11px; font-weight: 700; color: #fff; background: #c8102e;
+    border-radius: 6px; padding: 1px 6px;
+  }
+
+  .nt-m-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+  .nt-m-item {
+    position: relative; display: flex; gap: 12px; padding: 14px 16px; border-radius: 20px;
+    text-decoration: none; color: #2a1f22;
+    background: rgba(255, 255, 255, 0.8);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+  }
+  .nt-m-item:not(.unread) { opacity: 0.8; }
+  .nt-m-ico {
+    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nt-m-ico svg { width: 19px; height: 19px; }
+  .nt-m-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-right: 16px; }
+  .nt-m-txt b { font-size: 14.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .nt-m-txt span { font-size: 13px; color: #6b5f62; line-height: 1.45; overflow-wrap: anywhere; }
+  .nt-m-txt small { font-size: 11.5px; color: #9a8e91; }
+  .nt-m-dot {
+    position: absolute; top: 18px; right: 16px;
+    width: 9px; height: 9px; border-radius: 50%; background: #c8102e;
+  }
+  .nt-m-empty { margin: 0; padding: 48px 20px; text-align: center; font-size: 13px; color: #6e6164; }
+}

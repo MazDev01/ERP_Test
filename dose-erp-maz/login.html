@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เข้าสู่ระบบ — ERP MAZ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --maz-red:#D0021B;
+  --maz-red-deep:#A50014;
+  --maz-red-bright:#E8253C;
+  --ink:#1F2430;
+  --ink-soft:#6B7280;
+  --ink-faint:#9CA3AF;
+  --line:#E3E6EB;
+  --field:#FAFBFC;
+  --white:#FFFFFF;
+  --danger:#C0121F;
+  --radius-card:28px;
+  --radius-field:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'IBM Plex Sans Thai',system-ui,-apple-system,sans-serif;
+  color:var(--ink);
+  background:#FBEEF0;
+  display:flex;align-items:center;justify-content:center;
+  padding:32px 20px;
+  position:relative;overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background:
+    radial-gradient(1100px 700px at 8% 4%, #F7D9DE 0%, transparent 58%),
+    radial-gradient(900px 900px at 96% 96%, #FCE9EC 0%, transparent 60%);
+}
+body::after{
+  content:'';position:fixed;top:-14%;left:14%;width:62%;height:132%;
+  transform:rotate(17deg);pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.12));
+}
+
+.shell{
+  position:relative;z-index:2;
+  width:100%;max-width:1140px;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  background:var(--white);
+  border-radius:var(--radius-card);
+  overflow:hidden;
+  box-shadow:0 34px 90px -30px rgba(150,20,35,.34), 0 2px 8px rgba(20,10,15,.05);
+  animation:shellIn .7s cubic-bezier(.22,.9,.3,1) both;
+}
+@keyframes shellIn{from{opacity:0;transform:translateY(26px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ---------- left panel ---------- */
+.brandside{
+  position:relative;z-index:1;
+  background:linear-gradient(155deg, var(--maz-red-bright) 0%, var(--maz-red) 44%, var(--maz-red-deep) 100%);
+  padding:44px 200px 44px 44px;
+  display:flex;flex-direction:column;justify-content:space-between;
+  min-height:640px;
+}
+.brandside::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.14) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 1px, transparent 1px 44px);
+  mask-image:linear-gradient(115deg, rgba(0,0,0,1) 12%, rgba(0,0,0,.55) 85%);
+  -webkit-mask-image:linear-gradient(115deg, rgba(0,0,0,1) 12%, rgba(0,0,0,.55) 85%);
+}
+.brandside::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg, rgba(255,255,255,.17) 0%, rgba(255,255,255,.05) 46%, rgba(255,255,255,0) 72%);
+}
+
+/* concave arc — white ellipse straddling the red panel's edge */
+.scoop{
+  position:absolute;z-index:3;
+  top:0;left:100%;
+  width:340px;height:100%;
+  transform:translateX(-50%);
+  background:var(--white);
+  border-radius:50%;
+  pointer-events:none;
+}
+.welcome{
+  position:absolute;top:38px;left:34px;
+  writing-mode:vertical-rl;
+  font-size:60px;font-weight:600;letter-spacing:.02em;
+  color:rgba(255,255,255,.17);
+  user-select:none;line-height:1;
+}
+.art{
+  position:relative;z-index:1;
+  flex:1;display:flex;align-items:center;justify-content:flex-start;
+  padding:20px 0 8px;
+}
+.art svg{width:100%;max-width:330px;height:auto}
+.orbit{transform-origin:300px 330px;animation:spin 34s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cube{animation:bob 5s ease-in-out infinite}
+.cube.b{animation-duration:6.4s;animation-delay:.7s}
+.cube.c{animation-duration:5.6s;animation-delay:1.3s}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-11px)}}
+
+
+/* ---------- right panel ---------- */
+.formside{
+  position:relative;z-index:3;
+  padding:56px 112px 56px 34px;
+  display:flex;flex-direction:column;justify-content:center;
+  background:var(--white);
+}
+.logo{display:flex;justify-content:center;margin:0 auto 26px}
+.logo .word{line-height:1;text-align:center}
+.logo .word b{display:block;font-size:42px;font-weight:700;letter-spacing:.05em;color:var(--maz-red)}
+
+.sub{font-size:16px;color:var(--ink-soft);margin-bottom:30px;text-align:center}
+
+.field{position:relative;margin-bottom:16px}
+.field .lead,.field .trail{
+  position:absolute;top:30px;transform:translateY(-50%);
+  color:var(--ink-faint);display:flex;pointer-events:none;
+  transition:color .18s ease;
+}
+.field .lead{left:20px}
+.field .trail{right:16px;pointer-events:auto;cursor:pointer;padding:6px;border:none;background:none;border-radius:8px}
+.field .trail:hover{color:var(--ink-soft)}
+.field input{
+  width:100%;height:60px;
+  padding:0 52px 0 54px;
+  font-family:inherit;font-size:15.5px;color:var(--ink);
+  background:var(--field);
+  border:1.5px solid var(--line);
+  border-radius:var(--radius-field);
+  outline:none;
+  transition:border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.field input::placeholder{color:var(--ink-faint)}
+.field input:hover{border-color:#CFD4DC}
+.field input:focus{
+  background:var(--white);
+  border-color:var(--maz-red);
+  box-shadow:0 0 0 4px rgba(208,2,27,.10);
+}
+.field input:focus ~ .lead{color:var(--maz-red)}
+.field.bad input{border-color:var(--danger);background:#FEF6F7}
+.field .msg{
+  display:none;
+  font-size:13px;color:var(--danger);
+  margin:7px 0 0 6px;
+}
+.field.bad .msg{display:block;animation:nudge .3s ease}
+@keyframes nudge{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+.submit{
+  width:238px;height:58px;margin:26px auto 4px;
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  font-family:inherit;font-size:17px;font-weight:600;color:var(--white);
+  background:linear-gradient(100deg, var(--maz-red-bright), var(--maz-red-deep));
+  border:none;border-radius:34px;cursor:pointer;
+  box-shadow:0 12px 26px -10px rgba(208,2,27,.62);
+  transition:transform .16s ease, box-shadow .2s ease, filter .16s ease;
+}
+.submit:hover{filter:brightness(1.06);box-shadow:0 16px 32px -10px rgba(208,2,27,.7)}
+.submit:active{transform:scale(.982)}
+.submit:disabled{cursor:default;filter:saturate(.55) brightness(.98);box-shadow:none}
+.locked .field input{background:#F4F5F7;color:var(--ink-faint);pointer-events:none}
+.locked .field .trail{display:none}
+#go-spin{display:flex;align-items:center}
+.spinner{
+  display:block;
+  width:21px;height:21px;border-radius:50%;
+  border:2.5px solid rgba(255,255,255,.32);border-top-color:var(--white);
+  animation:spin .7s linear infinite;
+}
+
+
+:focus-visible{outline:2.5px solid var(--maz-red);outline-offset:3px}
+
+/* ---------- entrance stagger ---------- */
+.step{animation:rise .5s cubic-bezier(.22,.9,.3,1) both}
+.d1{animation-delay:.16s} .d2{animation-delay:.24s} .d3{animation-delay:.32s}
+.d4{animation-delay:.40s} .d5{animation-delay:.48s}
+@keyframes rise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
+
+/* ---------- responsive ---------- */
+@media (max-width:900px){
+  body{padding:0;align-items:stretch}
+  .shell{grid-template-columns:1fr;grid-template-rows:auto 1fr;border-radius:0;box-shadow:none;min-height:100dvh}
+  .brandside{min-height:0;padding:16px 22px 64px;justify-content:center}
+  .scoop{top:auto;bottom:0;left:50%;width:112%;height:104px;transform:translate(-50%,50%)}
+  .welcome{font-size:26px;top:14px;left:14px}
+  .art{padding:2px 0 0;justify-content:center}
+  .art svg{max-width:150px}
+  .formside{justify-content:flex-start;padding:6px 26px 26px}
+  .logo{margin-bottom:14px}
+  .logo .word b{font-size:34px}
+  .sub{font-size:14.5px;margin-bottom:18px}
+  .field{margin-bottom:12px}
+  .field input{height:52px;padding:0 48px 0 50px;font-size:15px}
+  .field .lead,.field .trail{top:26px}
+  .submit{width:100%;height:52px;margin:16px auto 0}
+}
+@media (max-height:660px) and (max-width:900px){
+  .brandside{padding:10px 22px 52px}
+  .scoop{width:114%;height:82px}
+  .art svg{max-width:118px}
+  .welcome{display:none}
+  .logo{margin-bottom:10px}
+  .sub{margin-bottom:14px}
+}
+@media (max-width:420px){
+  .formside{padding:6px 20px 22px}
+  .logo .word b{font-size:31px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+
+/* ================= glass theme ================= */
+body{background:#F2F3F7}
+body::before{
+  content:'';position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(38% 42% at 78% 6%,  rgba(255,64,92,.34),  transparent 68%),
+    radial-gradient(34% 40% at 12% 18%, rgba(255,140,90,.26), transparent 66%),
+    radial-gradient(42% 44% at 62% 88%, rgba(96,132,255,.28), transparent 68%),
+    radial-gradient(36% 40% at 18% 82%, rgba(120,220,200,.24),transparent 66%),
+    radial-gradient(30% 34% at 92% 60%, rgba(196,120,255,.22),transparent 66%),
+    #F4F5F9;
+  filter:blur(40px);
+}
+/* ชั้นฝ้าบางๆ ให้สีไม่จัดเกินและตัวหนังสืออ่านง่าย */
+body::after{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:rgba(255,255,255,.34);
+}
+
+/* ---- พื้นผิวกระจก ---- */
+.panel, .card, .kpi, .pcard, .revcard, .box, .edu-wrap{
+  background:rgba(255,255,255,.46);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+  border:1px solid rgba(255,255,255,.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(255,255,255,.28),
+    0 1px 2px rgba(28,20,45,.05),
+    0 18px 40px -20px rgba(40,25,60,.30);
+}
+.appbar, .topbar{
+  background:rgba(255,255,255,.52);
+  backdrop-filter:blur(26px) saturate(190%);
+  -webkit-backdrop-filter:blur(26px) saturate(190%);
+  border-bottom:1px solid rgba(255,255,255,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8), 0 8px 26px -20px rgba(40,25,60,.5);
+}
+.menu{
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.search, .seg, .mo, .iconbtn, .me, .btn.ghost, .chip, .drop, .master, .opt, .pages button, .tabs, .sw{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+.iconbtn:hover, .me:hover, .btn.ghost:hover, .chip:hover{background:rgba(255,255,255,.72)}
+.chip.on, .opt.on, .seg button.on, .pages button.on{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+
+/* ปุ่มหลักเป็นแก้วสีแดง ไม่ใช่สีทึบ */
+.btn.solid, .add, .solid{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34), 0 12px 26px -12px rgba(208,2,27,.6);
+}
+
+/* ตารางโปร่ง เห็นชั้นสีด้านหลัง */
+thead th{background:rgba(255,255,255,.62)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+tbody tr:hover{background:rgba(255,255,255,.42)}
+tr.sub td{background:rgba(255,255,255,.34)}
+table.rounds, table.revs, table.inner{background:rgba(255,255,255,.5)}
+
+/* ช่องกรอกทึบกว่าเล็กน้อยเพื่อให้อ่านง่าย */
+input, select, textarea{
+  background:rgba(255,255,255,.58);
+  border-color:rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 2px rgba(40,25,60,.05);
+}
+input:hover, select:hover, textarea:hover{background:rgba(255,255,255,.72)}
+input:focus, select:focus, textarea:focus{background:rgba(255,255,255,.92)}
+input:disabled, input[readonly]{background:rgba(240,241,245,.62)}
+
+/* กระดาษเอกสารต้องทึบ เพราะต้องพิมพ์จริง */
+.paper{
+  background:#FFF;backdrop-filter:none;-webkit-backdrop-filter:none;
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 2px 8px rgba(28,20,45,.06), 0 30px 66px -30px rgba(40,25,60,.45);
+}
+
+@supports not (backdrop-filter: blur(2px)){
+  body::before{filter:none;opacity:.5}
+  .panel,.card,.kpi,.pcard,.revcard,.box,.edu-wrap,.menu,.appbar,.topbar{background:rgba(255,255,255,.94)}
+}
+@media print{ body::before,body::after{display:none} }
+
+/* ===== glass theme — ส่วนเพิ่ม (ใช้ร่วมทุกหน้า) ===== */
+/* บล็อกด้านบนคลุมแค่ .panel .card .menu .appbar ฯลฯ ส่วนนี้เก็บของที่ตกสำรวจ
+   ห้ามเขียน CSS ของหน้าไว้ใต้บล็อกนี้ ไม่งั้นจะไปทับธีมกระจก */
+
+/* กล่องที่ลอยทับเนื้อหา ต้องทึบกว่าการ์ดพื้นหลัง ไม่งั้นตารางด้านหลังทะลุจนอ่านไม่ออก */
+.drawer, .list, .tip, /* เมนูบัญชีลอยทับเนื้อหา ถ้าโปร่งจะเห็นข้อความข้างหลังทะลุจนอ่านยาก ต้องทึบ */
+.menu{
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(30px) saturate(180%);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  border-color:rgba(31,36,48,.1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.cal, .tpop{
+  background:rgba(255,255,255,.93);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border-color:rgba(255,255,255,.8);
+}
+.box{
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(36px) saturate(200%);
+  -webkit-backdrop-filter:blur(36px) saturate(200%);
+  border-color:rgba(255,255,255,.75);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 34px 70px -28px rgba(40,25,60,.5);
+}
+
+/* ปุ่มเล็กในตารางและแถบเครื่องมือ ให้เป็นแก้วระดับเดียวกับ .iconbtn */
+.act, .del, .mini, .more, .calbar button, .file .rm, .b-line, .pick, .calnav, .tcol .val{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+/* ไม่ใส่ .del:hover เพราะหน้าใบเสนอราคากำหนดพื้นแดงอ่อนตอน hover ไว้แล้ว */
+.act:hover, .mini:hover, .more:hover, .calbar button:hover, .file .rm:hover, .b-line:hover, .pick:hover, .calnav:hover{
+  background:rgba(255,255,255,.76);
+}
+
+/* ปฏิทินไทยและตัวเลือกเวลาแบบ stepper (หน้าการลา) */
+.calgrid button:hover{background:rgba(31,36,48,.06)}
+.calgrid button.on:hover{background:var(--maz-red)}
+.tcol .step:hover:not(:disabled){background:rgba(31,36,48,.06)}
+.card .track{background:rgba(31,36,48,.13)}
+.calc{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(31,36,48,.09);
+}
+.bhead, .bfoot{border-color:rgba(31,36,48,.09)}
+
+/* กล่องไฟล์แนบ */
+.file{
+  background:rgba(255,255,255,.42);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.6);
+}
+
+/* หน้าเข้าสู่ระบบ */
+.shell, .formside, .scoop{
+  background:rgba(255,255,255,.6);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+}
+
+/* ตัวเครื่องในหน้าตัวอย่างสถานะบัญชี เป็นภาพจำลองมือถือ ต้องทึบ ไม่ใส่กระจก */
+
+@supports not (backdrop-filter: blur(2px)){
+  .drawer,.list,.tip,.cal,.tpop,.box{background:rgba(255,255,255,.98)}
+  .shell,.formside,.scoop{background:rgba(255,255,255,.96)}
+}
+
+/* ===== เลื่อนทั้งคอลัมน์เนื้อหาเป็นก้อนเดียว ไม่เลื่อนในตาราง (ใช้ร่วมทุกหน้า) ===== */
+/* เดิมตารางมีสกรอลล์ของตัวเองซ้อนอยู่ข้างใน เอาออกให้เลื่อนทีเดียวทั้งคอลัมน์
+   ตัวที่เลื่อนคือ .main ไม่ใช่ทั้งหน้า เมนูซ้ายเลยอยู่กับที่เสมอ ไม่ต้องพึ่ง sticky
+   (ถ้าให้ทั้งหน้ายาวแล้วใช้ sticky เมนูจะหายตอนเลื่อนในกรอบพรีวิวที่สูงเท่าเนื้อหา) */
+/* ต้องระบุ main.main เพราะมีปุ่มที่ใช้คลาส main ด้วย ถ้าเขียน .main เฉยๆ ปุ่มจะสูงเท่าจอ */
+main.main{height:100vh;overflow:auto}
+.panel{flex:none}
+.scroll, .scrollarea, .stage{flex:none;min-height:0;overflow:visible}
+/* ยกเว้นดรอปดาวน์ค้นหา ต้องเลื่อนในกล่องตัวเองเหมือนเดิม */
+.list .scrollarea{max-height:264px;overflow:auto}
+/* แถบหัวลอยอยู่บนสุดของคอลัมน์เนื้อหา และต้องทึบพอให้อ่านออกตอนเนื้อหาเลื่อนลอดใต้ */
+.appbar, .topbar{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.86)}
+/* แผงเลื่อนข้างและกล่องซ้อนยังเลื่อนในตัวเองตามเดิม */
+.drawer .body, .bbody{overflow:auto}
+@media print{ .appbar, .topbar{position:static} .main{height:auto;overflow:visible} }
+
+.twrap input.bad, .dwrap input.bad{
+  border-color:var(--late);
+  background:var(--late-bg);
+  color:var(--late);
+  font-weight:600;
+}
+.twrap input.bad ~ .clockbtn, .dwrap input.bad ~ .calbtn{color:var(--late)}
+
+/* ===== มือถือ: ตารางรายการเปลี่ยนเป็นการ์ดต่อแถว (ใช้ร่วมทุกหน้า) =====
+   จอ 640px ลงมา ตารางหลายคอลัมน์อ่านยากมากถ้าเลื่อนแนวนอน
+   จึงพับแต่ละแถวเป็นการ์ด โดยเอาชื่อคอลัมน์จาก th มาไว้หน้าเซลล์
+   ใช้เฉพาะตารางรายการ (.scroll > table) ไม่แตะตารางในเอกสาร A4 หรือตารางกรอกในฟอร์ม */
+@media (max-width:640px){
+  /* ตารางที่แปลงเป็นการ์ดจะแคบพอดีอยู่แล้ว ส่วนตารางกรอกในฟอร์มยังกว้าง ต้องเลื่อนข้างได้
+     ถ้าตั้ง visible เนื้อหาจะถูกตัดหายโดยไม่มีทางเลื่อนไปดู */
+  .scroll{overflow-x:auto}
+  .scroll > table.grid{min-width:760px}
+  .scroll > table:not(.grid){min-width:0!important;display:block;border-collapse:separate;border-spacing:0}
+  .scroll > table:not(.grid) > thead{display:none}
+  .scroll > table:not(.grid) > tbody{display:block}
+
+  .scroll > table:not(.grid) > tbody > tr{
+    display:block;margin:10px 14px;padding:6px 2px;
+    border:1px solid var(--line);border-radius:13px;background:var(--white);
+  }
+  .scroll > table:not(.grid) > tbody > tr > td{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+    width:auto;border:none;padding:7px 13px;text-align:right;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td::before{
+    content:attr(data-label);flex:none;max-width:44%;
+    color:var(--ink-faint);font-size:12px;font-weight:600;text-align:left;line-height:1.5;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td:not([data-label])::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td > *{text-align:right}
+  .scroll > table:not(.grid) > tbody > tr > td .clip{white-space:normal}
+
+  /* แถวว่างและแถวที่กางรายละเอียดคร่อมทั้งแถว ให้แสดงเต็มความกว้างตามเดิม */
+  .scroll > table:not(.grid) > tbody > tr.sub{margin:0;padding:0;border:none;border-radius:0;background:none}
+  .scroll > table:not(.grid) > tbody > tr.sub > td{display:block;text-align:left;padding:0}
+  .scroll > table:not(.grid) > tbody > tr.sub > td::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td.blank,
+  .scroll > table:not(.grid) > tbody > tr > td.empty{display:block;text-align:center}
+  .scroll > table:not(.grid) > tbody > tr > td.blank::before,
+  .scroll > table:not(.grid) > tbody > tr > td.empty::before{content:none}
+
+  /* ตารางย่อยข้างในการ์ดยังเป็นตารางปกติ แต่ให้เลื่อนข้างได้ */
+  .subwrap{overflow-x:auto}
+  table.inner{min-width:560px}
+
+
+  /* แถบหัวหน้า: ชื่อหน้ากับปุ่มเครื่องมือไม่พอในบรรทัดเดียว ต้องตกบรรทัดแทนการถูกตัดหาย */
+  .bar{flex-wrap:wrap;gap:12px}
+  .bar .tools{width:100%;flex-wrap:wrap;justify-content:flex-start;gap:9px}
+  .bar .tools .mo{flex:1 1 auto;min-width:0;justify-content:space-between}
+  .bar .tools .btn, .bar .tools .seg{flex:1 1 auto;justify-content:center}
+  .bar h1{font-size:20px}
+
+  /* กริดที่ตั้งความกว้างคอลัมน์เป็นพิกเซลตายตัวไว้ ต้องบีบให้พอดีจอ ไม่งั้นลูกล้นออกไป */
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .profile{grid-template-columns:1fr!important}
+  .facts{grid-template-columns:1fr!important}
+  .two, .two-up, .wide-left, .moneygrid{grid-template-columns:1fr!important}
+
+  /* ตารางอื่นที่ไม่ได้อยู่ในกรอบเลื่อน ต้องมีกรอบเลื่อนของตัวเอง */
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+
+  /* ช่องค้นหาและแถวป้าย-ค่า ตั้งความกว้างตายตัวไว้ ต้องยืดหดตามจอ */
+  .search{width:100%!important;min-width:0}
+  .search input{width:100%;min-width:0}
+  .mrow{flex-wrap:wrap;gap:4px 10px}
+  .mrow > span, .mrow > label{width:auto;min-width:120px}
+  .card, .panel{min-width:0}
+
+  /* ปุ่มยาวๆ อย่างส่งออก Excel และแถวปุ่มด้านขวาให้ตกบรรทัด ไม่ดันออกนอกจอ */
+  .right, .acts, .btnrow{flex-wrap:wrap}
+  .btn{white-space:nowrap}
+  .bars .bar{max-width:100%}
+
+  /* แถบเลขหน้าและปุ่มสาธิตให้ตกบรรทัดแทนที่จะดันออกนอกจอ */
+  .pages{flex-wrap:wrap;justify-content:center}
+  .foot{flex-wrap:wrap;gap:10px}
+  .demo{flex-wrap:wrap;justify-content:center}
+
+  /* ตารางกรอกในกล่องซ้อน ให้เลื่อนข้างในกล่องแทนที่จะดันกล่องล้นจอ */
+  .bbody{overflow-x:auto}
+  .bbody table.grid{min-width:420px}
+
+  /* แท็บบนมือถือให้เลื่อนแนวนอนแทนที่จะตกบรรทัด */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:none}
+  .strip{flex-wrap:wrap;gap:8px}
+  .legend{display:none}
+}
+
+/* ===== แท็บเล็ต: กล่องที่ตั้งความกว้างเป็นพิกเซลตายตัวต้องยืดหดตามจอด้วย ===== */
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+}
+/* ===== จอแคบมาก: การ์ดสรุปเรียงลงคอลัมน์เดียว ===== */
+@media (max-width:420px){
+  .cards{grid-template-columns:minmax(0,1fr)!important}
+  .cards > *{min-width:0}
+  /* กริดหลายคอลัมน์ในแดชบอร์ดเหลือคอลัมน์เดียว ไม่งั้นคอลัมน์กว้างเกินจอ */
+  .grid, .grid2, .grid3{grid-template-columns:minmax(0,1fr)!important}
+  .grid > *, .grid2 > *, .grid3 > *{min-width:0}
+}
+
+/* ===== มือถือ: เปลี่ยนเมนูข้างเป็นแถบล่าง ===== */
+.botnav{display:none}
+.bnsheet{display:none}
+@media (max-width:640px){
+  /* ซ่อนแถบข้าง ใช้แถบล่างแทน เพราะนิ้วโป้งเอื้อมถึงง่ายกว่า */
+  .side{display:none!important}
+  main.main{margin-left:0!important;padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+  body{padding-bottom:0}
+
+  .botnav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:90;
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.94);
+    backdrop-filter:blur(26px) saturate(180%);
+    -webkit-backdrop-filter:blur(26px) saturate(180%);
+    border-top:1px solid rgba(31,36,48,.09);
+    box-shadow:0 -6px 22px -14px rgba(40,25,60,.35);
+  }
+  .bn-i{
+    flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:6px 2px;border:none;background:none;cursor:pointer;text-decoration:none;
+    font-family:inherit;color:var(--ink-faint);border-radius:12px;
+  }
+  .bn-i svg{width:21px;height:21px;flex:none}
+  .bn-i span{font-size:10.5px;font-weight:600;line-height:1.25;text-align:center;
+             max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bn-i.on{color:var(--maz-red)}
+  .bn-i.on svg{stroke-width:2.1}
+  .bn-i:active{background:rgba(208,2,27,.07)}
+
+  /* แผ่นเมนูทั้งหมด เลื่อนขึ้นจากด้านล่าง */
+  .bnsheet{
+    display:block;position:fixed;inset:0;z-index:95;
+    background:rgba(28,20,45,.42);
+    opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s;
+  }
+  .bnsheet.on{opacity:1;visibility:visible}
+  .bnpanel{
+    position:absolute;left:0;right:0;bottom:0;
+    background:var(--white);border-radius:20px 20px 0 0;
+    padding:10px 16px calc(18px + env(safe-area-inset-bottom));
+    transform:translateY(14px);transition:transform .22s;
+    max-height:78vh;overflow:auto;
+  }
+  .bnsheet.on .bnpanel{transform:translateY(0)}
+  .bngrab{width:38px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+  .bntitle{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;padding-left:4px}
+  .bnlist{display:flex;flex-direction:column}
+  .bnrow{
+    display:flex;align-items:center;gap:13px;padding:13px 12px;border-radius:12px;
+    text-decoration:none;color:var(--ink);font-size:14.5px;font-weight:500;
+  }
+  .bnrow svg{width:19px;height:19px;flex:none;color:var(--ink-faint)}
+  .bnrow.on{background:#FEF5F6;color:var(--maz-red);font-weight:700}
+  .bnrow.on svg{color:var(--maz-red)}
+  .bnrow:active{background:var(--field)}
+}
+</style>
+<!-- ===== PWA (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#D0021B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ERP MAZ">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<script src="./pwa.js" defer></script>
+</head>
+<body>
+
+<main class="shell">
+
+  <!-- ============ LEFT : brand ============ -->
+  <section class="brandside">
+    <div class="scoop" aria-hidden="true"></div>
+    <span class="welcome" aria-hidden="true">Welcome</span>
+
+    <div class="art">
+      <svg viewBox="0 0 600 620" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>ภาพประกอบการเข้าสู่ระบบอย่างปลอดภัย</title>
+        <desc>โน้ตบุ๊กแสดงหน้าจอเข้าสู่ระบบ มีโล่กุญแจอยู่ด้านข้าง ล้อมด้วยวงโคจรและกล่องสามมิติ</desc>
+
+        <g class="orbit" opacity=".5">
+          <ellipse cx="300" cy="330" rx="238" ry="86" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity=".42"/>
+          <ellipse cx="300" cy="330" rx="196" ry="66" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity=".24"/>
+        </g>
+
+        <g class="cube">
+          <path d="M96 236 L124 222 L152 236 L124 250 Z" fill="#FFFFFF" opacity=".82"/>
+          <path d="M96 236 L124 250 L124 278 L96 264 Z" fill="#FFD2D8" opacity=".62"/>
+          <path d="M152 236 L124 250 L124 278 L152 264 Z" fill="#FFA9B4" opacity=".55"/>
+        </g>
+        <g class="cube b">
+          <path d="M462 400 L488 387 L514 400 L488 413 Z" fill="#FFFFFF" opacity=".78"/>
+          <path d="M462 400 L488 413 L488 439 L462 426 Z" fill="#FFD2D8" opacity=".58"/>
+          <path d="M514 400 L488 413 L488 439 L514 426 Z" fill="#FFA9B4" opacity=".5"/>
+        </g>
+        <g class="cube c">
+          <path d="M132 372 L154 361 L176 372 L154 383 Z" fill="#FFFFFF" opacity=".7"/>
+          <path d="M132 372 L154 383 L154 405 L132 394 Z" fill="#FFD2D8" opacity=".5"/>
+          <path d="M176 372 L154 383 L154 405 L176 394 Z" fill="#FFA9B4" opacity=".44"/>
+        </g>
+
+        <!-- laptop base -->
+        <path d="M150 428 L300 356 L520 428 L370 500 Z" fill="#FFFFFF" opacity=".97"/>
+        <path d="M150 428 L370 500 L370 512 L150 440 Z" fill="#F4C7CE" opacity=".85"/>
+        <path d="M520 428 L370 500 L370 512 L520 440 Z" fill="#E9AEB8" opacity=".8"/>
+        <path d="M196 428 L302 378 L436 424 L332 474 Z" fill="#FFE9EC" opacity=".55"/>
+
+        <!-- screen back plates -->
+        <path d="M232 172 L392 196 L392 348 L232 324 Z" fill="#FFFFFF" opacity=".22"/>
+        <path d="M214 186 L374 210 L374 362 L214 338 Z" fill="#FFFFFF" opacity=".34"/>
+
+        <!-- main screen -->
+        <path d="M196 200 L356 224 L356 380 L196 356 Z" fill="#FFFFFF" opacity=".96"/>
+        <path d="M196 200 L356 224 L356 240 L196 216 Z" fill="#F0949F" opacity=".9"/>
+
+        <circle cx="276" cy="272" r="27" fill="#D0021B" opacity=".9"/>
+        <circle cx="276" cy="264" r="9.5" fill="#FFFFFF"/>
+        <path d="M262 288 Q276 274 290 290 L290 293 Q276 281 262 293 Z" fill="#FFFFFF"/>
+
+        <rect x="222" y="306" width="108" height="15" rx="7.5" fill="#F6D4D9" transform="rotate(8.5 222 306)"/>
+        <rect x="222" y="330" width="108" height="15" rx="7.5" fill="#F6D4D9" transform="rotate(8.5 222 330)"/>
+        <rect x="248" y="354" width="60" height="17" rx="8.5" fill="#D0021B" transform="rotate(8.5 248 354)" opacity=".92"/>
+
+        <!-- shield -->
+        <path d="M406 292 L462 268 L462 342 Q462 386 406 410 Q350 386 350 342 L350 268 Z" fill="#FFFFFF" opacity=".28"/>
+        <path d="M414 300 L458 281 L458 340 Q458 375 414 394 Q370 375 370 340 L370 281 Z" fill="#D0021B" opacity=".92"/>
+        <rect x="396" y="331" width="36" height="30" rx="6" fill="#FFFFFF"/>
+        <path d="M403 331 v-9 a11 11 0 0 1 22 0 v9" fill="none" stroke="#FFFFFF" stroke-width="5.5"/>
+        <circle cx="414" cy="344" r="4" fill="#D0021B"/>
+        <rect x="412" y="345" width="4.5" height="9" rx="2.25" fill="#D0021B"/>
+      </svg>
+    </div>
+
+  </section>
+
+  <!-- ============ RIGHT : form ============ -->
+  <section class="formside">
+
+    <div class="logo step d1">
+      <span class="word"><b>MAZ</b></span>
+    </div>
+
+    <p class="sub step d2">เข้าสู่ระบบเพื่อใช้งาน ERP MAZ</p>
+
+    <div class="field step d3" id="f-user">
+      <span class="lead" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      </span>
+      <input id="username" type="text" autocomplete="username" placeholder="ชื่อผู้ใช้" aria-label="ชื่อผู้ใช้" aria-describedby="m-user">
+      <p class="msg" id="m-user" role="alert">กรอกชื่อผู้ใช้ที่ฝ่ายบุคคลกำหนดให้</p>
+    </div>
+
+    <div class="field step d4" id="f-pass">
+      <span class="lead" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </span>
+      <input id="password" type="password" autocomplete="current-password" placeholder="รหัสผ่าน" aria-label="รหัสผ่าน" aria-describedby="m-pass">
+      <button class="trail" id="peek" type="button" aria-label="แสดงรหัสผ่าน" aria-pressed="false">
+        <svg id="eye" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <p class="msg" id="m-pass" role="alert">กรอกรหัสผ่าน</p>
+    </div>
+
+    <button class="submit step d5" id="go">
+      <span id="go-label">เข้าสู่ระบบ</span>
+      <span id="go-spin" aria-hidden="true"></span>
+    </button>
+
+
+  </section>
+</main>
+
+<script>
+(function(){
+  var u = document.getElementById('username');
+  var p = document.getElementById('password');
+  var fu = document.getElementById('f-user');
+  var fp = document.getElementById('f-pass');
+  var go = document.getElementById('go');
+  var lbl = document.getElementById('go-label');
+  var spin = document.getElementById('go-spin');
+  var peek = document.getElementById('peek');
+  var mUser = document.getElementById('m-user');
+  var mPass = document.getElementById('m-pass');
+  var eye = document.getElementById('eye');
+
+  var OPEN = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>';
+  var SHUT = '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.3 3.9"/><path d="M6.3 7.5A16.6 16.6 0 0 0 2 12s3.6 6 10 6a9.7 9.7 0 0 0 4-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+
+  peek.addEventListener('click', function(){
+    var show = p.type === 'password';
+    p.type = show ? 'text' : 'password';
+    eye.innerHTML = show ? SHUT : OPEN;
+    peek.setAttribute('aria-pressed', show ? 'true' : 'false');
+    peek.setAttribute('aria-label', show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    p.focus();
+  });
+
+  [[u, fu], [p, fp]].forEach(function(pair){
+    pair[0].addEventListener('input', function(){ pair[1].classList.remove('bad'); if(!locked) resetMsgs(); });
+    pair[0].addEventListener('keydown', function(e){ if (e.key === 'Enter') go.click(); });
+  });
+
+  var MAX_TRIES = 5;   // ผิดครบกี่ครั้งจึงระงับบัญชี — ยืนยันกับฝ่ายบุคคล
+  var fails = 0, locked = false;
+
+  var DEF_USER = mUser.textContent, DEF_PASS = mPass.textContent;
+
+  function setMsg(el, text){
+    el.textContent = text;
+    el.style.display = text ? 'block' : 'none';
+  }
+  function resetMsgs(){
+    setMsg(mUser, DEF_USER);
+    setMsg(mPass, DEF_PASS);
+    mUser.style.display = '';
+    mPass.style.display = '';
+  }
+  // ผิดเป็นคู่ ไม่บอกว่าช่องไหนผิด — ข้อความเดียวใต้ช่องรหัสผ่าน
+  function showCredError(note){
+    fu.classList.add('bad'); fp.classList.add('bad');
+    setMsg(mUser, '');
+    setMsg(mPass, 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' + (note ? ' — ' + note : ''));
+  }
+
+  function lockAccount(){
+    locked = true;
+    document.body.classList.add('locked');
+    go.disabled = true;
+    lbl.textContent = 'บัญชีถูกระงับ';
+    fu.classList.add('bad'); fp.classList.add('bad');
+    setMsg(mUser, '');
+    setMsg(mPass, 'บัญชีถูกระงับการใช้งาน กรุณาติดต่อฝ่ายบุคคล');
+  }
+
+  /* บทบาทของผู้ใช้
+     TODO: อ่านจากโปรไฟล์หลังล็อกอิน Supabase จริง ตอนนี้เดโมถือว่าทุกบัญชีเป็นพนักงาน
+     เพราะมีแค่หน้าของพนักงานที่กำหนดหน้าแรกไว้แล้ว */
+  function roleOf(username){ return 'employee'; }
+
+  // หน้าแรกหลังล็อกอินของแต่ละบทบาท
+  // พนักงาน: มือถือเข้าหน้าหลักการ์ดเมนู คอมเข้างานที่ได้รับ (หน้าหลักไม่มีบนคอม)
+  // ใช้เงื่อนไขจอเดียวกับหน้าของพนักงาน (≤640px)
+  function goHome(role){
+    var phone = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+    if (role === 'employee') { location.replace(phone ? 'my-home.html' : 'my-tasks.html'); return; }
+    // TODO: หน้าแรกของบทบาทอื่น (PM, ขาย, บัญชี, HR) ยังไม่ได้กำหนด
+  }
+
+  go.addEventListener('click', function(){
+    if (go.disabled || locked) return;
+
+    var bad = false;
+    if (!u.value.trim()) { fu.classList.add('bad'); bad = true; }
+    if (!p.value) { fp.classList.add('bad'); bad = true; }
+    if (bad) { (u.value.trim() ? p : u).focus(); return; }
+
+    go.disabled = true;
+    lbl.textContent = '';
+    spin.innerHTML = '<span class="spinner"></span>';
+
+    // TODO: แทนที่ด้วยการเรียก Supabase auth จริง
+    // const { data, error } = await supabase.auth.signInWithPassword({...})
+    setTimeout(function(){
+      // เดโม: ผ่านเมื่อรหัสผ่านคือ maz1234 นอกนั้นถือว่าไม่ถูกต้อง
+      var ok = p.value === 'maz1234';
+      go.disabled = false;
+      lbl.textContent = 'เข้าสู่ระบบ';
+      spin.innerHTML = '';
+
+      if (ok) { resetMsgs(); fails = 0; goHome(roleOf(u.value.trim())); return; }
+
+      fails++;
+      p.value = ''; p.focus();
+
+      if (fails >= MAX_TRIES) { lockAccount(); return; }
+      var left = MAX_TRIES - fails;
+      showCredError(left <= 2 ? 'เหลืออีก ' + left + ' ครั้งก่อนบัญชีถูกระงับ' : '');
+    }, 1600);
+  });
+})();
+</script>
+<!-- ===== ตารางเป็นการ์ดบนมือถือ (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<script>
+(function(){
+  // บนจอแคบตารางถูกจัดใหม่เป็นการ์ด แต่ละเซลล์ต้องมีป้ายชื่อคอลัมน์ของตัวเอง
+  // เพราะหัวตารางถูกซ่อน จึงคัดชื่อจาก th มาใส่เป็น data-label ให้ทุก td
+  function label(t){
+    var ths = t.querySelectorAll(':scope > thead > tr > th');
+    if(!ths.length) return;
+    var rows = t.querySelectorAll(':scope > tbody > tr');
+    Array.prototype.forEach.call(rows, function(tr){
+      if(tr.classList.contains('sub')) return;          // แถวที่กางรายละเอียดคร่อมทั้งแถว ไม่ต้องมีป้าย
+      Array.prototype.forEach.call(tr.children, function(td, i){
+        if(!ths[i]) return;
+        var txt = ths[i].textContent.trim();
+        if(txt) td.setAttribute('data-label', txt);
+        else td.removeAttribute('data-label');
+      });
+    });
+  }
+  function run(){
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table'), label);
+  }
+  run();
+  // ตารางถูกวาดใหม่ด้วย JS ตลอด ต้องติดป้ายใหม่ทุกครั้งที่แถวเปลี่ยน
+  if(window.MutationObserver){
+    var mo = new MutationObserver(run);
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table > tbody'), function(tb){
+      mo.observe(tb, {childList:true});
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

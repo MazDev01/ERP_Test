@@ -1,0 +1,38 @@
+/*
+ * หน้าหลักการ์ดเมนูบนมือถือ (ต้นแบบ home-glass / home-employee / home-pm / home-sales)
+ * ทุกตัวเลือกอยู่ใต้ .rh-home — ไม่แตะหน้าอื่น
+ * ไฟล์นี้มีไว้แต่งปุ่มกระดิ่ง (NotificationMenu) ให้เป็นวงกลมขาว 46px ตามแบบ
+ * โดยไม่ต้องแก้คอมโพเนนต์กลางที่หน้าอื่นใช้ร่วม
+ */
+.rh-home .rh-bell .iconbtn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.85);
+  color: #2a1f22;
+  box-shadow: 0 10px 24px -16px rgba(140, 20, 40, 0.5);
+}
+.rh-home .rh-bell .iconbtn svg {
+  width: 22px;
+  height: 22px;
+}
+/* ตัวเลขบนกระดิ่ง — วงแดงขอบขาวตามแบบ */
+.rh-home .rh-bell .iconbtn > span {
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  border: 2px solid #fff;
+  background: #c8102e;
+  font-size: 11px;
+  line-height: 1;
+}
+.rh-home .rh-scroll {
+  scrollbar-width: none;
+}
+.rh-home .rh-scroll::-webkit-scrollbar {
+  display: none;
+}

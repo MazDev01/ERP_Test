@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ใบแจ้งหนี้ — ERP MAZ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --maz-red:#D0021B; --maz-red-deep:#8E0012; --maz-red-bright:#E8253C;
+  --ink:#1F2430; --ink-soft:#68707E; --ink-faint:#9AA1AE;
+  --line:#E8EBF0; --field:#FAFBFC; --white:#FFF;
+  --sent:#1F6FD0; --sent-bg:#E8F1FC;
+  --paper-line:#D8DDE5;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'IBM Plex Sans Thai',system-ui,sans-serif;color:var(--ink);background:#EEF0F4;display:flex}
+
+/* ---------- app chrome ---------- */
+.side{width:228px;flex:none;color:var(--white);position:relative;background:linear-gradient(170deg,var(--maz-red-bright),var(--maz-red) 42%,var(--maz-red-deep));display:flex;flex-direction:column;padding:24px 0 18px}
+.side::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.09) 0 1px,transparent 1px 44px),repeating-linear-gradient(90deg,rgba(255,255,255,.09) 0 1px,transparent 1px 44px);mask-image:linear-gradient(160deg,rgba(0,0,0,1) 8%,rgba(0,0,0,.3) 80%);-webkit-mask-image:linear-gradient(160deg,rgba(0,0,0,1) 8%,rgba(0,0,0,.3) 80%)}
+.side > *{position:relative;z-index:1}
+.logo{padding:0 24px 18px;font-size:21px;font-weight:700;letter-spacing:.05em;flex:none}
+.nav{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px;padding:0 12px 12px;scrollbar-width:thin}
+.grp{padding:12px 20px 5px;font-size:10.5px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.55)}
+.grp:first-child{padding-top:0}
+
+.nav a{display:flex;align-items:center;gap:11px;padding:8px 13px;border-radius:10px;color:rgba(255,255,255,.82);text-decoration:none;font-size:13.5px;font-weight:500}
+.nav a:hover{background:rgba(255,255,255,.12);color:var(--white)}
+.nav a.on{background:var(--white);color:var(--maz-red);font-weight:600}
+
+/* แถบหัวมาตรฐาน — ใช้เหมือนกันทุกหน้า */
+.appbar{
+  flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:11px 26px;background:var(--white);border-bottom:1px solid var(--line);
+}
+.appbar .where{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600;min-width:0}
+.appbar .where svg{color:var(--ink-faint);flex:none}
+.appbar .side-tools{display:flex;align-items:center;gap:9px}
+.iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;flex:none}
+.iconbtn:hover{border-color:var(--ink-faint);color:var(--ink)}
+.iconbtn .dot{position:absolute;top:7px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--maz-red);border:1.5px solid var(--white)}
+
+.me{display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--white);cursor:pointer;font-family:inherit;flex:none}
+.me:hover{border-color:var(--maz-red)}
+.me .av{width:30px;height:30px;border-radius:50%;background:#FCEBEE;color:var(--maz-red);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.mehead{display:flex;align-items:center;gap:11px;padding:8px 10px 10px}
+.mehead .av{width:40px;height:40px;border-radius:50%;background:#FCEBEE;color:var(--maz-red);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex:none}
+.mehead .tx{min-width:0}
+.mehead .tx b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mehead .tx span{display:block;font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+.menu{
+  position:absolute;top:50px;right:26px;z-index:60;width:236px;
+  background:var(--white);border:1px solid var(--line);border-radius:13px;
+  box-shadow:0 18px 40px -18px rgba(60,20,30,.34);padding:6px;
+  opacity:0;visibility:hidden;transform:translateY(-6px);
+  transition:opacity .18s,transform .18s,visibility .18s;
+}
+.menu.on{opacity:1;visibility:visible;transform:none}
+.menu a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;font-size:13px;color:var(--ink);text-decoration:none}
+.menu a:hover{background:#FDECEE;color:var(--maz-red)}
+.menu a.out{color:var(--maz-red)}
+.menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
+.main{position:relative;flex:1;min-width:0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.topbar{
+  flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 26px;background:var(--white);border-bottom:1px solid var(--line);flex-wrap:wrap;
+}
+.back{display:flex;align-items:center;gap:10px;min-width:0}
+.back a{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink-soft);text-decoration:none;flex:none}
+.back a:hover{border-color:var(--ink-faint);color:var(--ink)}
+.back h1{font-size:17px;font-weight:600}
+.back p{font-size:12.5px;color:var(--ink-faint);margin-top:1px}
+.tag{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;background:var(--sent-bg);color:var(--sent)}
+.tag i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tools{display:flex;gap:9px;flex-wrap:wrap}
+.btn > svg{flex:none}
+.btn{flex:none;white-space:nowrap;height:38px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;flex-wrap:nowrap;align-items:center;justify-content:center;gap:8px;line-height:1}
+.btn:hover{border-color:var(--ink-faint);color:var(--ink)}
+.btn.main{border:none;background:linear-gradient(100deg,var(--maz-red-bright),var(--maz-red-deep));color:var(--white)}
+.btn.main:hover{filter:brightness(1.06)}
+
+.stage{flex:1;min-height:0;overflow:auto;padding:26px 26px 40px;display:flex;justify-content:center;align-items:flex-start}
+
+
+/* ---------- the document ---------- */
+.paper{
+  width:794px;min-height:1123px;   /* A4 at 96dpi */
+  background:var(--white);
+  box-shadow:0 18px 44px -22px rgba(40,20,30,.4), 0 2px 6px rgba(30,20,25,.06);
+  padding:52px 56px 44px;
+  font-size:13px;line-height:1.6;color:#25292F;
+  display:flex;flex-direction:column;
+}
+.ph{display:flex;justify-content:space-between;gap:28px;align-items:flex-start}
+.issuer{max-width:52%}
+.issuer .mark{font-size:30px;font-weight:800;letter-spacing:.04em;color:var(--maz-red);line-height:1}
+.issuer .slogan{margin-top:4px;font-size:10px;font-weight:600;letter-spacing:.13em;color:#5A6069}
+.docmeta{text-align:right;flex:none}
+.docmeta h1{font-size:23px;font-weight:700;letter-spacing:.01em;color:#25292F}
+.docmeta .docno{margin-top:3px;font-size:13px;font-weight:700;color:var(--maz-red);font-variant-numeric:tabular-nums}
+.docmeta .dates{margin-top:8px;font-size:12px;color:#4A5058}
+.docmeta .dates em{font-style:normal;margin-left:18px;color:#5A6069}
+
+.party{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:18px}
+.pcol .name{font-size:13.5px;font-weight:700;margin-bottom:4px}
+.pcol p{font-size:11.5px;color:#4A5058;line-height:1.72}
+
+.sumwrap{display:grid;grid-template-columns:1fr 300px;gap:28px;align-items:start;margin-top:0;
+  border-top:2px solid var(--maz-red);border-bottom:2px solid var(--maz-red);padding:14px 0}
+.inwords{display:flex;align-items:center;gap:14px;padding-top:22px}
+.inwords .lb{font-size:12px;color:#5A6069;flex:none}
+.inwords .box{flex:1;background:#EDEEF1;border-radius:4px;padding:8px 14px;font-size:12.5px;text-align:center;color:#25292F}
+
+.closing{margin-top:18px}
+.paybar{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:20px}
+.pay h3{font-size:12px;font-weight:600;color:#4A5058;margin-bottom:5px}
+.pay p{font-size:12px;color:#4A5058;line-height:1.75}
+
+.rule{height:2px;background:var(--maz-red);margin:18px 0 0;border-radius:2px}
+.rule.thin{height:1px;background:var(--paper-line);margin:0}
+
+table.items{width:100%;border-collapse:collapse;margin-top:22px}
+table.items th{
+  font-size:11.5px;font-weight:600;color:#3A4048;text-align:left;
+  padding:9px 10px;background:#DCDFE4;border-top:none;border-bottom:none;
+}
+table.items th.r,table.items td.r{text-align:right}
+table.items th.c,table.items td.c{text-align:center}
+table.items td{padding:9px 10px 14px;border:none;vertical-align:top;font-size:12.5px}
+table.items td.num{font-variant-numeric:tabular-nums}
+/* รายละเอียดทั้งหมดอยู่ในช่องรายการช่องเดียว ไม่มีเส้นคั่นตามใบจริง */
+table.items td.desc{line-height:1.68;color:#25292F}
+table.items .ln{display:block;min-height:1.2em}
+table.items .ln.ctr{text-align:center}
+table.items .ln.bul{padding-left:15px;text-indent:-15px}
+table.items tr.rm td.desc{padding-top:4px}
+table.items tr.rm b{display:block;margin-bottom:5px;font-weight:700}
+table.items tr.pb td{border-top:2px dashed var(--maz-red);padding-top:16px}
+table.items tr.pb td:first-child::before{content:'ขึ้นหน้าใหม่';position:absolute;transform:translateY(-27px);font-size:9.5px;font-weight:700;color:var(--maz-red);letter-spacing:.04em}
+table.items tr.pb td:first-child{position:relative}
+@media print{ table.items tr.pb td{border-top:none;padding-top:11px} table.items tr.pb td:first-child::before{content:none} }
+table.items .desc small{display:block;color:#6B7079;font-size:11.5px;margin-top:2px}
+
+.totals{font-size:12.5px}
+.totals .r2{display:flex;justify-content:space-between;gap:14px;padding:7px 0}
+.totals .r2 span{color:#5A6069}
+.totals .r2 b{font-variant-numeric:tabular-nums;font-weight:500}
+.totals .r2.grand{margin-top:5px;padding:9px 0 0;border-top:1px solid #B9BFC8}
+.totals .r2.grand span{color:#25292F;font-weight:700;font-size:13.5px}
+.totals .r2.grand b{font-size:16.5px;font-weight:700}
+
+.signs{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.sign{text-align:center}
+.sign b{display:block;font-size:12px;font-weight:600;margin-bottom:34px}
+.sign b.accept{color:var(--maz-red)}
+.sign .ln{height:1px;background:#8A9099}
+
+@media print{
+  body{background:var(--white);display:block}
+  .side,.topbar,.appbar{display:none}
+  .main{height:auto;overflow:visible}
+  .stage{padding:0;overflow:visible}
+  /* flex ทำให้แบ่งหน้าเพี้ยน ตอนพิมพ์ใช้ block */
+  .paper{width:auto;min-height:auto;box-shadow:none;padding:0;display:block}
+  /* หัวตารางขึ้นเฉพาะหน้าแรก ไม่ซ้ำทุกหน้า และห้ามหั่นแถวกลางแถว */
+  table.items thead{display:table-row-group}
+  table.items tr{break-inside:avoid;page-break-inside:avoid}
+  .ph,.party,.closing{break-inside:avoid;page-break-inside:avoid}
+  /* แถวที่ผู้ใช้สั่งขึ้นหน้าใหม่ */
+  table.items tr.pb{break-before:page;page-break-before:always}
+  @page{size:A4;margin:14mm}
+}
+@media screen and (max-width:1180px){
+  .side{width:74px}
+  .logo{padding:0 0 22px;text-align:center;font-size:17px}
+  .nav a span,.grp{display:none}
+  .nav a{justify-content:center;padding:12px 0}
+}
+@media screen and (max-width:900px){ .stage{padding:16px 12px 30px} .paper{width:100%;min-height:auto;padding:30px 24px} .ph{flex-direction:column} .docmeta{text-align:left} .party,.sumwrap,.paybar,.signs{grid-template-columns:1fr} }
+
+/* แต่ละรายการอยู่คนละบรรทัด ไม่ใช้เครื่องหมายคั่น */
+.il{display:block;line-height:1.6}
+/* ================= glass theme ================= */
+body{background:#F2F3F7}
+body::before{
+  content:'';position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(38% 42% at 78% 6%,  rgba(255,64,92,.34),  transparent 68%),
+    radial-gradient(34% 40% at 12% 18%, rgba(255,140,90,.26), transparent 66%),
+    radial-gradient(42% 44% at 62% 88%, rgba(96,132,255,.28), transparent 68%),
+    radial-gradient(36% 40% at 18% 82%, rgba(120,220,200,.24),transparent 66%),
+    radial-gradient(30% 34% at 92% 60%, rgba(196,120,255,.22),transparent 66%),
+    #F4F5F9;
+  filter:blur(40px);
+}
+/* ชั้นฝ้าบางๆ ให้สีไม่จัดเกินและตัวหนังสืออ่านง่าย */
+body::after{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:rgba(255,255,255,.34);
+}
+
+/* ---- พื้นผิวกระจก ---- */
+.panel, .card, .kpi, .pcard, .revcard, .box, .edu-wrap{
+  background:rgba(255,255,255,.46);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+  border:1px solid rgba(255,255,255,.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(255,255,255,.28),
+    0 1px 2px rgba(28,20,45,.05),
+    0 18px 40px -20px rgba(40,25,60,.30);
+}
+.appbar, .topbar{
+  background:rgba(255,255,255,.52);
+  backdrop-filter:blur(26px) saturate(190%);
+  -webkit-backdrop-filter:blur(26px) saturate(190%);
+  border-bottom:1px solid rgba(255,255,255,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8), 0 8px 26px -20px rgba(40,25,60,.5);
+}
+.menu{
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.search, .seg, .mo, .iconbtn, .me, .btn.ghost, .chip, .drop, .master, .opt, .pages button, .tabs, .sw{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+.iconbtn:hover, .me:hover, .btn.ghost:hover, .chip:hover{background:rgba(255,255,255,.72)}
+.chip.on, .opt.on, .seg button.on, .pages button.on{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+
+/* ปุ่มหลักเป็นแก้วสีแดง ไม่ใช่สีทึบ */
+.btn.solid, .add, .solid{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34), 0 12px 26px -12px rgba(208,2,27,.6);
+}
+
+/* ตารางโปร่ง เห็นชั้นสีด้านหลัง */
+thead th{background:rgba(255,255,255,.62)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+tbody tr:hover{background:rgba(255,255,255,.42)}
+tr.sub td{background:rgba(255,255,255,.34)}
+table.rounds, table.revs, table.inner{background:rgba(255,255,255,.5)}
+
+/* ช่องกรอกทึบกว่าเล็กน้อยเพื่อให้อ่านง่าย */
+input, select, textarea{
+  background:rgba(255,255,255,.58);
+  border-color:rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 2px rgba(40,25,60,.05);
+}
+input:hover, select:hover, textarea:hover{background:rgba(255,255,255,.72)}
+input:focus, select:focus, textarea:focus{background:rgba(255,255,255,.92)}
+input:disabled, input[readonly]{background:rgba(240,241,245,.62)}
+
+/* กระดาษเอกสารต้องทึบ เพราะต้องพิมพ์จริง */
+.paper{
+  background:#FFF;backdrop-filter:none;-webkit-backdrop-filter:none;
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 2px 8px rgba(28,20,45,.06), 0 30px 66px -30px rgba(40,25,60,.45);
+}
+
+@supports not (backdrop-filter: blur(2px)){
+  body::before{filter:none;opacity:.5}
+  .panel,.card,.kpi,.pcard,.revcard,.box,.edu-wrap,.menu,.appbar,.topbar{background:rgba(255,255,255,.94)}
+}
+@media print{ body::before,body::after{display:none} }
+
+/* ===== glass theme — ส่วนเพิ่ม (ใช้ร่วมทุกหน้า) ===== */
+/* บล็อกด้านบนคลุมแค่ .panel .card .menu .appbar ฯลฯ ส่วนนี้เก็บของที่ตกสำรวจ
+   ห้ามเขียน CSS ของหน้าไว้ใต้บล็อกนี้ ไม่งั้นจะไปทับธีมกระจก */
+
+/* กล่องที่ลอยทับเนื้อหา ต้องทึบกว่าการ์ดพื้นหลัง ไม่งั้นตารางด้านหลังทะลุจนอ่านไม่ออก */
+.drawer, .list, .tip, /* เมนูบัญชีลอยทับเนื้อหา ถ้าโปร่งจะเห็นข้อความข้างหลังทะลุจนอ่านยาก ต้องทึบ */
+.menu{
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(30px) saturate(180%);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  border-color:rgba(31,36,48,.1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.cal, .tpop{
+  background:rgba(255,255,255,.93);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border-color:rgba(255,255,255,.8);
+}
+.box{
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(36px) saturate(200%);
+  -webkit-backdrop-filter:blur(36px) saturate(200%);
+  border-color:rgba(255,255,255,.75);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 34px 70px -28px rgba(40,25,60,.5);
+}
+
+/* ปุ่มเล็กในตารางและแถบเครื่องมือ ให้เป็นแก้วระดับเดียวกับ .iconbtn */
+.act, .del, .mini, .more, .calbar button, .file .rm, .b-line, .pick, .calnav, .tcol .val{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+/* ไม่ใส่ .del:hover เพราะหน้าใบเสนอราคากำหนดพื้นแดงอ่อนตอน hover ไว้แล้ว */
+.act:hover, .mini:hover, .more:hover, .calbar button:hover, .file .rm:hover, .b-line:hover, .pick:hover, .calnav:hover{
+  background:rgba(255,255,255,.76);
+}
+
+/* ปฏิทินไทยและตัวเลือกเวลาแบบ stepper (หน้าการลา) */
+.calgrid button:hover{background:rgba(31,36,48,.06)}
+.calgrid button.on:hover{background:var(--maz-red)}
+.tcol .step:hover:not(:disabled){background:rgba(31,36,48,.06)}
+.card .track{background:rgba(31,36,48,.13)}
+.calc{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(31,36,48,.09);
+}
+.bhead, .bfoot{border-color:rgba(31,36,48,.09)}
+
+/* กล่องไฟล์แนบ */
+.file{
+  background:rgba(255,255,255,.42);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.6);
+}
+
+/* หน้าเข้าสู่ระบบ */
+.shell, .formside, .scoop{
+  background:rgba(255,255,255,.6);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+}
+
+/* ตัวเครื่องในหน้าตัวอย่างสถานะบัญชี เป็นภาพจำลองมือถือ ต้องทึบ ไม่ใส่กระจก */
+
+@supports not (backdrop-filter: blur(2px)){
+  .drawer,.list,.tip,.cal,.tpop,.box{background:rgba(255,255,255,.98)}
+  .shell,.formside,.scoop{background:rgba(255,255,255,.96)}
+}
+
+/* ===== เลื่อนทั้งคอลัมน์เนื้อหาเป็นก้อนเดียว ไม่เลื่อนในตาราง (ใช้ร่วมทุกหน้า) ===== */
+/* เดิมตารางมีสกรอลล์ของตัวเองซ้อนอยู่ข้างใน เอาออกให้เลื่อนทีเดียวทั้งคอลัมน์
+   ตัวที่เลื่อนคือ .main ไม่ใช่ทั้งหน้า เมนูซ้ายเลยอยู่กับที่เสมอ ไม่ต้องพึ่ง sticky
+   (ถ้าให้ทั้งหน้ายาวแล้วใช้ sticky เมนูจะหายตอนเลื่อนในกรอบพรีวิวที่สูงเท่าเนื้อหา) */
+/* ต้องระบุ main.main เพราะมีปุ่มที่ใช้คลาส main ด้วย ถ้าเขียน .main เฉยๆ ปุ่มจะสูงเท่าจอ */
+main.main{height:100vh;overflow:auto}
+.panel{flex:none}
+.scroll, .scrollarea, .stage{flex:none;min-height:0;overflow:visible}
+/* ยกเว้นดรอปดาวน์ค้นหา ต้องเลื่อนในกล่องตัวเองเหมือนเดิม */
+.list .scrollarea{max-height:264px;overflow:auto}
+/* แถบหัวลอยอยู่บนสุดของคอลัมน์เนื้อหา และต้องทึบพอให้อ่านออกตอนเนื้อหาเลื่อนลอดใต้ */
+.appbar, .topbar{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.86)}
+/* แผงเลื่อนข้างและกล่องซ้อนยังเลื่อนในตัวเองตามเดิม */
+.drawer .body, .bbody{overflow:auto}
+@media print{ .appbar, .topbar{position:static} .main{height:auto;overflow:visible} }
+
+.twrap input.bad, .dwrap input.bad{
+  border-color:var(--late);
+  background:var(--late-bg);
+  color:var(--late);
+  font-weight:600;
+}
+.twrap input.bad ~ .clockbtn, .dwrap input.bad ~ .calbtn{color:var(--late)}
+
+/* ===== มือถือ: ตารางรายการเปลี่ยนเป็นการ์ดต่อแถว (ใช้ร่วมทุกหน้า) =====
+   จอ 640px ลงมา ตารางหลายคอลัมน์อ่านยากมากถ้าเลื่อนแนวนอน
+   จึงพับแต่ละแถวเป็นการ์ด โดยเอาชื่อคอลัมน์จาก th มาไว้หน้าเซลล์
+   ใช้เฉพาะตารางรายการ (.scroll > table) ไม่แตะตารางในเอกสาร A4 หรือตารางกรอกในฟอร์ม */
+@media (max-width:640px){
+  /* ตารางที่แปลงเป็นการ์ดจะแคบพอดีอยู่แล้ว ส่วนตารางกรอกในฟอร์มยังกว้าง ต้องเลื่อนข้างได้
+     ถ้าตั้ง visible เนื้อหาจะถูกตัดหายโดยไม่มีทางเลื่อนไปดู */
+  .scroll{overflow-x:auto}
+  .scroll > table.grid{min-width:760px}
+  .scroll > table:not(.grid){min-width:0!important;display:block;border-collapse:separate;border-spacing:0}
+  .scroll > table:not(.grid) > thead{display:none}
+  .scroll > table:not(.grid) > tbody{display:block}
+
+  .scroll > table:not(.grid) > tbody > tr{
+    display:block;margin:10px 14px;padding:6px 2px;
+    border:1px solid var(--line);border-radius:13px;background:var(--white);
+  }
+  .scroll > table:not(.grid) > tbody > tr > td{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+    width:auto;border:none;padding:7px 13px;text-align:right;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td::before{
+    content:attr(data-label);flex:none;max-width:44%;
+    color:var(--ink-faint);font-size:12px;font-weight:600;text-align:left;line-height:1.5;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td:not([data-label])::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td > *{text-align:right}
+  .scroll > table:not(.grid) > tbody > tr > td .clip{white-space:normal}
+
+  /* แถวว่างและแถวที่กางรายละเอียดคร่อมทั้งแถว ให้แสดงเต็มความกว้างตามเดิม */
+  .scroll > table:not(.grid) > tbody > tr.sub{margin:0;padding:0;border:none;border-radius:0;background:none}
+  .scroll > table:not(.grid) > tbody > tr.sub > td{display:block;text-align:left;padding:0}
+  .scroll > table:not(.grid) > tbody > tr.sub > td::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td.blank,
+  .scroll > table:not(.grid) > tbody > tr > td.empty{display:block;text-align:center}
+  .scroll > table:not(.grid) > tbody > tr > td.blank::before,
+  .scroll > table:not(.grid) > tbody > tr > td.empty::before{content:none}
+
+  /* ตารางย่อยข้างในการ์ดยังเป็นตารางปกติ แต่ให้เลื่อนข้างได้ */
+  .subwrap{overflow-x:auto}
+  table.inner{min-width:560px}
+
+
+  /* แถบหัวหน้า: ชื่อหน้ากับปุ่มเครื่องมือไม่พอในบรรทัดเดียว ต้องตกบรรทัดแทนการถูกตัดหาย */
+  .bar{flex-wrap:wrap;gap:12px}
+  .bar .tools{width:100%;flex-wrap:wrap;justify-content:flex-start;gap:9px}
+  .bar .tools .mo{flex:1 1 auto;min-width:0;justify-content:space-between}
+  .bar .tools .btn, .bar .tools .seg{flex:1 1 auto;justify-content:center}
+  .bar h1{font-size:20px}
+
+  /* กริดที่ตั้งความกว้างคอลัมน์เป็นพิกเซลตายตัวไว้ ต้องบีบให้พอดีจอ ไม่งั้นลูกล้นออกไป */
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .profile{grid-template-columns:1fr!important}
+  .facts{grid-template-columns:1fr!important}
+  .two, .two-up, .wide-left, .moneygrid{grid-template-columns:1fr!important}
+
+  /* ตารางอื่นที่ไม่ได้อยู่ในกรอบเลื่อน ต้องมีกรอบเลื่อนของตัวเอง */
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+
+  /* ช่องค้นหาและแถวป้าย-ค่า ตั้งความกว้างตายตัวไว้ ต้องยืดหดตามจอ */
+  .search{width:100%!important;min-width:0}
+  .search input{width:100%;min-width:0}
+  .mrow{flex-wrap:wrap;gap:4px 10px}
+  .mrow > span, .mrow > label{width:auto;min-width:120px}
+  .card, .panel{min-width:0}
+
+  /* ปุ่มยาวๆ อย่างส่งออก Excel และแถวปุ่มด้านขวาให้ตกบรรทัด ไม่ดันออกนอกจอ */
+  .right, .acts, .btnrow{flex-wrap:wrap}
+  .btn{white-space:nowrap}
+  .bars .bar{max-width:100%}
+
+  /* แถบเลขหน้าและปุ่มสาธิตให้ตกบรรทัดแทนที่จะดันออกนอกจอ */
+  .pages{flex-wrap:wrap;justify-content:center}
+  .foot{flex-wrap:wrap;gap:10px}
+  .demo{flex-wrap:wrap;justify-content:center}
+
+  /* ตารางกรอกในกล่องซ้อน ให้เลื่อนข้างในกล่องแทนที่จะดันกล่องล้นจอ */
+  .bbody{overflow-x:auto}
+  .bbody table.grid{min-width:420px}
+
+  /* แท็บบนมือถือให้เลื่อนแนวนอนแทนที่จะตกบรรทัด */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:none}
+  .strip{flex-wrap:wrap;gap:8px}
+  .legend{display:none}
+}
+
+/* ===== แท็บเล็ต: กล่องที่ตั้งความกว้างเป็นพิกเซลตายตัวต้องยืดหดตามจอด้วย ===== */
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+}
+/* ===== จอแคบมาก: การ์ดสรุปเรียงลงคอลัมน์เดียว ===== */
+@media (max-width:420px){
+  .cards{grid-template-columns:minmax(0,1fr)!important}
+  .cards > *{min-width:0}
+  /* กริดหลายคอลัมน์ในแดชบอร์ดเหลือคอลัมน์เดียว ไม่งั้นคอลัมน์กว้างเกินจอ */
+  .grid, .grid2, .grid3{grid-template-columns:minmax(0,1fr)!important}
+  .grid > *, .grid2 > *, .grid3 > *{min-width:0}
+}
+
+/* ===== มือถือ: เปลี่ยนเมนูข้างเป็นแถบล่าง ===== */
+.botnav{display:none}
+.bnsheet{display:none}
+@media (max-width:640px){
+  /* ซ่อนแถบข้าง ใช้แถบล่างแทน เพราะนิ้วโป้งเอื้อมถึงง่ายกว่า */
+  .side{display:none!important}
+  main.main{margin-left:0!important;padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+  body{padding-bottom:0}
+
+  .botnav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:90;
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.94);
+    backdrop-filter:blur(26px) saturate(180%);
+    -webkit-backdrop-filter:blur(26px) saturate(180%);
+    border-top:1px solid rgba(31,36,48,.09);
+    box-shadow:0 -6px 22px -14px rgba(40,25,60,.35);
+  }
+  .bn-i{
+    flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:6px 2px;border:none;background:none;cursor:pointer;text-decoration:none;
+    font-family:inherit;color:var(--ink-faint);border-radius:12px;
+  }
+  .bn-i svg{width:21px;height:21px;flex:none}
+  .bn-i span{font-size:10.5px;font-weight:600;line-height:1.25;text-align:center;
+             max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bn-i.on{color:var(--maz-red)}
+  .bn-i.on svg{stroke-width:2.1}
+  .bn-i:active{background:rgba(208,2,27,.07)}
+
+  /* แผ่นเมนูทั้งหมด เลื่อนขึ้นจากด้านล่าง */
+  .bnsheet{
+    display:block;position:fixed;inset:0;z-index:95;
+    background:rgba(28,20,45,.42);
+    opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s;
+  }
+  .bnsheet.on{opacity:1;visibility:visible}
+  .bnpanel{
+    position:absolute;left:0;right:0;bottom:0;
+    background:var(--white);border-radius:20px 20px 0 0;
+    padding:10px 16px calc(18px + env(safe-area-inset-bottom));
+    transform:translateY(14px);transition:transform .22s;
+    max-height:78vh;overflow:auto;
+  }
+  .bnsheet.on .bnpanel{transform:translateY(0)}
+  .bngrab{width:38px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+  .bntitle{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;padding-left:4px}
+  .bnlist{display:flex;flex-direction:column}
+  .bnrow{
+    display:flex;align-items:center;gap:13px;padding:13px 12px;border-radius:12px;
+    text-decoration:none;color:var(--ink);font-size:14.5px;font-weight:500;
+  }
+  .bnrow svg{width:19px;height:19px;flex:none;color:var(--ink-faint)}
+  .bnrow.on{background:#FEF5F6;color:var(--maz-red);font-weight:700}
+  .bnrow.on svg{color:var(--maz-red)}
+  .bnrow:active{background:var(--field)}
+}
+</style>
+<!-- ===== PWA (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#D0021B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ERP MAZ">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<script src="./pwa.js" defer></script>
+<style>
+#ivTag.iv-pend{background:#FFF4E5;color:#B4630B}
+#ivTag.iv-paid{background:#E5F4EC;color:#14875A}
+#ivTag.iv-cxl{background:#F1F2F5;color:#6B7280}
+</style>
+<style>
+.bellbox{position:absolute;top:calc(100% + 8px);right:0;width:320px;max-width:calc(100vw - 24px);background:#FFF;border:1px solid var(--line,#E8EBF0);border-radius:14px;box-shadow:0 18px 40px rgba(31,36,48,.14);padding:10px 0;display:none;z-index:80}
+.bellbox.on{display:block}
+.bellh{margin:0;padding:4px 16px 8px;font-size:13px;font-weight:700;color:var(--ink,#1F2430)}
+.bellbox ul{list-style:none;margin:0;padding:0}
+.bellbox li a{display:flex;flex-direction:column;gap:2px;padding:10px 16px;text-decoration:none;color:inherit;border-top:1px solid var(--line,#E8EBF0)}
+.bellbox li a:hover{background:rgba(208,2,27,.04)}
+.bellbox li b{font-size:13px;font-weight:600;color:var(--ink,#1F2430)}
+.bellbox li span{font-size:12px;color:var(--ink-soft,#68707E)}
+.bellbox li em{font-style:normal;font-size:11.5px;color:var(--ink-faint,#9AA1AE)}
+.bellnone{margin:0;padding:10px 16px;font-size:12.5px;color:var(--ink-faint,#9AA1AE)}
+</style>
+</head>
+<body>
+
+<aside class="side">
+  <p class="logo">MAZ</p>
+  <nav class="nav">
+    <p class="grp">บัญชี</p>
+    <a href="acc-dashboard.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7.5" height="8" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.6"/><rect x="3" y="14" width="7.5" height="7" rx="1.6"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.6"/></svg><span>แดชบอร์ด</span></a>
+    <a href="billing.html" class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 3h9l5 5v13H6Z"/><path d="M14 3v6h6"/><path d="M9 13h7M9 17h5"/></svg><span>วางบิล</span></a>
+    <a href="receipts.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg><span>ใบเสร็จ/กำกับภาษี</span></a>
+    <a href="wht.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 20 20 4"/><circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/></svg><span>ยื่นภาษี</span></a>
+    <p class="grp">ของฉัน</p>
+    <a href="attendance.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>เวลาทำงาน</span></a>
+    <a href="leave.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="16" rx="2.4"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9.5 15.5l1.8 1.8 3.4-3.6"/></svg><span>การลา</span></a>
+    <a href="expense.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3v18"/><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.1 4.5 3-2 3-4.5 3-4.5-1.1-4.5-3"/></svg><span>เบิกค่าใช้จ่าย</span></a>
+  </nav>
+</aside>
+
+<main class="main">
+
+  <header class="appbar">
+    <p class="where"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 3h9l5 5v13H6Z"/><path d="M14 3v6h6"/><path d="M9 13h7M9 17h5"/></svg>วางบิล</p>
+    <div class="side-tools">
+      <button class="iconbtn" aria-label="แจ้งเตือน"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 15v-4a6 6 0 1 0-12 0v4l-1.5 2.5h15Z"/><path d="M10 20h4"/></svg><span class="dot"></span></button>
+      <button class="me" id="meBtn" aria-haspopup="menu" aria-expanded="false" aria-label="บัญชีของฉัน">
+        <span class="av">ชจ</span>
+      </button>
+      <nav class="menu" id="meMenu" role="menu" aria-labelledby="meBtn">
+        <div class="mehead">
+          <span class="av">ชจ</span>
+          <span class="tx"><b>ชนัญชิดา ใจดี</b><span>พนักงานขาย</span></span>
+        </div>
+        <hr>
+        <a href="profile.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>โปรไฟล์ของฉัน</a>
+        <a href="profile.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>เปลี่ยนรหัสผ่าน</a>
+        <hr>
+        <a href="./install.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 21h14"/></svg>ติดตั้งแอป</a>
+        <a href="login.html" role="menuitem" class="out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>ออกจากระบบ</a>
+      </nav>
+    </div>
+  </header>
+  <div class="topbar">
+    <div class="back">
+      <a href="billing.html" aria-label="กลับไปหน้าวางบิล"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19 8 12l7-7"/></svg></a>
+      <div>
+        <h1 id="ivNo">—</h1>
+        <p id="ivCus">—</p>
+        <p id="ivRef">—</p>
+      </div>
+      <span class="tag" id="ivTag"><i></i>—</span>
+    </div>
+    <div class="tools">
+      <button class="btn" id="print"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="7" rx="2"/><path d="M6 14h12v7H6z"/></svg>พิมพ์</button>
+      <button class="btn main" id="pdf">ดาวน์โหลด PDF</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <article class="paper" id="paper">
+
+      <div class="ph">
+        <div class="issuer">
+          <p class="mark">MAZ</p>
+          <p class="slogan">DIGITAL BUSINESS SOLUTION</p>
+        </div>
+        <div class="docmeta">
+          <h1>ใบแจ้งหนี้ / INVOICE</h1>
+          <p class="docno" id="docno">MAZ26-020010</p>
+          <p class="dates"><span id="docdate">—</span><em id="validdays">—</em></p>
+        </div>
+      </div>
+
+      <div class="party">
+        <div class="pcol">
+          <p class="name">บริษัท ไอเมซเมกเกอร์ จำกัด (สำนักงานใหญ่)</p>
+          <p>เลขประจำตัวผู้เสียภาษี : 0505559001339</p>
+          <p>อาคาร IMZ Group บ้านสวนกลางเวียง 59/56 หมู่ 4</p>
+          <p>ตำบลหนองหอย อำเภอเมือง จังหวัดเชียงใหม่ 50000</p>
+          <p>โทร. 061-796-5177 , 052-005562</p>
+          <p>Email : info@mazmaker.com</p>
+          <p>Call Center : 083-864-4968</p>
+        </div>
+        <div class="pcol">
+          <p class="name" id="ivBuyer">—</p>
+          <p>เลขประจำตัวผู้เสียภาษี : —</p>
+          <p>ที่อยู่ : —</p>
+        </div>
+      </div>
+
+      <table class="items">
+        <thead>
+          <tr>
+            <th class="c" style="width:64px">ลำดับที่</th>
+            <th>รายการ</th>
+            <th class="r" style="width:130px">รวม</th>
+          </tr>
+        </thead>
+        <tbody id="lines"></tbody>
+      </table>
+
+      <div class="closing">
+      <div class="sumwrap">
+        <div class="inwords">
+          <span class="lb">ตัวอักษร</span>
+          <div class="box" id="inwords">—</div>
+        </div>
+        <div class="totals" id="totals"></div>
+      </div>
+
+      <div class="paybar">
+        <div class="pay">
+          <h3>เงื่อนไขการชำระเงิน</h3>
+          <p>ชื่อบัญชี: บจก. ไอเมซเมกเกอร์</p>
+          <p>ธนาคารกสิกรไทย</p>
+          <p>เลขที่บัญชี 008-3-86894-5</p>
+        </div>
+        <div class="signs">
+          <div class="sign"><b class="accept">ผู้รับวางบิล</b><div class="ln"></div></div>
+          <div class="sign"><b>ผู้วางบิล</b><div class="ln"></div></div>
+        </div>
+      </div>
+      </div>
+
+    </article>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  /* เอกสารใบแจ้งหนี้ ข้อมูลชุดเดียวกับหน้าวางบิล (สร้างโดย build/invview.py)
+     TODO: อ่าน invoice + deal + customer จาก Supabase ด้วย invoice_id ⚠️ ที่อยู่และเลขผู้เสียภาษีของลูกค้ายังไม่มีในข้อมูลตัวอย่าง */
+  var RECEIPTS=[
+    {no:'RCP26-070006', inv:'INV26-070022', deal:'DL-2569-0018', seq:1, cus:'เอ็มเทคเอ็นจิเนียริ่ง', date:'2026-07-31', total:40560, vat:true},
+    {no:'RCP26-080005', inv:'INV26-080018', deal:'DL-2569-0017', seq:1, cus:'ครัวคุณจิ', date:'2026-08-18', total:10400, vat:true},
+    {no:'RCP26-090007', inv:'INV26-090014', deal:'DL-2569-0009', seq:1, cus:'สยามพลาสติก', date:'2026-09-05', total:171200, vat:true}
+  ];
+  var INVOICES=[
+    {no:'INV26-090014', deal:'DL-2569-0009', cus:'สยามพลาสติก', seq:1,
+     issue:'2026-09-02', due:'2026-09-15', total:171200, col:[]},
+    {no:'INV26-080018', deal:'DL-2569-0017', cus:'ครัวคุณจิ', seq:1,
+     issue:'2026-08-05', due:'2026-08-20', total:10400, col:[]},
+    {no:'INV26-080031', deal:'DL-2569-0017', cus:'ครัวคุณจิ', seq:2, status:'cancelled',
+     issue:'2026-08-21', due:'2026-09-05', total:15600,
+     col:[{date:'2026-09-01', channel:'โทรศัพท์', result:'ฝ่ายบัญชีลูกค้าแจ้งรอบจ่ายทุกวันที่ 25', next:'2026-09-25'}]},
+    {no:'INV26-070022', deal:'DL-2569-0018', cus:'เอ็มเทคเอ็นจิเนียริ่ง', seq:1,
+     issue:'2026-07-10', due:'2026-07-25', total:40560, col:[]}
+  ];
+
+  // ยอดคงเหลือและสถานะคำนวณจากใบเสร็จ ออกใบเสร็จแล้ว = ชำระครบ  TODO: คำนวณใน query จาก receipt
+  INVOICES.forEach(function(v){
+    var paid=RECEIPTS.some(function(r){ return r.inv===v.no; });
+    if(v.status==='cancelled') return;
+    v.outstanding = paid ? 0 : v.total;
+    v.status = paid ? 'paid' : 'pending';
+  });
+
+  var DEALS=[
+    {no:'DL-2569-0009', cus:'สยามพลาสติก', quo:'MAZ-2569-0042', quoDate:'2026-09-02', net:342400,
+     scope:'ระบบจัดการคลังสินค้าและอบรมการใช้งาน', sentPm:'2026-09-05', pmStatus:'waiting', pm:'', plan:[
+      {seq:1, pct:50, amount:171200, due:'2026-09-15'},
+      {seq:2, pct:50, amount:171200, due:''}
+    ]},
+    {no:'DL-2569-0007', cus:'พูลผลอะไหล่', quo:'MAZ-2569-0040', quoDate:'2026-08-28', net:187250,
+     accSeen:false,   // ดีลใหม่ที่ฝ่ายบัญชียังไม่ได้เปิดดู  TODO: เก็บเวลาที่บัญชีเปิดแท็บรอวางบิลล่าสุด แล้วเทียบกับเวลาที่ดีลเกิด
+     scope:'ระบบขายหน้าร้านและสต๊อกอะไหล่', sentPm:'', pmStatus:'', pm:'', plan:[]},
+    {no:'DL-2569-0017', cus:'ครัวคุณจิ', quo:'MAZ-2569-0036', quoDate:'2026-08-01', net:26000, cancelled:true, cancelReason:'ลูกค้ายุติโครงการหลังชำระงวดแรก',
+     scope:'ทำเว็บไซต์ร้านอาหารพร้อมระบบจองโต๊ะ', sentPm:'2026-08-19', pmStatus:'accepted', pm:'ชนิกานต์ วัฒนกุล', plan:[
+      {seq:1, pct:40, amount:10400, due:'2026-08-20'},
+      {seq:2, pct:60, amount:15600, due:'2026-09-05'}
+    ]},
+    {no:'DL-2569-0018', cus:'เอ็มเทคเอ็นจิเนียริ่ง', quo:'MAZ-2569-0038', quoDate:'2026-07-08', net:40560,
+     scope:'เว็บไซต์บริษัทและระบบฟอร์มติดต่อ', sentPm:'2026-07-31', pmStatus:'accepted', pm:'ชนิกานต์ วัฒนกุล', plan:[
+      {seq:1, pct:100, amount:40560, due:'2026-07-25'}
+    ]}
+  ];
+  var VST={pending:['รอชำระ','iv-pend'], partial:['ชำระบางส่วน','iv-pend'], paid:['ชำระครบ','iv-paid'], cancelled:['ยกเลิก','iv-cxl']};
+  var MONFULL=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  function r2(n){ return Math.round(n*100)/100; }
+  function baht(n){ return n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function thLong(iso){ if(!iso) return '—'; var p=iso.split('-'); return (+p[2])+' '+MONFULL[+p[1]-1]+' '+(+p[0]+543); }
+  var DIGIT=['','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'];
+  var PLACE=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+  function readInt(nStr){
+    if(nStr==='0') return 'ศูนย์';
+    var out='';
+    while(nStr.length>6){
+      var head=nStr.slice(0,nStr.length-6);
+      out+=readInt(head)+'ล้าน';
+      nStr=nStr.slice(-6);
+      nStr=nStr.replace(/^0+(?=\d)/,'') === '' ? nStr : nStr;
+    }
+    var len=nStr.length;
+    for(var i=0;i<len;i++){
+      var d=+nStr[i], p=len-i-1;
+      if(d===0) continue;
+      if(p===1 && d===1) out+='สิบ';
+      else if(p===1 && d===2) out+='ยี่สิบ';
+      else if(p===0 && d===1 && len>1) out+='เอ็ด';
+      else out+=DIGIT[d]+PLACE[p];
+    }
+    return out;
+  }
+  function bahtText(amount){
+    var neg = amount<0; amount=Math.abs(amount);
+    var whole=Math.floor(amount);
+    var satang=Math.round((amount-whole)*100);
+    var t=(neg?'ลบ':'')+readInt(String(whole))+'บาท';
+    t += satang ? readInt(String(satang))+'สตางค์' : 'ถ้วน';
+    return t;
+  }
+
+
+  var m=/[?&]no=([^&]+)/.exec(location.search);
+  var no=m?decodeURIComponent(m[1]):INVOICES[0].no;
+  var v=INVOICES.filter(function(x){ return x.no===no; })[0], P=null;
+  // หน้าวางบิลส่งข้อมูลใบล่าสุดมาทาง #p= ใช้ก่อน ใบที่เพิ่งออกหรือเพิ่งรับชำระจะตรงกับหน้าวางบิล
+  try{
+    var hm=/[#&]p=([^&]+)/.exec(location.hash||'');
+    if(hm) P=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(hm[1])))));
+  }catch(err){ P=null; }
+  if(P && P.v && P.v.no===no){
+    v=P.v;
+    if(P.d){ DEALS=DEALS.filter(function(x){ return x.no!==P.d.no; }); DEALS.push(P.d); }
+  }
+  if(!v){
+    document.getElementById('ivNo').textContent=no;
+    document.getElementById('ivCus').textContent='ไม่พบใบแจ้งหนี้นี้';
+    document.getElementById('ivRef').textContent='';
+    document.getElementById('ivTag').style.display='none';
+    document.querySelector('.stage').style.display='none';
+  } else {
+    var d=DEALS.filter(function(x){ return x.no===v.deal; })[0]||{plan:[]};
+    var p=(d.plan||[]).filter(function(x){ return x.seq===v.seq; })[0];
+    document.getElementById('ivNo').textContent=v.no;
+    document.getElementById('ivCus').textContent=v.cus;
+    document.getElementById('ivRef').textContent=v.deal+' งวดที่ '+v.seq+((d.plan||[]).length?' จาก '+d.plan.length:'');
+    var st=VST[v.status]||VST.pending, tag=document.getElementById('ivTag');
+    tag.className='tag '+st[1]; tag.innerHTML='<i></i>'+esc(st[0]);
+    document.getElementById('docno').textContent=v.no;
+    document.getElementById('docdate').textContent='วันที่ '+thLong(v.issue);
+    document.getElementById('validdays').textContent='ครบกำหนดชำระ '+thLong(v.due);
+    document.getElementById('ivBuyer').textContent=v.cus;
+    var desc='ค่าบริการตามใบเสนอราคา '+(d.quo||'—')+'\nงวดที่ '+v.seq+((d.plan||[]).length?' จาก '+d.plan.length+' งวด':'')+(p&&p.pct?' ('+p.pct+'% ของยอดดีล '+baht(d.net)+' บาท)':'');
+    document.getElementById('lines').innerHTML='<tr><td class="c num">1</td><td class="desc">'+
+      desc.split('\n').map(function(l){ return '<span class="ln">'+esc(l)+'</span>'; }).join('')+
+      '</td><td class="r num">'+baht(v.total)+'</td></tr>';
+    // ยอดงวดมาจากยอดรวมทั้งสิ้นตามใบเสนอราคา ซึ่งรวม VAT และหักภาษี ณ ที่จ่ายมาแล้ว จึงไม่หักซ้ำที่นี่
+    document.getElementById('totals').innerHTML=
+      '<div class="r2"><span>ยอดตามใบเสนอราคา</span><b>'+baht(d.net||v.total)+'</b></div>'+
+      (p&&p.pct ? '<div class="r2"><span>สัดส่วนงวดนี้</span><b>'+p.pct+'%</b></div>' : '')+
+      '<div class="r2 grand"><span>ยอดชำระงวดนี้</span><b>'+baht(v.total)+'</b></div>';
+    document.getElementById('inwords').textContent=bahtText(v.total);
+  }
+  document.getElementById('print').addEventListener('click', function(){ window.print(); });
+  document.getElementById('pdf').addEventListener('click', function(){ window.print(); });
+  var meBtn=document.getElementById('meBtn'), meMenu=document.getElementById('meMenu');
+  function closeMe(){ meMenu.classList.remove('on'); meBtn.setAttribute('aria-expanded','false'); }
+  meBtn.addEventListener('click', function(e){ e.stopPropagation(); var o=!meMenu.classList.contains('on'); meMenu.classList.toggle('on',o); meBtn.setAttribute('aria-expanded', o?'true':'false'); });
+  document.addEventListener('click', function(e){ if(!meMenu.contains(e.target)) closeMe(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeMe(); });
+})();
+</script>
+<!-- ===== ตารางเป็นการ์ดบนมือถือ (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<script>
+(function(){
+  // บนจอแคบตารางถูกจัดใหม่เป็นการ์ด แต่ละเซลล์ต้องมีป้ายชื่อคอลัมน์ของตัวเอง
+  // เพราะหัวตารางถูกซ่อน จึงคัดชื่อจาก th มาใส่เป็น data-label ให้ทุก td
+  function label(t){
+    var ths = t.querySelectorAll(':scope > thead > tr > th');
+    if(!ths.length) return;
+    var rows = t.querySelectorAll(':scope > tbody > tr');
+    Array.prototype.forEach.call(rows, function(tr){
+      if(tr.classList.contains('sub')) return;          // แถวที่กางรายละเอียดคร่อมทั้งแถว ไม่ต้องมีป้าย
+      Array.prototype.forEach.call(tr.children, function(td, i){
+        if(!ths[i]) return;
+        var txt = ths[i].textContent.trim();
+        if(txt) td.setAttribute('data-label', txt);
+        else td.removeAttribute('data-label');
+      });
+    });
+  }
+  function run(){
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table'), label);
+  }
+  run();
+  // ตารางถูกวาดใหม่ด้วย JS ตลอด ต้องติดป้ายใหม่ทุกครั้งที่แถวเปลี่ยน
+  if(window.MutationObserver){
+    var mo = new MutationObserver(run);
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table > tbody'), function(tb){
+      mo.observe(tb, {childList:true});
+    });
+  }
+})();
+</script>
+
+<!-- ===== แถบเมนูล่างบนมือถือ (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<script>
+(function(){
+  var side = document.querySelector('.side .nav');
+  if(!side) return;
+
+  var links = Array.prototype.slice.call(side.querySelectorAll('a'));
+  if(!links.length) return;
+
+  // เอา 4 เมนูแรกขึ้นแถบล่าง ที่เหลือไปอยู่ในปุ่ม "อื่นๆ"
+  var MAIN = 4;
+  var main = links.slice(0, MAIN), rest = links.slice(MAIN);
+
+  function iconOf(a){
+    var svg = a.querySelector('svg');
+    return svg ? svg.outerHTML : '';
+  }
+  function labelOf(a){
+    var s = a.querySelector('span');
+    return s ? s.textContent.trim() : a.textContent.trim();
+  }
+
+  var bn = document.createElement('nav');
+  bn.className = 'botnav';
+  bn.setAttribute('aria-label','เมนูหลัก');
+
+  bn.innerHTML = main.map(function(a){
+    return '<a href="'+a.getAttribute('href')+'" class="bn-i'+(a.classList.contains('on')?' on':'')+'">'+
+      iconOf(a)+'<span>'+labelOf(a)+'</span></a>';
+  }).join('') +
+  (rest.length
+    ? '<button type="button" class="bn-i" id="bnMore" aria-haspopup="true" aria-expanded="false">'+
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+
+      '<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>'+
+      '<circle cx="19" cy="12" r="1.4" fill="currentColor"/></svg><span>อื่นๆ</span></button>'
+    : '');
+  document.body.appendChild(bn);
+
+  if(rest.length){
+    var sheet = document.createElement('div');
+    sheet.className = 'bnsheet';
+    sheet.innerHTML =
+      '<div class="bnpanel" role="menu">'+
+        '<div class="bngrab"></div>'+
+        '<p class="bntitle">เมนูทั้งหมด</p>'+
+        '<div class="bnlist">'+
+          links.map(function(a){
+            return '<a href="'+a.getAttribute('href')+'" class="bnrow'+(a.classList.contains('on')?' on':'')+'" role="menuitem">'+
+              iconOf(a)+'<span>'+labelOf(a)+'</span></a>';
+          }).join('')+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(sheet);
+
+    var moreBtn = document.getElementById('bnMore');
+    function open(){ sheet.classList.add('on'); moreBtn.setAttribute('aria-expanded','true'); }
+    function close(){ sheet.classList.remove('on'); moreBtn.setAttribute('aria-expanded','false'); }
+    moreBtn.addEventListener('click', function(e){ e.stopPropagation(); sheet.classList.contains('on')?close():open(); });
+    sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+    // ถ้าเมนูที่กำลังเปิดอยู่ไม่ได้อยู่ใน 4 อันแรก ให้ปุ่มอื่นๆ ติดสถานะแทน
+    if(rest.some(function(a){ return a.classList.contains('on'); })) moreBtn.classList.add('on');
+  }
+})();
+</script>
+
+<script>
+(function(){
+  /* กระดิ่งแจ้งเตือน รายการตัวอย่างแยกตามฝ่ายของหน้านี้
+     TODO: อ่านจริงจากตาราง notification ของผู้ใช้ที่ล็อกอิน (ยังไม่มีใน ERD) และบันทึกว่าอ่านแล้ว */
+  var ROLE='acc', ALL={
+  sales:[
+    {t:'ใบเสนอราคา MAZ-2569-0041 จะหมดอายุในอีก 3 วัน', s:'วีพีโลจิสติกส์ ยังไม่ได้ส่งไปวางบิล', at:'วันนี้', href:'quotations.html'},
+    {t:'ข้อเสนอรอบที่ 2 ของ PS-2569-0031 เสร็จแล้ว', s:'ปิยะวัฒน์ (SA) ส่งกลับมาให้ออกใบเสนอราคา', at:'เมื่อวาน', href:'presales.html'}
+  ],
+  acc:[
+    {t:'มีดีลใหม่รอวางบิล', s:'พูลผลอะไหล่ ยังไม่ได้แบ่งงวด', at:'วันนี้', href:'billing.html'},
+    {t:'ใบแจ้งหนี้เลยกำหนดชำระ', s:'มีใบที่ลูกค้ายังไม่ชำระหลังครบกำหนด', at:'เมื่อวาน', href:'billing.html?tab=due'}
+  ],
+  hr:[
+    {t:'ยอดเงินเดือนรอ CEO อนุมัติ', s:'ปิดรอบได้เมื่อ CEO อนุมัติยอดแล้ว', at:'วันนี้', href:'hr-payroll.html'},
+    {t:'นักศึกษาฝึกงานยื่นใบลา', s:'ณัฐริกา ใจอารีย์ ลากิจ 11 ก.ย. 2569', at:'วันนี้', href:'hr-dashboard.html'}
+  ],
+  pm:[
+    {t:'มีงานเข้าใหม่รอรับ 3 งาน', s:'ลูกค้าชำระงวดแรกแล้ว เอกสารจากฝ่ายขายติดมาด้วย', at:'วันนี้', href:'pm-inbox.html'},
+    {t:'มีงานรอตรวจ', s:'พนักงานส่งงานให้ตรวจแล้ว', at:'เมื่อวาน', href:'pm-reviews.html'}
+  ],
+  ps:[
+    {t:'มีคำขอใหม่รอรับงาน', s:'มั่นคงก่อสร้าง ต้องการวันที่ 12 ก.ย. 2569', at:'วันนี้', href:'presales-work.html'},
+    {t:'ฝ่ายขายส่งข้อมูลเพิ่มแล้ว', s:'วีพีโลจิสติกส์ ตอบเรื่องจำนวนรถที่ใช้จริง', at:'เมื่อวาน', href:'presales-work.html'}
+  ],
+  ceo:[
+    {t:'ยอดเงินเดือนรอบสิงหาคม 2569 รออนุมัติ', s:'ฝ่ายบุคคลส่งมา 2 กลุ่ม', at:'วันนี้', href:'ceo-approvals.html'},
+    {t:'คำขอทำงานล่วงเวลารออนุมัติ', s:'ตำแหน่ง SA, Dev และ Website', at:'เมื่อวาน', href:'ceo-approvals.html'}
+  ]
+}, list=ALL[ROLE]||[], read=false;
+  var btn=document.querySelector('.iconbtn[aria-label="แจ้งเตือน"]'); if(!btn) return;
+  btn.setAttribute('aria-haspopup','true'); btn.setAttribute('aria-expanded','false');
+  var box=document.createElement('div');
+  box.className='bellbox'; box.setAttribute('role','dialog'); box.setAttribute('aria-label','การแจ้งเตือน');
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  box.innerHTML='<p class="bellh">การแจ้งเตือน</p>'+(list.length ? '<ul>'+list.map(function(n){
+      return '<li><a href="'+esc(n.href)+'"><b>'+esc(n.t)+'</b><span>'+esc(n.s)+'</span><em>'+esc(n.at)+'</em></a></li>';
+    }).join('')+'</ul>' : '<p class="bellnone">ไม่มีการแจ้งเตือนใหม่</p>');
+  btn.parentNode.style.position='relative';
+  btn.parentNode.appendChild(box);
+  function close(){ box.classList.remove('on'); btn.setAttribute('aria-expanded','false'); }
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var o=!box.classList.contains('on');
+    box.classList.toggle('on',o); btn.setAttribute('aria-expanded',o?'true':'false');
+    // เปิดดูแล้วถือว่าอ่านแล้ว จุดแดงบนกระดิ่งหายไป
+    if(o && !read){ read=true; var d=btn.querySelector('.dot'); if(d) d.style.display='none'; }
+  });
+  box.addEventListener('click', function(e){ e.stopPropagation(); });
+  document.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+/*
+ * รายละเอียดโปรเจคบนมือถือ (ต้นแบบ pm-project.html <style id="pd-mobile"> + <style id="pd-chat">) — ใช้เฉพาะจอแคบกว่า md
+ * ตัวเลือกอยู่ใต้ .pd-m (หน้า) · ปุ่มลอยแชท .pd-chat-fab และหน้าต่างแชท .pd-chat-win อยู่ใน .pd-m เช่นกัน
+ * CSS นอก @layer เพราะ .bar .glass .btn ใน globals.css อยู่นอก layer คลาส Tailwind ทับไม่ได้
+ */
+.pd-mtop { display: none; }
+
+@media (max-width: 767.98px) {
+  .pd-m {
+    display: flex; flex-direction: column; gap: 12px;
+    /* เว้นท้ายให้ปุ่มลอยแชทไม่บังการ์ดใบสุดท้าย */
+    padding-bottom: 72px;
+    color: #2a1f22;
+  }
+  .pd-m > * { margin-block: 0; }
+
+  /* ── หัว: ซ่อนแถบจอคอม · ปุ่มกลม 42px กลับไปหน้าโปรเจค (ซ้าย) / วางแผนงาน (ขวา) ── */
+  .pd-m .pd-bar { display: none; }
+  .pd-m .pd-mtop { display: flex; align-items: center; justify-content: space-between; }
+  .pd-m .pd-mtop a {
+    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    border: 1px solid #efe3e5; background: #fff; color: #2a1f22;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 10px -6px rgba(90, 20, 35, 0.3);
+  }
+  .pd-m .pd-mtop a:active { background: #f7f5f6; }
+
+  /* ── การ์ดขาว: หัวโปรเจค · สมาชิก · ทุกบล็อก ── */
+  .pd-m .pd-head,
+  .pd-m .pd-blk {
+    margin: 0; padding: 14px;
+    border: 0; border-radius: 20px; background: #fff;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .pd-m .pd-head { gap: 14px; }
+  .pd-m .pd-bh { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+
+  /* รายการในบล็อก (เอกสาร ไฟล์ กิจกรรม) — ไม่ต้องมีกรอบซ้อนในการ์ด */
+  .pd-m .pd-blk > ul { border: 0; border-radius: 0; background: none; padding: 0; }
+  .pd-m .pd-blk > ul > li { padding-left: 0; padding-right: 0; border-color: #f2eaec; }
+
+  /* สองคอลัมน์ → คอลัมน์เดียว */
+  .pd-m .pd-grid,
+  .pd-m .pd-grid > div,
+  .pd-m .pd-grid > aside { display: flex; flex-direction: column; gap: 12px; }
+  .pd-m .pd-grid > div > *,
+  .pd-m .pd-grid > aside > * { margin-block: 0; }
+
+  /* สมาชิก: แถวเดียวเลื่อนข้าง ไม่ขึ้นบรรทัดใหม่ (เว้น 3px ให้วงแหวนไม่ถูกตัด) */
+  .pd-m .pd-mem {
+    flex-wrap: nowrap; overflow-x: auto; padding: 3px; margin: -3px;
+    scrollbar-width: none;
+  }
+  .pd-m .pd-mem::-webkit-scrollbar { display: none; }
+  .pd-m .pd-mem > * { flex: none; }
+
+  /* งาน: คอลัมน์เดียว · การ์ดมุม 14 กรอบ #F0E6E8 แถบบน 4px สีสถานะ (สีมาจาก inline style) */
+  .pd-m .pd-tgrid { display: flex; flex-direction: column; gap: 8px; }
+  .pd-m .pd-tk {
+    margin: 0; border-radius: 14px; box-shadow: none;
+    border-color: #f0e6e8; border-top-width: 4px !important;
+  }
+
+}
+
+/* แชทโปรเจค (ปุ่มลอย + หน้าต่าง) ย้ายไป styles/project-chat.css — ใช้ร่วมกับหน้างานที่ได้รับ (ผู้ใช้สั่ง 5 ต.ค. 2569) */

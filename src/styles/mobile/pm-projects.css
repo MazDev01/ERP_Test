@@ -1,0 +1,100 @@
+/*
+ * รายการโปรเจคบนมือถือ (ต้นแบบ pm-projects.html <style id="pj-mobile">) — ใช้เฉพาะจอแคบกว่า md
+ * ตัวเลือกทั้งหมดอยู่ใต้ .pj-m (รากของหน้า)
+ * CSS นอก @layer เพราะ .bar .search ใน globals.css อยู่นอก layer คลาส Tailwind ทับไม่ได้
+ * จอ md ขึ้นไปไม่มีกฎในไฟล์นี้ — หน้าตาเดสก์ท็อปเหมือนเดิมทุกอย่าง
+ */
+@media (max-width: 767.98px) {
+  .pj-m { color: #2a1f22; }
+  .pj-m > * { margin-top: 0; margin-bottom: 0; }
+  .pj-m > * + * { margin-top: 12px; }
+
+  /* ── หัวหน้า: ซ่อนชื่อ/คำอธิบาย (ชื่อหน้าอยู่ที่แถบหัวของ shell) เหลือช่องค้นหาเต็มกว้าง ── */
+  .pj-m .bar > div:first-child { display: none; }
+  .pj-m .bar > .tools { width: 100%; }
+  .pj-m .search {
+    width: 100%; height: 46px; padding: 0 16px; gap: 10px;
+    border-radius: 999px; border: 1px solid #efe6e8; background: #fff;
+    -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none;
+    color: #8a7e81; font-size: 14.5px;
+  }
+  .pj-m .search svg { width: 18px; height: 18px; }
+  .pj-m .search input { height: 100%; font-size: 14.5px; }
+
+  /* ── ตัวกรองสถานะ: ชิปแถวเดียว เลื่อนข้าง ── */
+  .pj-m .pj-chips {
+    flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    margin-left: -16px; margin-right: -16px; padding: 0 16px 2px;
+  }
+  .pj-m .pj-chips::-webkit-scrollbar { display: none; }
+  .pj-m .pj-chip {
+    flex: none; height: 38px; padding: 0 16px; gap: 6px; white-space: nowrap;
+    border: 0; border-radius: 999px; background: #ede8ea; color: #6e6164;
+    font-size: 13.5px; font-weight: 600; box-shadow: none;
+  }
+  .pj-m .pj-chip b { background: transparent; color: inherit; opacity: 0.85; font-size: 13px; }
+  .pj-m .pj-chip.on { background: #c8102e; color: #fff; }
+
+  /* ── หัวข้อ "โปรเจค N" ไม่แสดงบนมือถือ ── */
+  .pj-m .pj-sech { display: none; }
+
+  .pj-m .pj-empty {
+    padding: 48px 14px; border-radius: 20px; background: #fff;
+    color: #6e6164; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+
+  /* ── รายการ: การ์ดขาวเรียงลงทีละใบ ── */
+  .pj-m .pj-list { display: flex; flex-direction: column; gap: 10px; }
+  .pj-m .pj-card {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "ico name st"
+      "ico cus st"
+      "line line line"
+      "pg pg pg";
+    column-gap: 12px; row-gap: 2px; align-items: start;
+    padding: 14px; margin: 0; border: 0; border-radius: 20px;
+    background: #fff; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+    text-align: left;
+  }
+  .pj-m .pj-card:active { background: #fbf7f8; }
+  .pj-m .pj-card::after {
+    content: ""; grid-area: line;
+    border-top: 1.5px dashed #ece3e5; margin: 10px 0 8px;
+  }
+  .pj-m .pj-card > svg { display: none; }
+  .pj-m .pj-ico {
+    grid-area: ico; display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%; background: #e8f0fc; color: #1a5db5;
+  }
+  .pj-m .pj-name {
+    grid-area: name; margin: 0; max-width: none;
+    font-size: 15px; font-weight: 700; line-height: 1.35; color: #2a1f22;
+    display: block; -webkit-line-clamp: unset; overflow: visible; overflow-wrap: anywhere;
+  }
+  .pj-m .pj-cus {
+    grid-area: cus; max-width: none;
+    font-size: 12.5px; font-weight: 500; color: #8a7e81;
+    white-space: normal; overflow: visible; text-overflow: clip;
+  }
+  .pj-m .pj-st {
+    grid-area: st; align-self: start; gap: 5px;
+    padding: 3px 10px; border-radius: 999px; background: #f3eef0;
+    font-size: 11.5px; font-weight: 700; color: #6e6164; white-space: nowrap;
+  }
+  .pj-m .pj-pg {
+    grid-area: pg; display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+    width: 100%; max-width: none; margin: 0;
+  }
+  .pj-m .pj-bar { height: 8px; border-radius: 99px; background: #f1eaec; }
+  .pj-m .pj-bar > i { border-radius: 99px; background: #c8102e; }
+  .pj-m .pj-pct { display: flex; justify-content: space-between; font-size: 12.5px; color: #6e6164; }
+  .pj-m .pj-pct .pj-sep { display: none; }
+  /* แผนยังไม่ยืนยัน / ยกเลิก — แสดงข้อความเดิมแทนแถบความคืบหน้า */
+  .pj-m .pj-hint {
+    grid-area: pg; margin: 0; max-width: none; text-align: left;
+    font-size: 12.5px;
+  }
+  .pj-m .pj-hint.pj-hint-muted { color: #8a7e81; }
+}

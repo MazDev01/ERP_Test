@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตัวส่งแจ้งเตือนทดสอบ — ERP MAZ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f5f7;--card:#fff;--soft:#f7f8fa;--txt:#1d1f24;--muted:#5d6370;--line:#e3e5ea;
+  --pri:#db0000;--pri-soft:#fdecec;--ok:#127a3b;--ok-soft:#e6f4ec;--bad:#b3261e;--bad-soft:#fbeaea;
+  --late:#b3261e;--soon:#9a5b00;--soon-soft:#fdf1dc;--info:#1f5fb8;--info-soft:#e8f0fb;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 16px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#131518;--card:#1c1f24;--soft:#23272d;--txt:#eceef2;--muted:#a3a9b5;--line:#2f343b;
+  --pri:#ff4d4d;--pri-soft:#3a1c1c;--ok:#5fd08a;--ok-soft:#173222;--bad:#ff8a80;--bad-soft:#3a1d1b;
+  --late:#ff8a80;--soon:#f2b54a;--soon-soft:#3a2e17;--info:#8ab4ff;--info-soft:#1b2940;
+  --shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.6 "Noto Sans Thai",system-ui,sans-serif}
+button,input{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+.bar{max-width:1180px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:14px}
+.logo{font-weight:800;font-size:22px;letter-spacing:.04em;color:var(--pri)}
+.bar h1{font-size:16px;margin:0;font-weight:700}
+.bar small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.pill{margin-left:auto;display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:20px;background:var(--ok-soft);color:var(--ok);font-size:12.5px;font-weight:600;white-space:nowrap}
+.pill.off{background:var(--bad-soft);color:var(--bad)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:16px 18px 18px;margin-bottom:16px}
+h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+.step{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--pri);color:#fff;font-size:12.5px;font-weight:700}
+h2 .hint{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted)}
+.devices{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.opt{position:relative;display:flex;gap:11px;align-items:flex-start;padding:12px 13px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s}
+.opt:hover{border-color:color-mix(in srgb,var(--pri) 45%,var(--line))}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt.on{border-color:var(--pri);background:var(--pri-soft)}
+.opt:has(input:focus-visible){outline:2px solid var(--pri);outline-offset:2px}
+.ico{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--soft);font-size:11px;font-weight:700;color:var(--muted)}
+.ico.ios{background:#1d1f24;color:#fff}.ico.and{background:#e3f4e8;color:#127a3b}.ico.all{background:var(--pri);color:#fff}
+.opt b{display:block;font-weight:600;line-height:1.4}
+.opt small{display:block;color:var(--muted);font-size:12px;line-height:1.5}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;margin-top:3px}
+.st.ok{color:var(--ok)}.st.bad{color:var(--bad)}.st.none{color:var(--muted)}
+.scen{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:10px;margin-left:6px;vertical-align:1px}
+.tag.late{background:var(--bad-soft);color:var(--late)}.tag.soon{background:var(--soon-soft);color:var(--soon)}.tag.info{background:var(--info-soft);color:var(--info)}
+details{border-top:1px solid var(--line);margin-top:4px;padding-top:12px}
+summary{cursor:pointer;font-weight:600;font-size:13.5px}
+.fields{display:grid;gap:8px;margin-top:10px}
+label.f{font-size:12px;color:var(--muted)}
+label.f input{display:block;width:100%;margin-top:3px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.empty{padding:18px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:12px;font-size:13px;line-height:1.7}
+aside{position:sticky;top:78px}
+.phone{background:linear-gradient(160deg,#3b4454,#1c2029);border-radius:18px;padding:18px 14px 20px;color:#fff}
+.phone .time{text-align:center;font-size:40px;font-weight:300;line-height:1;letter-spacing:-.02em}
+.phone .date{text-align:center;font-size:12px;opacity:.8;margin:4px 0 16px}
+.bubble{background:rgba(255,255,255,.9);color:#111;border-radius:14px;padding:10px 12px;display:flex;gap:10px}
+.bubble .app{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:#db0000;color:#fff;font-size:9px;font-weight:800}
+.bubble .head{display:flex;justify-content:space-between;font-size:11px;color:#555}
+.bubble b{display:block;font-size:13px;line-height:1.35;margin-top:1px}
+.bubble p{margin:1px 0 0;font-size:12.5px;line-height:1.45;color:#222;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.meta{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+.meta code{background:var(--soft);padding:1px 6px;border-radius:6px}
+.send{margin-top:14px;width:100%;height:50px;border:0;border-radius:25px;background:var(--pri);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+.send:disabled{opacity:.5;cursor:default}
+.note{margin-top:10px;background:var(--soft);border-radius:10px;padding:9px 12px;font-size:12.5px;color:var(--muted);line-height:1.6}
+.note b{color:var(--txt)}
+.hist{display:grid;gap:8px}
+.h{border:1px solid var(--line);border-radius:11px;padding:9px 12px;font-size:12.5px;line-height:1.55}
+.h .top{display:flex;justify-content:space-between;gap:8px}
+.h .r{display:flex;gap:6px;align-items:baseline}
+.h .r .ok{color:var(--ok);font-weight:600}.h .r .bad{color:var(--bad);font-weight:600}
+.muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <span class="logo">MAZ</span>
+  <div><h1>ตัวส่งแจ้งเตือนทดสอบ</h1><small>ส่งจากคอมเครื่องนี้ → Apple / Google → มือถือที่ลงทะเบียน · เปิดได้จากคอมนี้เท่านั้น</small></div>
+  <span class="pill" id="status"><span class="dot"></span><span>กำลังเชื่อมต่อ…</span></span>
+</div></header>
+
+<main>
+<div>
+  <section>
+    <h2><span class="step">1</span>เลือกเครื่อง<span class="hint">อัปเดตเองทุก 5 วินาที</span></h2>
+    <div id="devices" class="devices"></div>
+  </section>
+
+  <section>
+    <h2><span class="step">2</span>เลือกเรื่อง</h2>
+    <div id="scenarios" class="scen"></div>
+    <details id="custom">
+      <summary>พิมพ์ข้อความเอง (ไม่บังคับ)</summary>
+      <div class="fields">
+        <label class="f">หัวข้อ<input id="title" maxlength="120" placeholder="ว่างไว้ = ใช้หัวข้อของเรื่องที่เลือก"></label>
+        <label class="f">ข้อความ<input id="body" maxlength="400" placeholder="ว่างไว้ = ใช้ข้อความของเรื่องที่เลือก"></label>
+        <label class="f">หน้าที่เปิดเมื่อกด<input id="url" placeholder="เช่น /leave"></label>
+      </div>
+    </details>
+  </section>
+</div>
+
+<aside>
+  <section>
+    <h2><span class="step">3</span>ตรวจแล้วส่ง</h2>
+    <div class="phone" aria-label="ตัวอย่างบนหน้าจอล็อก">
+      <div class="time" id="clock">--:--</div>
+      <div class="date" id="today"></div>
+      <div class="bubble">
+        <span class="app">MAZ</span>
+        <div style="min-width:0;flex:1">
+          <div class="head"><span>ERP MAZ</span><span>ตอนนี้</span></div>
+          <b id="pvTitle">—</b>
+          <p id="pvBody"></p>
+        </div>
+      </div>
+    </div>
+    <div class="meta" id="pvMeta"></div>
+    <button class="send" id="send">ส่งแจ้งเตือน</button>
+    <div class="note"><b>ทดสอบหน้าจอล็อก:</b> ล็อกจอมือถือก่อนกดส่ง · ผ่านเมื่อเห็น<b>หัวข้อและข้อความ</b> ไม่ใช่แค่คำว่า "การแจ้งเตือน"</div>
+  </section>
+
+  <section>
+    <h2>ประวัติการส่ง<span class="hint" id="histCount"></span></h2>
+    <div id="hist" class="hist"><div class="empty">ยังไม่ได้ส่ง</div></div>
+  </section>
+</aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const LEVEL = { late: "ด่วน", soon: "ใกล้ถึง", info: "ทั่วไป" };
+let devices = [], scenarios = [], chosenDevice = "all", chosenScenario = "basic", history = [];
+
+function kind(d) {
+  if (/Apple/.test(d.service)) return { cls: "ios", txt: "iOS" };
+  if (/FCM/.test(d.service)) return { cls: "and", txt: "AND" };
+  return { cls: "", txt: "WEB" };
+}
+function ago(iso) {
+  const s = Math.round((Date.now() - new Date(iso)) / 1000);
+  return s < 60 ? s + " วิ" : s < 3600 ? Math.round(s / 60) + " นาที" : Math.round(s / 3600) + " ชม.";
+}
+
+function renderDevices() {
+  if (devices.length === 0) {
+    $("devices").innerHTML = '<div class="empty" style="grid-column:1/-1">ยังไม่มีเครื่องลงทะเบียน<br>บนมือถือ: เปิดลิงก์ trycloudflare › (iPhone ติดตั้งลงโฮมแล้วเปิดจากไอคอน) › โปรไฟล์ › แท็บการแจ้งเตือน › <b>อนุญาตและลงทะเบียนเครื่องนี้</b></div>';
+    return;
+  }
+  if (chosenDevice !== "all" && !devices.some((d) => d.id === chosenDevice)) chosenDevice = "all";
+  const all = { id: "all", label: "ทุกเครื่อง", sub: devices.length + " เครื่อง", ico: { cls: "all", txt: "ALL" } };
+  const rows = [all, ...devices.map((d) => ({ ...d, sub: d.platform || d.service, ico: kind(d) }))];
+  $("devices").innerHTML = rows.map((d) => {
+    let st = "";
+    if (d.id !== "all")
+      st = d.lastSentAt
+        ? `<span class="st ${d.lastStatus === 201 ? "ok" : "bad"}"><span class="dot"></span>ส่งล่าสุด ${ago(d.lastSentAt)}ที่แล้ว · ${d.lastStatus || "-"}</span>`
+        : '<span class="st none"><span class="dot"></span>ยังไม่เคยส่ง</span>';
+    return `<label class="opt ${d.id === chosenDevice ? "on" : ""}"><input type="radio" name="dev" value="${esc(d.id)}" ${d.id === chosenDevice ? "checked" : ""}>
+      <span class="ico ${d.ico.cls}">${d.ico.txt}</span><span style="min-width:0"><b>${esc(d.label)}</b><small>${esc(d.sub)}</small>${st}</span></label>`;
+  }).join("");
+}
+
+function renderScenarios() {
+  $("scenarios").innerHTML = scenarios.map((s) =>
+    `<label class="opt ${s.key === chosenScenario ? "on" : ""}"><input type="radio" name="sc" value="${esc(s.key)}" ${s.key === chosenScenario ? "checked" : ""}>
+      <span style="min-width:0"><b>${esc(s.label)}<span class="tag ${s.level}">${LEVEL[s.level] || ""}</span></b><small>${esc(s.checks)}</small></span></label>`).join("");
+}
+
+function preview() {
+  const s = scenarios.find((x) => x.key === chosenScenario);
+  if (!s) return;
+  const t = $("title").value.trim() || s.title;
+  const b = $("body").value.trim() || s.body;
+  const u = $("url").value.trim() || s.url;
+  $("pvTitle").textContent = t;
+  $("pvBody").textContent = b;
+  const target = chosenDevice === "all" ? `ทุกเครื่อง (${devices.length})` : devices.find((d) => d.id === chosenDevice)?.label || "-";
+  $("pvMeta").innerHTML = `ส่งถึง <b>${esc(target)}</b> · กดแล้วเปิด <code>${esc(u)}</code>`;
+  $("send").disabled = devices.length === 0;
+}
+
+function renderHistory() {
+  $("histCount").textContent = history.length ? history.length + " ครั้ง" : "";
+  if (history.length === 0) { $("hist").innerHTML = '<div class="empty">ยังไม่ได้ส่ง</div>'; return; }
+  $("hist").innerHTML = history.map((h) => `<div class="h">
+    <div class="top"><b>${esc(h.title)}</b><span class="muted">${h.at.toLocaleTimeString("th-TH")}</span></div>
+    ${h.error ? `<div class="r"><span class="bad">ส่งไม่สำเร็จ</span><span class="muted">${esc(h.error)}</span></div>` :
+      h.results.map((r) => `<div class="r"><span class="${r.ok ? "ok" : "bad"}">${r.ok ? "✓ ถึงระบบ push" : "✗ ไม่สำเร็จ"}</span>
+        <span>${esc(r.label)}</span><span class="muted">· ${r.status} · ${r.ms} ms${r.gone ? " · เครื่องยกเลิกแล้ว ลบออก" : ""}${r.error ? " · " + esc(r.error) : ""}</span></div>`).join("")}
+  </div>`).join("");
+}
+
+async function load() {
+  try {
+    const d = await (await fetch("/__push/list", { cache: "no-store" })).json();
+    devices = d.devices;
+    if (!scenarios.length) { scenarios = d.scenarios; renderScenarios(); }
+    renderDevices();
+    preview();
+    $("status").className = "pill";
+    $("status").lastElementChild.textContent = `ตัวส่งทำงาน · ${devices.length} เครื่อง`;
+  } catch {
+    $("status").className = "pill off";
+    $("status").lastElementChild.textContent = "ติดต่อตัวส่งไม่ได้";
+  }
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target.name === "dev") { chosenDevice = e.target.value; renderDevices(); preview(); }
+  if (e.target.name === "sc") { chosenScenario = e.target.value; renderScenarios(); preview(); }
+});
+["title", "body", "url"].forEach((id) => $(id).addEventListener("input", preview));
+
+$("send").onclick = async () => {
+  $("send").disabled = true;
+  $("send").textContent = "กำลังส่ง…";
+  const title = $("pvTitle").textContent;
+  try {
+    const r = await fetch("/__push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: chosenDevice, scenario: chosenScenario, title: $("title").value.trim(), body: $("body").value.trim(), url: $("url").value.trim() }),
+    });
+    const d = await r.json();
+    history.unshift({ at: new Date(), title, results: d.results || [], error: d.error });
+  } catch (e) {
+    history.unshift({ at: new Date(), title, results: [], error: String(e) });
+  }
+  history = history.slice(0, 20);
+  renderHistory();
+  $("send").textContent = "ส่งแจ้งเตือน";
+  await load();
+};
+
+function tick() {
+  const n = new Date();
+  $("clock").textContent = n.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+  $("today").textContent = n.toLocaleDateString("th-TH", { weekday: "long", day: "numeric", month: "long" });
+}
+tick(); setInterval(tick, 15000);
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+/*
+ * หน้าจัดคิวงาน (/pm/plan) บนมือถือ — ตามต้นแบบ pm-plan.html (max-width:760px)
+ * ต้องเขียนเป็น CSS เพราะ .btn .glass .panel ตั้งค่าไว้นอก @layer คลาส Tailwind จึงสู้ไม่ได้
+ * ทุกตัวเลือกอยู่ใต้ .pmplan-m เท่านั้น ไม่กระทบหน้าอื่น · จอกว้าง (md ขึ้นไป) ไม่มีผล
+ */
+@media (max-width: 767.98px) {
+  /* แถบบน: ชื่อหน้าอยู่ที่แถบของ shell แล้ว เหลือช่องเลือกงานเต็มความกว้าง */
+  .pmplan-m .pl-bar { display: block; padding-top: 8px; }
+  .pmplan-m .pl-bar > div:first-child { display: none; }
+  .pmplan-m .pl-bar > .tools { width: 100%; }
+  .pmplan-m .pl-confirm-top { display: none; }
+
+  /* เอกสารอ้างอิง + กรอบเวลา เป็นชิปเรียงแถวเดียว */
+  .pmplan-m .pl-docbtn {
+    height: 36px; padding: 0 14px; border-radius: 999px; font-size: 13px;
+    background: #fff; border: 1px solid #efe6e8; box-shadow: none;
+  }
+  .pmplan-m .pl-lock {
+    display: flex; align-items: center; gap: 6px; margin: 0;
+    padding: 0 12px; height: 36px; border-radius: 999px;
+    background: #fdecee; color: #8a1b2a; font-size: 12.5px;
+  }
+
+  /* แถบมอบหมายหลายงาน ลอยเหนือแถบล่าง */
+  .pmplan-m .pl-bulk {
+    position: fixed; left: 10px; right: 10px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+    z-index: 70; display: grid; grid-template-columns: 1fr; gap: 8px;
+    padding: 12px; border-radius: 18px; background: #fff; border: 0;
+    box-shadow: 0 18px 40px -14px rgba(40, 20, 25, 0.45);
+    overflow: visible;
+  }
+  .pmplan-m .pl-bulk .pl-bcount {
+    background: none; padding: 0; border-radius: 0;
+    font-weight: 700; font-size: 14px; color: #2a1f22;
+  }
+  .pmplan-m .pl-bulk .pl-bpick { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .pmplan-m .pl-bulk .pl-bpick > span:first-child { font-size: 13px; color: #6e6164; white-space: nowrap; }
+  .pmplan-m .pl-bulk .pl-bacts { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px; }
+  .pmplan-m .pl-bulk .pl-bacts .btn {
+    height: 42px; border-radius: 12px; font-size: 12.5px; justify-content: center;
+  }
+  .pmplan-m .pl-bulk .pl-bacts .pl-bremove { display: none; }
+
+  /* ปุ่มยืนยันแผนย้ายมาท้ายหน้า เต็มความกว้าง */
+  .pmplan-m .pl-confirm-bottom {
+    width: 100%; height: 50px; border-radius: 14px; font-size: 15px; justify-content: center;
+  }
+}
+
+/* แถวชิปเลือกเฟสบนมือถือ (เจ้าของขอคืน 25 ก.ย. 2569) — ปัดข้างได้ เลือกแล้วแสดงเฉพาะเฟสนั้น */
+@media (max-width: 767.98px) {
+  .pmplan-m .pl-phase-chips {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .pmplan-m .pl-phase-chips::-webkit-scrollbar { display: none; }
+  .pmplan-m .pl-phase-chips > button {
+    flex: none; height: 36px; padding: 0 14px; border-radius: 999px; white-space: nowrap;
+    background: #ede8ea; color: #6e6164; font-size: 13px; font-weight: 600;
+  }
+  .pmplan-m .pl-phase-chips > button.on { background: #c8102e; color: #fff; }
+}

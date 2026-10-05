@@ -1,0 +1,31 @@
+/* หน้าลงเวลา (มือถือ) — ท่าเคลื่อนไหวตามแบบ checkin.html · ใช้เฉพาะใต้ .ck-m */
+@keyframes ck-m-ping {
+  0% { transform: scale(0.3); opacity: 1; }
+  65% { opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@keyframes ck-m-starpop {
+  from { transform: scale(0) rotate(-40deg); }
+  to { transform: none; }
+}
+.ck-m .ck-m-pulse {
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.3);
+  pointer-events: none;
+  background: radial-gradient(circle closest-side, rgba(200, 16, 46, 0.9) 0%, rgba(200, 16, 46, 0.7) 45%, rgba(200, 16, 46, 0.4) 64%, rgba(200, 16, 46, 0.14) 84%, rgba(200, 16, 46, 0) 100%);
+  will-change: transform, opacity;
+  animation: ck-m-ping 2.4s cubic-bezier(0.25, 0.55, 0.45, 1) infinite;
+}
+.ck-m .ck-m-pulse:nth-child(2) { animation-delay: 0.8s; }
+.ck-m .ck-m-pulse:nth-child(3) { animation-delay: 1.6s; }
+.ck-m .ck-m-star {
+  filter: drop-shadow(0 2px 3px rgba(180, 99, 11, 0.35));
+  animation: ck-m-starpop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.ck-m .ck-m-digits .off { opacity: 0.07; }
+@media (prefers-reduced-motion: reduce) {
+  .ck-m .ck-m-pulse { animation-duration: 4.8s; }
+}

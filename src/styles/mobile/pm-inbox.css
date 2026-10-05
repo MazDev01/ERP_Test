@@ -1,0 +1,96 @@
+/*
+ * งานเข้าใหม่ของ PM บนมือถือ (ต้นแบบ pm-inbox.html <style id="ib-mobile">) — ใช้เฉพาะจอแคบกว่า md
+ * ตัวเลือกอยู่ใต้ .ib-m (หน้า) และ .ib-take-dlg / .ib-take (รายละเอียดงาน ซึ่ง Sheet ยิงออกไปที่ body)
+ * รายละเอียดงานส่ง className="ib-take-dlg" ให้ Sheet — แต่งเนื้อหาผ่านคลาสนี้ ไม่ใช้ :has()
+ * CSS นอก @layer เพราะ .bar .search .btn ใน globals.css อยู่นอก layer คลาส Tailwind ทับไม่ได้
+ */
+@media (max-width: 767.98px) {
+  .ib-m { color: #2a1f22; }
+  .ib-m .ib-m-bar { display: none; }
+
+  /* ── ค้นหา: แคปซูลขาว 46px ── */
+  .ib-m .search {
+    width: 100%; height: 46px; padding: 0 16px; gap: 10px;
+    border-radius: 999px; border: 1px solid #efe6e8; background: #fff;
+    -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none;
+    color: #8a7e81; font-size: 14.5px;
+  }
+  .ib-m .search svg { width: 18px; height: 18px; }
+
+  /* ── การ์ดงาน ── */
+  .ib-m-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .ib-m-empty {
+    padding: 48px 14px; border-radius: 20px; background: #fff; text-align: center;
+    font-size: 13px; color: #6e6164; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .ib-m-card {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "ico cus cus"
+      "ico name name"
+      "ico svc svc"
+      "line line line"
+      "src src take"
+      "day day take";
+    column-gap: 12px; row-gap: 4px; align-items: start;
+    padding: 14px; border-radius: 20px; background: #fff;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .ib-m-card.tap { cursor: pointer; }
+  /* กระดานรับงาน (ผู้ใช้สั่ง 5 ต.ค. 2569) — งานที่มีคนรับไปแล้วจางลง แต่ตัวหนังสือยังอ่านได้ ≥4.5:1 */
+  .ib-m-card.taken { background: #f6f3f4; box-shadow: none; }
+  .ib-m-card.taken .ib-m-ico { background: #ece7e8; color: #6e6164; }
+  .ib-m-card.taken .ib-m-name { color: #5a4e51; }
+  .ib-m-card.taken .ib-m-stage { color: #5a4e51; }
+  .ib-m-ico {
+    grid-area: ico; width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: #fce3e7; color: #c8102e;
+  }
+  .ib-m-ico svg { width: 20px; height: 20px; }
+  .ib-m-cus { grid-area: cus; font-size: 12px; color: #8a7e81; min-width: 0; overflow-wrap: anywhere; }
+  .ib-m-name {
+    grid-area: name; display: block; min-width: 0;
+    font-size: 15.5px; font-weight: 700; line-height: 1.35; color: #2a1f22; overflow-wrap: anywhere;
+  }
+  .ib-m-unread {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #c8102e; margin-right: 6px; vertical-align: middle;
+  }
+  .ib-m-svc {
+    grid-area: svc; justify-self: start; margin-top: 4px; padding: 3px 10px; border-radius: 999px;
+    background: #f3eef0; font-size: 12px; font-weight: 600; color: #6e6164;
+  }
+  .ib-m-line { grid-area: line; border-top: 1.5px dashed #ece3e5; margin: 8px 0 4px; }
+  .ib-m-src {
+    grid-area: src; display: flex; align-items: center; gap: 5px; min-width: 0;
+    font-size: 12.5px; font-weight: 600; color: #6e6164;
+  }
+  .ib-m-src svg { flex: none; width: 14px; height: 14px; color: #8a7e81; }
+  .ib-m-day { grid-area: day; padding-left: 19px; font-size: 12px; color: #9a8e91; }
+  /* ปุ่มตา "ดูรายละเอียด" อยู่ก่อนปุ่มรับงาน/ป้ายสถานะ (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+  .ib-m-take { grid-area: take; align-self: center; justify-self: end; display: flex; align-items: center; gap: 8px; }
+  .ib-m-take > button:first-child { width: 38px; height: 38px; border-radius: 12px; }
+  .ib-m-take .btn {
+    height: 38px; padding: 0 16px; border-radius: 12px; font-size: 13.5px; box-shadow: none;
+  }
+  .ib-m-stage {
+    grid-area: take; align-self: center; justify-self: end; max-width: 130px;
+    font-size: 11.5px; font-weight: 600; line-height: 1.35; color: #8a7e81; text-align: right;
+  }
+
+  /* ── รายละเอียดงาน (.ib-take-dlg) ดูอย่างเดียว — แผ่นจากล่างจอมาจาก Sheet กลาง (styles/mobile/sheet.css)
+     ไม่มีช่องกรอกแล้ว รับงานผ่านกล่องยืนยัน ConfirmDialog (ผู้ใช้สั่ง 5 ต.ค. 2569) ── */
+  .ib-take-dlg > .ui-sheet-body { padding-bottom: 18px; overflow-x: hidden; font-size: 13px; }
+
+  /* เอกสารพอดีจอ: หัวกระดาษซ้อนลง คู่สัญญาเรียงลง ซ่อนคอลัมน์ลำดับที่ของใบเสนอราคา */
+  .ib-take .paper-lite { max-width: 100%; overflow-x: auto; }
+  .ib-take .paper-lite > header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .ib-take .paper-lite > header > div:last-child { text-align: left; }
+  .ib-take .paper-lite > header > div:last-child p { justify-content: flex-start; flex-wrap: wrap; }
+  .ib-take .paper-lite > .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ib-take .paper-lite .w-\[290px\] { width: 100%; max-width: 290px; }
+  .ib-take > .paper-lite:first-child table th:first-child,
+  .ib-take > .paper-lite:first-child table td:first-child { display: none; }
+}

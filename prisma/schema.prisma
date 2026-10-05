@@ -1,0 +1,219 @@
+// ฐานข้อมูลของ MAZ HRM
+// สร้างจากโครงข้อมูลที่ frontend ใช้อยู่จริง (src/lib/*)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── คนและสิทธิ์เข้าระบบ ───────────────────────────────────────────
+enum Role {
+  EMPLOYEE
+  SUPERVISOR
+  HR
+  ADMIN
+}
+
+model Employee {
+  id             String    @id @default(cuid())
+  /// รหัสพนักงานที่ใช้สื่อสารกับคน เช่น EMP-00184
+  code           String    @unique
+  name           String
+  position       String
+  department     String
+  email          String    @unique
+  phone          String?
+  employmentType String    @default("พนักงานประจำ")
+  workSchedule   String    @default("จันทร์ – ศุกร์ 09:00 – 18:00 น.")
+  startDate      DateTime
+  photoUrl       String?
+  active         Boolean   @default(true)
+
+  supervisorId   String?
+  supervisor     Employee? @relation("Reports", fields: [supervisorId], references: [id])
+  reports        Employee[] @relation("Reports")
+
+  user           User?
+  punches        PunchRecord[]
+  leaveRequests  LeaveRequest[]
+  entitlements   LeaveEntitlement[]
+  pimRecords     PimRecord[]
+  attachments    Attachment[]
+  posts          Post[]
+  postLikes      PostLike[]
+  approvals      LeaveRequest[] @relation("Approver")
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([department])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+
+  employeeId   String   @unique
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── การตอกบัตร ───────────────────────────────────────────────────
+enum PunchType {
+  IN
+  OUT
+}
+
+model PunchRecord {
+  id         String    @id @default(cuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type       PunchType
+  at         DateTime
+  note       String    @default("")
+  /// วันที่ในรูป yyyy-mm-dd ตามเวลาไทย ใช้ query รายวันได้เร็ว
+  day        String
+
+  createdAt  DateTime  @default(now())
+
+  @@index([employeeId, day])
+  @@index([employeeId, at])
+}
+
+// ─── การลา ────────────────────────────────────────────────────────
+enum LeaveStatus {
+  PENDING
+  SCHEDULED
+  TAKEN
+  REJECTED
+  CANCELLED
+}
+
+model LeaveType {
+  id           String             @id @default(cuid())
+  name         String             @unique
+  /// เรียงลำดับการแสดงผลในหน้าจอ
+  sortOrder    Int                @default(0)
+  active       Boolean            @default(true)
+
+  entitlements LeaveEntitlement[]
+  requests     LeaveRequest[]
+}
+
+model LeaveEntitlement {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  /// รอบปีการลา เช่น 2026-01-01 - 2026-12-31
+  period      String
+  days        Decimal   @db.Decimal(5, 2)
+  source      String    @default("เพิ่มให้อัตโนมัติ")
+
+  @@unique([employeeId, leaveTypeId, period])
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType   @relation(fields: [leaveTypeId], references: [id])
+
+  fromDate    DateTime    @db.Date
+  toDate      DateTime    @db.Date
+  days        Decimal     @db.Decimal(4, 2)
+  reason      String      @default("")
+  status      LeaveStatus @default(PENDING)
+
+  approverId  String?
+  approver    Employee?   @relation("Approver", fields: [approverId], references: [id])
+  decidedAt   DateTime?
+  decisionNote String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([employeeId, status])
+  @@index([fromDate, toDate])
+}
+
+// ─── ข้อมูลพนักงาน (PIM) ──────────────────────────────────────────
+/// เก็บแถวของทุกหัวข้อในหน้า "ข้อมูลของฉัน" ไว้ตารางเดียว
+/// เพราะแต่ละหัวข้อมีคอลัมน์ไม่เหมือนกันและเปลี่ยนบ่อย
+model PimRecord {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  /// ชื่อหัวข้อ เช่น "ที่ติดต่อฉุกเฉิน" "การศึกษา"
+  section    String
+  data       Json
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([employeeId, section])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  section    String
+  filename   String
+  mimeType   String
+  sizeBytes  Int
+  url        String
+  comment    String   @default("")
+
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId, section])
+}
+
+// ─── Buzz ─────────────────────────────────────────────────────────
+model Post {
+  id        String     @id @default(cuid())
+  authorId  String
+  author    Employee   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  text      String
+  createdAt DateTime   @default(now())
+
+  likes     PostLike[]
+
+  @@index([createdAt])
+}
+
+model PostLike {
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([postId, employeeId])
+}

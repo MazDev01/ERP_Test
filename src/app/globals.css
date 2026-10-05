@@ -1,0 +1,1550 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ─────────────────────────────────────────────────
+   ชุดสีตรงกับ Kids Kingdom HQ (ดึงจาก CSS ของเว็บจริง) — พื้นเรียบ ขาวสะอาด
+   ไม่มีกระจกฝ้าและไม่มีเฉดพื้นหลัง เน้นให้ตัวเลขกับตารางอ่านง่ายเป็นหลัก */
+:root {
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+
+  /* แดงแบรนด์ */
+  --maz-red: #db0000;
+  --maz-red-deep: #a80000;
+  --maz-red-bright: #ff352c;
+
+  /* พื้นหลังหน้าเข้มกว่าการ์ดนิดหนึ่ง ไม่งั้นการ์ดขาวจะกลืนไปกับพื้นจนแยกไม่ออก
+     แถบข้างกับการ์ดเป็นขาวล้วน ลอยอยู่บนพื้นสีนี้ */
+  --background: #f2f3f5;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-solid: #ffffff;
+  /* ผิวรองในการ์ดขาว — หัวตาราง แถบแท็บ แถบสรุปท้ายตาราง
+     อ่อนกว่าพื้นหน้า แต่ยังต่างจากขาวพอให้เห็นว่าเป็นคนละส่วน */
+  --surface-2: #f7f8fa;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+
+  --primary: #db0000;
+  --primary-hover: #a80000;
+  --primary-foreground: #fafafa;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #171717;
+  --muted: #f5f5f5;
+  --muted-foreground: #555555;
+  --accent: #fff1f0;
+  --accent-foreground: #171717;
+
+  /* สีสถานะ — ยืมชุด chart ของเว็บอ้างอิงมาทั้งชุด จะได้อยู่ในจานสีเดียวกัน
+     พื้นอ่อนของแต่ละสีผสมจากสีเดิมกับขาว ไม่ได้หยิบสีนอกจานมาใหม่ */
+  --destructive: #e40014;
+  --destructive-foreground: #ffffff;
+  --destructive-soft: #fdecee;
+  --success: #189a30;
+  --success-soft: #eaf6ec;
+  --warning: #d27400;
+  --warning-soft: #fdf3e6;
+  --info: #0079b8;
+  --info-soft: #e8f3fa;
+  --neutral: #555555;
+  --neutral-soft: #f5f5f5;
+
+  --border: #e4e4e4;
+  --input: #e4e4e4;
+  --ring: #db0000;
+  --sidebar-ring: #db0000;
+
+  /* แถบข้างเป็นพื้นขาว ตัวอักษรสีเข้ม รายการที่เลือกอยู่เป็นพื้นแดงตัวหนังสือขาว */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: #db0000;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-muted: #555555;
+  --sidebar-accent: #fff1f0;
+  --sidebar-accent-foreground: #171717;
+  --sidebar-border: #e4e4e4;
+
+  --brand-50: #fff1f0;
+  --brand-100: #ffdad7;
+  --brand-500: #db0000;
+  --brand-600: #a80000;
+  --brand-700: #8a0000;
+
+  --chart-1: #db0000;
+  --chart-2: #d27400;
+  --chart-3: #0079b8;
+  --chart-4: #189a30;
+  --chart-5: #7552db;
+
+  --shadow-sm: 0 1px 2px rgb(10 10 10 / 0.05);
+  --shadow: 0 1px 3px rgb(10 10 10 / 0.08);
+  --shadow-md: 0 4px 12px -4px rgb(10 10 10 / 0.12);
+  --shadow-lg: 0 16px 40px -12px rgb(10 10 10 / 0.18);
+}
+
+/* ─── Expose tokens as Tailwind v4 theme values ──────────────────── */
+@theme inline {
+  --color-surface-2: var(--surface-2);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+
+  --font-sans: var(--font-noto-thai);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}
+
+/* ไม่จองที่แถบเลื่อนไว้ตลอดแล้ว (ผู้ใช้สั่ง 2 ต.ค. 2569) — เดิมจองไว้ทุกหน้า หน้าที่เนื้อหาสั้นจึงเห็นแถบว่าง
+   ที่ขอบขวา และแถบบนสีขาวไปไม่สุดจอ · แลกกับหน้ายาว/สั้นกว้างต่างกันราว 15px ตอนสลับหน้า ซึ่งเป็นปกติของเว็บ
+   ตอนเปิดกล่องทับหน้า lockScroll() จองที่ให้เฉพาะหน้าที่มีแถบเลื่อนอยู่ หน้าจึงไม่กระตุกตอนเปิดกล่อง */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* กล่องที่เลื่อนได้ภายใน เช่น เนื้อในป็อบอัพ — จองที่แถบเลื่อนไว้ตลอด
+   ไม่งั้นพอเปิดตัวเลือกเวลาแล้วแถบโผล่ ขอบช่องกรอกจะกระตุกไปทางซ้าย */
+.scroll-stable { scrollbar-gutter: stable; }
+
+body {
+  /* หน้าจอนี้ห้ามเลื่อนไปทางข้าง — แถบหัวกับแถบแดงเป็น sticky/fixed จึงอยู่กับที่
+     พอเนื้อหาข้างในดันจนหน้าเลื่อนขวา ทั้งสองอันจะค้างไว้แล้วเห็นช่องว่างที่ขอบ
+     ใช้ clip (ไม่ใช่ hidden) เพื่อไม่ให้ body กลายเป็นกล่องเลื่อนจนทำ sticky พัง */
+  overflow-x: clip;
+  background: var(--background);
+  color: var(--foreground);
+  line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  isolation: isolate;
+}
+
+/* ─── พื้นผิวการ์ด แถบบน และเมนู ─────────────────────────────────
+   พื้นทึบล้วน ไม่มีเบลอ — ตัวเลขและตารางอ่านง่ายกว่า และไม่กินแรงเครื่อง
+   ชื่อคลาสยังเป็น glass* ตามเดิมเพื่อไม่ต้องไล่แก้ทุกหน้า แต่เนื้อในเป็นพื้นเรียบแล้ว */
+.glass {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ของที่ลอยทับเนื้อหา (เมนู ป๊อปอัป) — เงาเข้มขึ้นเพื่อให้ลอยออกจากพื้นหลัง */
+.glass-solid {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ผิวรองสำหรับปุ่มไอคอน ชิป และช่องกรอก */
+.glass-thin {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+/* ปุ่มหลัก — แดงทึบเรียบ ไม่ไล่เฉด */
+.btn-solid {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
+}
+.btn-solid:hover:not(:disabled) { background: var(--primary-hover); }
+
+/* แถบข้าง — พื้นอ่อนตัวอักษรเข้ม แยกจากเนื้อหาด้วยเส้นขอบ ไม่ใช่สีทึบ */
+/* ─── แถบข้าง ────────────────────────────────────────────────────
+   ผิวเดียวใช้ทุกบทบาท — สีทั้งหมดอยู่ที่นี่ที่เดียว
+   หน้าอื่นไม่ต้องรู้ว่าแถบข้างหน้าตาเป็นยังไง */
+.sidebar-skin {
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+  color: var(--sidebar-foreground);
+}
+
+.side-brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+}
+
+/* แถบข้างกระชับขึ้น (ผู้ใช้สั่ง 30 ก.ย. 2569 — เดิมรายการสูงจนดูเหมือนเว้นช่องว่างระหว่างเมนูมาก) */
+.side-group {
+  padding: 12px 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--foreground);
+  transition: background-color 0.15s, color 0.15s;
+}
+.side-link:hover { background: var(--accent); }
+.side-link.on {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+
+/* เมนูย่อยใต้เมนูแม่ที่เปิดอยู่ (ผู้ใช้สั่ง 5 ต.ค. 2569 — แทนแถบชิปเหนือเนื้อหา)
+   เยื้องให้ตรงกับชื่อเมนูแม่ (ไอคอน 17px + ช่องไฟ 10px) ตัวเล็กกว่า ไม่มีไอคอน ใช้จุดเล็กแทน */
+.side-sub {
+  margin: 2px 0 4px;
+  padding-left: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.side-sub a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  transition: background-color 0.15s, color 0.15s;
+}
+.side-sub a i {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.side-sub a:hover { background: var(--accent); color: var(--foreground); }
+.side-sub a.on { color: var(--primary); font-weight: 600; background: var(--accent); }
+.side-sub a.on i { opacity: 1; }
+/* หัวข้อกลุ่มในเมนูย่อย — ตัวเล็กสีจาง ไม่ใช่ลิงก์ */
+.side-sub-cap {
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.side-sub li:first-child .side-sub-cap { padding-top: 2px; }
+
+/* ปุ่มเมนูกลางจอบนมือถือ — แทนปุ่มแฮมเบอร์เกอร์เดิม */
+.menu-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  background: var(--maz-red);
+  padding: 9px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ปุ่มตอกบัตรวงกลม: วงแหวนกระเพื่อมรอบปุ่ม */
+@keyframes punch-ping {
+  0%   { transform: scale(1);    opacity: 0.5; }
+  70%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.animate-punch-ping { animation: punch-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+/* ตัวเลขนาฬิกาไม่ขยับตอนวินาทีเปลี่ยน */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Skeleton loading */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    #ffffff 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* โฟกัสจากคีย์บอร์ดต้องเห็นชัดทุกที่ ไม่ต้องใส่คลาสทีละจุด */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2.5px solid var(--ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+/* ช่องกรอก — โฟกัสแล้วเปลี่ยนสีกรอบเป็นแดง ไม่ใส่เส้นแดงอีกชั้นรอบนอก (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ชิ้นส่วนหน้าจอ — ยกมาจาก mockup HTML เพื่อให้หน้าตาตรงกันทุกหน้า
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ---------- แถบหัวเรื่องของหน้า ---------- */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+/* ป้ายเล็กสีแดงเหนือชื่อหน้า บอกว่าอยู่หมวดไหน */
+.bar .eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary);
+}
+.bar h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.bar p { margin-top: 4px; font-size: 13.5px; color: var(--muted-foreground); }
+.tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- ตัวเลื่อนเดือน/ปี ---------- */
+.mo {
+  display: flex; align-items: center; gap: 2px;
+  /* padding 2px → สูงรวม 36px เท่า .btn และ .search ที่วางคู่กันในแถบเครื่องมือเสมอ
+     (เดิม 3px สูง 38px ปุ่มข้าง ๆ เลยเตี้ยกว่า 2px ทุกหน้า: ใบลา โอที เบิก ภาษี วางบิล) */
+  border-radius: 10px; padding: 2px;
+}
+.mo button {
+  width: 30px; height: 30px; border: none; background: none;
+  border-radius: 8px; cursor: pointer; color: var(--muted-foreground);
+  display: flex; align-items: center; justify-content: center;
+}
+.mo button:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.mo button:disabled { opacity: 0.35; cursor: default; }
+.mo span {
+  padding: 0 12px; font-size: 13.5px; font-weight: 600;
+  min-width: 120px; text-align: center;
+}
+
+/* ---------- ปุ่ม ---------- */
+.btn {
+  height: 36px; padding: 0 14px; border-radius: 8px;
+  color: var(--foreground);
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+/* .btn ตั้ง display ไว้นอก @layer จึงชนะคลาส hidden ของ Tailwind — ปุ่มที่สั่งซ่อนเลยไม่ยอมหาย
+   (เจอ 23 ก.ย. 2569 ปุ่มเพิ่มนัดหมายซ้ำบนมือถือ) เปิดทางให้คลาสซ่อนทำงานกับปุ่มด้วย */
+.btn.hidden, .btn[hidden] { display: none; }
+@media (max-width: 639px) { .btn.max-sm\:hidden { display: none; } }
+@media (min-width: 640px) { .btn.sm\:hidden { display: none; } }
+.btn.solid { border: none; color: #fff; }
+.btn.solid:hover:not(:disabled) { color: #fff; }
+.btn.solid.out { background: #171717; }
+.btn.solid:disabled {
+  cursor: default; background: var(--muted); color: var(--muted-foreground);
+  box-shadow: none;
+}
+.btn:disabled { cursor: default; }
+/* ปุ่มนำทางขนาดย่อ — ใช้แทนลิงก์ข้อความเหนือหัวข้อและในหัวการ์ด */
+.btn.btn-mini { height: 30px; padding: 0 11px; gap: 5px; font-size: 12px; border-radius: 8px; }
+
+/* ---------- แผงเนื้อหาหลัก ---------- */
+.panel { border-radius: var(--radius); overflow: hidden; }
+.strip {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 4px 20px 0; border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  background: var(--surface-2);
+}
+
+/* ---------- แท็บขีดเส้นใต้ ---------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  /* แถวเดียวเสมอ ล้นแล้วเลื่อนข้างเอา ไม่ตัดบรรทัด */
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tabs button {
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  padding: 14px 13px 12px; font-size: 13.5px; font-weight: 500;
+  color: var(--muted-foreground); border-bottom: 2.5px solid transparent;
+}
+/* แท็บที่มีหลายหมวดจนเกินความกว้างการ์ด — ขึ้นบรรทัดใหม่แทนการเลื่อนข้าง
+   (กติกาเดียวกับมือถือ: แท็บที่ถูกตัดขอบเท่ากับไม่มี · เจ้าของสั่งอีกครั้ง 29 ก.ย. 2569) */
+.tabs.wrap { flex-wrap: wrap; overflow-x: visible; }
+.tabs button:hover { color: var(--foreground); }
+.tabs button.on {
+  color: var(--primary); border-bottom-color: var(--primary); font-weight: 600;
+}
+.tabs button b {
+  margin-left: 6px; font-size: 11.5px; font-weight: 600;
+  padding: 1px 6px; border-radius: 9px;
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.tabs button.on b { background: var(--accent); border-color: #f3c4cb; color: var(--primary); }
+
+/* ---------- คำอธิบายสี ---------- */
+.legend {
+  display: flex; align-items: center; gap: 12px; padding: 8px 0;
+  font-size: 11.5px; color: var(--muted-foreground); flex-wrap: wrap;
+}
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+/* ---------- ตาราง ---------- */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2);
+}
+.data-table th {
+  text-align: left; font-size: 12px; font-weight: 600;
+  color: var(--muted-foreground); padding: 12px 14px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.data-table th.c, .data-table td.c { text-align: center; }
+.data-table th.r, .data-table td.r { text-align: right; }
+.data-table td {
+  padding: 12px 14px; font-size: 13.5px;
+  border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--muted); }
+.data-table tbody tr.today { background: var(--accent); }
+.day b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.day span {
+  display: block; font-size: 11.5px; color: var(--muted-foreground); margin-top: 1px;
+}
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted-foreground); }
+.diff { font-size: 11.5px; font-weight: 600; margin-left: 6px; }
+.diff.late { color: var(--destructive); }
+.diff.early { color: var(--warning); }
+.sub2 {
+  display: block; font-size: 11px; color: var(--muted-foreground);
+  margin-top: 1px; font-weight: 400;
+}
+.clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.why {
+  display: block; font-size: 11px; color: var(--muted-foreground); margin-top: 2px;
+}
+.over {
+  display: inline-block; margin-top: 3px; font-size: 11px;
+  font-weight: 600; color: var(--destructive);
+}
+/* ปุ่มลัดในแถวตารางและการ์ด — เล็กแต่เป็นปุ่มจริง กดง่ายกว่าลิงก์ข้อความ */
+.lnk {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 10px; border-radius: 9px;
+  border: 1px solid var(--border); background: #ffffff;
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  color: var(--primary); white-space: nowrap; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.lnk:hover { border-color: var(--primary); background: var(--accent); }
+/* ปุ่มรองในชุดเดียวกัน เช่น ปฏิเสธ ที่ไม่ควรเด่นเท่าปุ่มหลัก */
+.lnk.quiet { color: var(--muted-foreground); }
+/* รหัสในตาราง — เป็นลิงก์ไปยังรายการนั้น ไม่ใช่ปุ่มสั่งงาน */
+.lnk-code { font-weight: 600; color: var(--primary); }
+.lnk-code:hover { text-decoration: underline; }
+
+/* ---------- ป้ายสถานะ ---------- */
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tag i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.t-ok    { background: var(--success-soft);     color: var(--success); }
+.t-late  { background: var(--destructive-soft); color: var(--destructive); }
+.t-early { background: var(--warning-soft);     color: var(--warning); }
+.t-leave { background: var(--info-soft);        color: var(--info); }
+.t-miss  { background: var(--neutral-soft);     color: var(--neutral); }
+/* สถานะบัญชี/พนักงาน (hr-accounts.html): ใช้งานอยู่ · ระงับหรือพ้นสภาพ */
+.t-act   { background: var(--success-soft);     color: var(--success); }
+.t-out   { background: #eff0f3;                 color: var(--neutral); }
+
+/* ---------- ท้ายแผง ---------- */
+.foot {
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 13px 20px; font-size: 13px;
+  color: var(--muted-foreground); flex-wrap: wrap;
+}
+.foot .sum { font-variant-numeric: tabular-nums; }
+.foot .sum b { color: var(--foreground); font-weight: 600; margin-left: 6px; }
+
+/* ---------- แบ่งหน้า ---------- */
+.pages { display: flex; gap: 5px; }
+.pages button {
+  min-width: 31px; height: 31px; padding: 0 8px; border-radius: 8px;
+  cursor: pointer; font-family: inherit; font-size: 13px;
+  color: var(--muted-foreground);
+}
+.pages button.on {
+  background: var(--primary); border-color: var(--primary);
+  color: #fff; font-weight: 600;
+}
+.pages button:disabled { opacity: 0.35; cursor: default; }
+
+/* ---------- ปุ่มไอคอน ---------- */
+.iconbtn {
+  width: 34px; height: 34px; border-radius: 9px;
+  color: var(--muted-foreground);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; flex: none;
+}
+.iconbtn:hover { color: var(--primary); border-color: var(--primary); }
+.iconbtn .dot {
+  position: absolute; top: 7px; right: 8px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--primary); border: 1.5px solid #fff;
+}
+
+/* ---------- ตัวเลือกแบบแบ่งช่อง ---------- */
+.seg { display: flex; gap: 2px; border-radius: 999px; padding: 2px; background: var(--muted); }
+.seg button {
+  flex: 1; height: 30px; border: none; background: none; border-radius: 999px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500;
+  color: var(--muted-foreground); padding: 0 10px;
+  /* ชื่อช่วงเวลาต้องอยู่บรรทัดเดียว ไม่ตัดคำกลางปุ่ม */
+  white-space: nowrap; min-width: 0;
+}
+.seg button.on {
+  background: #fff; color: var(--foreground); font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- ช่องกรอกมาตรฐานของฟอร์ม ---------- */
+.field-control {
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--foreground);
+  outline: none;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.field-control:hover { border-color: #d4d4d4; }
+.field-control:focus {
+  border-color: var(--ring);
+}
+.field-control::placeholder { color: var(--muted-foreground); }
+
+/* แถบลากปรับความคืบหน้าของงานย่อย — ให้หน้าตาเข้าชุดกับแถบแสดงผลปกติ
+   เขียนทั้ง -webkit- และ -moz- เพราะสอง engine ใช้ pseudo-element คนละชื่อ */
+.task-range {
+  -webkit-appearance: none; appearance: none;
+  height: 6px; border-radius: 6px; background: var(--muted); cursor: pointer;
+}
+.task-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--primary); border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgb(28 20 45 / 0.28);
+}
+.task-range::-moz-range-thumb {
+  width: 15px; height: 15px; border: 2px solid #fff; border-radius: 50%;
+  background: var(--primary); box-shadow: 0 1px 3px rgb(28 20 45 / 0.28);
+}
+.task-range:focus-visible { outline: 2.5px solid var(--ring); outline-offset: 3px; }
+
+/* ═══ หน้าเช็คอิน — พื้นแดงทึบและอนิเมชันหน้าตัวการ์ตูน ═══════════ */
+.checkin-top { background: var(--primary); }
+
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.bob { animation: bob 4.4s ease-in-out infinite; }
+.bob.b { animation-duration: 5.6s; animation-delay: 0.6s; }
+
+@keyframes eyesOpen { 0%, 30% { opacity: 1; } 37%, 79% { opacity: 0; } 86%, 100% { opacity: 1; } }
+@keyframes eyesShut { 0%, 30% { opacity: 0; } 37%, 79% { opacity: 1; } 86%, 100% { opacity: 0; } }
+@keyframes grin { 0%, 30% { transform: scale(1); } 42%, 79% { transform: scale(1.18, 1.34); } 88%, 100% { transform: scale(1); } }
+@keyframes cheeks { 0%, 30% { opacity: 0.35; } 44%, 79% { opacity: 0.8; } 88%, 100% { opacity: 0.35; } }
+.eo { animation: eyesOpen 3.4s ease-in-out infinite; }
+.es { animation: eyesShut 3.4s ease-in-out infinite; }
+.grin { transform-origin: 88px 96px; animation: grin 3.4s ease-in-out infinite; }
+.blush { animation: cheeks 3.4s ease-in-out infinite; }
+
+@keyframes shake {
+  0%, 10% { transform: rotate(0); } 24% { transform: rotate(-7deg); }
+  40% { transform: rotate(7deg); } 56% { transform: rotate(-5deg); }
+  70% { transform: rotate(4deg); } 84%, 100% { transform: rotate(0); }
+}
+@keyframes steam {
+  0% { opacity: 0; transform: translateY(2px) scale(0.6); }
+  22% { opacity: 0.85; } 62% { opacity: 0.45; }
+  100% { opacity: 0; transform: translateY(-26px) scale(1.3); }
+}
+.shake { transform-origin: 88px 82px; animation: shake 2.8s ease-in-out infinite; }
+.steam { animation: steam 2.2s ease-out infinite; }
+.steam.s2 { animation-duration: 2.6s; animation-delay: 0.5s; }
+.steam.s3 { animation-duration: 2.4s; animation-delay: 1s; }
+
+@keyframes bow {
+  0%, 22% { transform: translateY(0) scaleY(1); }
+  44% { transform: translateY(9px) scaleY(0.96); }
+  66%, 100% { transform: translateY(0) scaleY(1); }
+}
+.bow { transform-origin: 88px 122px; animation: bow 3.6s ease-in-out infinite; }
+
+@keyframes popRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.pop-rise { animation: popRise 0.4s ease both; }
+@keyframes haloRing { from { transform: scale(0.4); opacity: 0.5; } to { transform: scale(1.5); opacity: 0; } }
+.halo { animation: haloRing 0.8s ease 0.1s both; }
+@keyframes drawTick { to { stroke-dashoffset: 0; } }
+.tick { stroke-dasharray: 58; stroke-dashoffset: 58; animation: drawTick 0.5s ease 0.2s forwards; }
+@keyframes popIn { from { opacity: 0; transform: scale(0.84) translateY(22px); } to { opacity: 1; transform: none; } }
+.pop-in { animation: popIn 0.45s cubic-bezier(0.34, 1.4, 0.5, 1) both; }
+
+/* แท็บบนจอแคบ: แถวเดียวเลื่อนข้างได้ ไม่ตัดบรรทัด */
+.tabs::-webkit-scrollbar { display: none; }
+.tabs { scrollbar-width: none; }
+.tabs button { white-space: nowrap; }
+
+/* ข้อความไทยยาว ๆ ไม่มีช่องว่าง ถ้าไม่ยอมให้ตัดคำจะดันหน้าจอกว้างเกินจอมือถือ */
+body {
+  overflow-wrap: break-word;
+}
+
+/* ปุ่มหลักบนมือถือ: เต็มแถวและสูงพอให้กดด้วยนิ้วโป้งได้ถนัด
+   (ต้องเขียนคู่กับ .btn เพราะ .btn ล็อกความสูงไว้ 36px) */
+@media (max-width: 639px) {
+  .btn.btn-block-mobile {
+    width: 100%;
+    height: 48px;
+    padding: 0 20px;
+    font-size: 15px;
+    justify-content: center;
+  }
+}
+
+/* ป้ายสถานะ "กำลังทำงาน" — วันนี้ที่ตอกเข้าแล้วแต่ยังไม่ออก */
+.t-work { background: var(--accent); color: var(--primary); }
+
+/* ชั่วโมงที่หัวหน้าปรับให้ต่างจากที่ขอ — ต้องเห็นทั้งสองตัวเลข */
+.adj {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning);
+  line-height: 1.3;
+}
+
+/* กรอบช่องกรอกที่มีไอคอนอยู่ข้างใน — ไอคอนเป็นสมาชิกของแถว ไม่ใช่ลอยทับ
+   ตัวช่องกรอกจริงข้างในโปร่งใส ให้กรอบเป็นคนวาดพื้นและเส้นขอบแทน */
+.field-shell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+.field-shell:focus-within {
+  background: #fff;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px rgb(208 2 27 / 0.12);
+}
+.field-shell input {
+  min-width: 0;
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
+}
+.field-shell input::placeholder { color: var(--muted-foreground); }
+
+/* ═══ โมดูลงานขาย ═══════════════════════════════════════════════ */
+.t-info { background: var(--info-soft); color: var(--info); }
+.t-job  { background: #efeafb; color: #5b3fbf; }
+
+/* ช่องค้นหาบนแถบเครื่องมือ */
+.search {
+  display: flex; align-items: center; gap: 9px;
+  height: 36px; padding: 0 14px; min-width: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--muted-foreground); font-size: 13.5px;
+}
+.search input {
+  min-width: 0; flex: 1; border: none; background: none; outline: none;
+  font: inherit; color: var(--foreground);
+}
+.search input::placeholder { color: var(--muted-foreground); }
+.search:focus-within { border-color: var(--ring); box-shadow: 0 0 0 3px rgb(208 2 27 / 0.09); }
+
+/* ชื่อลูกค้าพร้อมวงกลมตัวย่อ */
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.who .av {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--primary);
+  font-size: 11.5px; font-weight: 600;
+}
+.who b { min-width: 0; font-weight: 500; }
+.who b span { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted-foreground); margin-top: 1px; }
+.money { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ป้ายเล็กท้ายเลขที่เอกสาร บอกว่ากดแล้วกางรายละเอียดได้ */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 6px;
+  padding: 1px 7px; border-radius: 12px; font-size: 10.5px;
+  background: var(--muted); border: 1px solid var(--border); color: var(--muted-foreground);
+}
+.pill svg { transition: transform 0.2s ease; }
+tr.open .pill { background: var(--accent); border-color: #f3c4cb; color: var(--primary); }
+tr.open .pill svg { transform: rotate(180deg); }
+tr.open > td { border-bottom-color: transparent; }
+
+/* แถวรายละเอียดที่กางออกมาใต้แถวหลัก */
+tr.sub > td { padding: 0; background: var(--muted); }
+.subwrap { padding: 6px 18px 14px; }
+.subwrap h4 { padding: 10px 0 8px; font-size: 11.5px; font-weight: 600; color: var(--muted-foreground); }
+.subttl { margin: 8px 0 8px; font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); }
+table.inner { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table.inner th { position: static; padding: 9px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted-foreground); text-align: left; white-space: nowrap; }
+table.inner td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: top; }
+table.inner tr:last-child td { border-bottom: none; }
+table.inner .r, table.inner th.r { text-align: right; }
+
+/* ═══ เอกสารใบเสนอราคาขนาด A4 ═══════════════════════════════════ */
+.paper {
+  width: 794px;              /* A4 ที่ 96dpi */
+  min-height: 1123px;
+  max-width: 100%;
+  padding: 52px 56px 44px;
+  background: #fff;
+  color: #25292f;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 18px 44px -22px rgb(40 20 30 / 0.4), 0 2px 6px rgb(30 20 25 / 0.06);
+}
+.paper .rule { height: 2px; border-radius: 2px; background: var(--maz-red); }
+.paper table.items { width: 100%; border-collapse: collapse; }
+.paper table.items th {
+  padding: 9px 10px; background: #dcdfe4;
+  font-size: 11.5px; font-weight: 600; color: #3a4048; text-align: left;
+}
+.paper table.items td { padding: 9px 10px 14px; border: none; vertical-align: top; font-size: 12.5px; }
+.paper table.items .r, .paper table.items th.r { text-align: right; }
+.paper table.items .c, .paper table.items th.c { text-align: center; }
+
+@media (max-width: 900px) {
+  .paper { width: 100%; min-height: auto; padding: 28px 22px; }
+}
+
+@media print {
+  /* พิมพ์เฉพาะเอกสาร ตัดเมนูข้าง แถบบน และปุ่มออกให้หมด */
+  body::before, body::after { display: none; }
+  .no-print { display: none !important; }
+  .app-side, .app-top, .app-sub, .botnav { display: none !important; }
+  #main { padding: 0 !important; }
+  .paper { width: auto; min-height: auto; padding: 0; box-shadow: none; }
+  @page { size: A4; margin: 14mm; }
+}
+
+/* ═══ ปรับหน้ารายการให้ใช้บนมือถือได้สะดวก ═══════════════════════ */
+@media (max-width: 639px) {
+  /* หัวเรื่องกับเครื่องมือเรียงลงมา ไม่แย่งพื้นที่กัน */
+  .bar { gap: 12px; }
+  .bar h1 { font-size: 23px; }
+  .bar .eyebrow { font-size: 12px; margin-bottom: 3px; }
+  .bar > div:first-child { width: 100%; }
+
+  /* แถบแท็บชิดขอบการ์ด ปัดนิ้วได้เต็มความกว้าง */
+  .strip { padding: 4px 14px 0; gap: 8px; }
+
+  .foot { padding: 13px 16px; }
+  /* ปุ่มแบ่งหน้าโตพอให้นิ้วกด */
+  .pages button { min-width: 38px; height: 38px; }
+
+  /* ตัวกรองในแถบแท็บ ยืดเต็มแถว กดง่ายกว่าปุ่มเล็กมุมขวา */
+  .strip > .btn { width: 100%; justify-content: center; height: 40px; }
+}
+
+/* ปุ่มบนแถบเครื่องมือของหน้ารายการ: บนมือถือแบ่งครึ่งเท่า ๆ กัน */
+@media (max-width: 639px) {
+  .tools .btn:not(.btn-block-mobile) { flex: 1 1 0; justify-content: center; height: 42px; }
+  /* ตัวเลื่อนเดือน/ปี กินเต็มแถว — ปุ่มลูกศรอยู่ริมสองข้าง กดถูกง่ายกว่าปุ่ม 30px ที่ชิดกัน
+     (ดีไซน์ใหม่ 25 ก.ย. 2569 · หน้าการลาเป็นแบบนี้อยู่แล้ว หน้าที่เหลือทำตาม) */
+  .bar > .tools { width: 100%; }
+  .tools > .mo { flex: 1 1 100%; justify-content: space-between; height: 46px; }
+  .tools > .mo span { flex: 1 1 auto; min-width: 0; font-size: 14.5px; }
+  .tools > .mo button { width: 38px; height: 38px; }
+}
+
+/* ═══ แบบฟอร์มเบิกค่าใช้จ่าย ═══════════════════════════════════ */
+.claim { padding: 22px 26px 26px; }
+.claim .ftitle { text-align: center; font-size: 16px; font-weight: 700; }
+.claim .fsub { margin-top: 3px; text-align: center; font-size: 13px; color: var(--muted-foreground); }
+
+/* หัวกระดาษ: ป้ายกำกับกว้างคงที่ ค่าตามหลัง อ่านเป็นคู่ได้ชัด */
+.claim .meta { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; }
+.claim .mrow { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.claim .mrow > span, .claim .mrow > label {
+  flex: none; width: 130px; color: var(--muted-foreground); font-weight: 600;
+}
+.claim .mrow > b { font-weight: 600; }
+.claim .mrow input { flex: 1; min-width: 0; height: 34px; }
+.claim .lead { margin-top: 14px; font-size: 13px; color: var(--muted-foreground); }
+
+table.sheet { width: 100%; border-collapse: collapse; margin-top: 12px; }
+table.sheet th {
+  position: static; padding: 9px 8px; background: var(--surface-2);
+  border: 1px solid var(--border); font-size: 12px; font-weight: 600;
+  color: var(--muted-foreground); text-align: left; white-space: nowrap;
+}
+table.sheet td { padding: 5px 6px; border: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+table.sheet th.c, table.sheet td.c { text-align: center; }
+table.sheet th.r, table.sheet td.r { text-align: right; }
+table.sheet input {
+  width: 100%; height: 32px; padding: 0 8px; border: none; background: none;
+  box-shadow: none; font: inherit; color: var(--foreground); outline: none;
+}
+table.sheet input:focus { background: #fff; border-radius: 7px; box-shadow: inset 0 0 0 1.6px var(--primary); }
+table.sheet input:disabled { color: var(--muted-foreground); background: none; }
+table.sheet input.c { text-align: center; }
+table.sheet input.r { text-align: right; }
+table.sheet td.tsum { font-weight: 700; background: var(--surface-2); }
+table.sheet td.tsum.grand { color: var(--primary); font-size: 14px; }
+table.sheet .del {
+  width: 28px; height: 28px; border-radius: 7px; border: none; background: none;
+  color: var(--muted-foreground); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+table.sheet .del:hover { color: var(--destructive); background: var(--destructive-soft); }
+
+.note-red { margin-top: 14px; font-size: 12px; line-height: 1.6; color: var(--destructive); }
+
+@media (max-width: 900px) {
+  .claim { padding: 18px; }
+  .claim .meta { grid-template-columns: 1fr; }
+}
+
+/* จอมือถือ: ป้ายชื่อช่องขึ้นบรรทัดบน ค่าอยู่บรรทัดล่างเต็มความกว้าง
+   เดิมป้ายกินความกว้างคงที่ 130px ค่าที่เหลือจึงถูกบีบจนตัดบรรทัดกลางคำ
+   (ดีไซน์ใหม่ 25 ก.ย. 2569) · ข้อมูลที่แก้ไม่ได้จัดเป็นสองช่องต่อแถว ไม่ต้องเลื่อนผ่านทีละบรรทัด */
+@media (max-width: 639px) {
+  .claim { padding: 16px 14px; }
+  .claim .meta { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .claim .mrow { flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; }
+  .claim .mrow > span, .claim .mrow > label { width: auto; font-size: 11.5px; }
+  .claim .mrow > b { font-size: 14px; line-height: 1.35; }
+  /* เรื่องกับป้ายทะเบียนยาวกว่าช่องเดียว จึงกินเต็มแถว */
+  .claim .mrow:first-child, .claim .mrow:last-child { grid-column: 1 / -1; }
+}
+
+/* ═══ ช่องรายละเอียดใบเสนอราคา (วางจาก Word ได้) ═══════════════ */
+.rich {
+  min-height: 190px; max-height: 430px; overflow: auto;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--border); background: #ffffff;
+  box-shadow: inset 0 1px 2px rgb(40 25 60 / 0.05);
+  font: inherit; font-size: 13.5px; line-height: 1.6; color: var(--foreground);
+  outline: none;
+}
+.rich:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgb(219 0 0 / 0.12); }
+.rich:empty::before { content: attr(data-placeholder); color: var(--muted-foreground); }
+.rich p { margin: 0 0 4px; }
+.rich ul, .rich ol { margin: 4px 0 8px; padding-left: 22px; }
+.rich ul { list-style: disc; }
+.rich ol { list-style: decimal; }
+.rich li { margin-bottom: 2px; }
+.rich b, .rich strong { font-weight: 700; }
+.rich i, .rich em { font-style: italic; }
+.rich u { text-decoration: underline; }
+
+/* เส้นแบ่งหน้า — บอกให้เห็นว่าตรงนี้จะขึ้นกระดาษแผ่นใหม่ตอนพิมพ์ */
+.rich hr {
+  height: 0; margin: 12px 0; border: none; border-top: 2px dashed var(--primary);
+  position: relative;
+}
+.rich hr::after {
+  content: "ขึ้นหน้าใหม่";
+  position: absolute; left: 0; top: -8px;
+  padding-right: 8px; background: #fff;
+  font-size: 10px; font-weight: 700; color: var(--primary);
+}
+
+/* เนื้อหาเดียวกันเวลาไปอยู่บนกระดาษ A4 */
+.rich-out p { margin: 0 0 3px; }
+.rich-out ul, .rich-out ol { margin: 3px 0 7px; padding-left: 20px; }
+.rich-out ul { list-style: disc; }
+.rich-out ol { list-style: decimal; }
+.rich-out b, .rich-out strong { font-weight: 700; }
+.rich-out i, .rich-out em { font-style: italic; }
+.rich-out u { text-decoration: underline; }
+.rich-out hr { display: none; }
+
+/* เลขหน้าใต้กระดาษแต่ละแผ่น */
+.sheet-no { display: block; margin-top: 18px; text-align: center; font-size: 11px; color: #8a9099; }
+
+@media print {
+  /* แผ่นที่สองเป็นต้นไปเริ่มกระดาษใหม่จริง */
+  .paper + .paper { break-before: page; page-break-before: always; }
+  .sheet-no { display: none; }
+}
+
+/* แถวที่กรอกไม่ครบ ตอนกดยื่นแล้วยังไม่ผ่าน */
+table.sheet tr.bad td { background: var(--destructive-soft); }
+
+@media print {
+  /* ใบเบิกพิมพ์เป็นเอกสารเปล่า ไม่เอาพื้นกระจกกับกรอบการ์ด */
+  .panel { border: none !important; box-shadow: none !important; background: #fff !important; }
+  .claim { padding: 0; color: #25292f; }
+  .claim .ftitle { font-size: 17px; }
+  table.sheet th { background: #dcdfe4 !important; color: #3a4048; }
+  table.sheet input { color: #25292f; }
+  table.sheet tr.bad td { background: none; }
+  .sign-block { break-inside: avoid; page-break-inside: avoid; }
+}
+
+@media print {
+  /* หน้ากระดาษแคบกว่าเบรกพอยต์ md ถ้าไม่บังคับ ตารางจะหายกลายเป็นการ์ดมือถือ */
+  .print-block { display: block !important; overflow: visible !important; }
+  table.sheet { min-width: 0 !important; font-size: 11px; }
+  table.sheet th, table.sheet td { padding: 5px; }
+  table.sheet input { height: 26px; padding: 0 4px; }
+}
+
+/* ─── แถบบน ───────────────────────────────────────────────────────── */
+/* แถบนี้ sticky อยู่ตลอด เนื้อหาเลื่อนลอดข้างหลังตลอดเวลา
+   ถ้าโปร่งเท่าการ์ดทั่วไป (46%) ตัวหนังสือข้างหลังจะทะลุขึ้นมาปนกับชื่อหน้า
+   จึงทึบกว่าและเบลอแรงกว่า เหมือนเมนูล่างบนมือถือ */
+.app-top {
+  background: var(--card);
+  box-shadow: none;
+}
+
+/* ─── เมนูล่างบนมือถือ ────────────────────────────────────────────── */
+/* ซ่อนไว้ก่อนเสมอ แล้วค่อยเปิดในจอมือถือ — คุมด้วย media query ตรงนี้เลย
+   ห้ามพึ่ง sm:hidden ของ Tailwind เพราะบล็อกนี้อยู่ท้ายไฟล์ มันจะทับ utility */
+.botnav { display: none; }
+
+/* ═══ โหมดมือถือ — ทำตามแบบ (home.html · checkin.html · billing.html ชุด m-*) ═══
+   จอแคบเป็น "แอป" คนละโหมดกับจอคอม: พื้นชมพูอ่อน การ์ดมนใหญ่เงาอมแดง
+   แถบล่างมุมมนพร้อมปุ่มกลมยกนูนตรงกลางสำหรับลงเวลา (เจ้าของสั่ง 25 ก.ย. 2569 ให้ทำตามแบบเป๊ะ)
+   จอคอมไม่ถูกแตะ ยังเป็นธีมพื้นเรียบตามเดิม */
+@media (max-width: 767.98px) {
+  /* ความสูงจริงของแถบล่าง ใช้เป็นที่อ้างอิงที่เดียว — ปุ่มลอยทุกหน้าวัดจากค่านี้
+     เคยเขียนเลข 66px ไว้ตามหน้าต่าง ๆ แล้วแถบโตขึ้นเป็น 74px ปุ่มจึงไปซ่อนอยู่ใต้แถบ */
+  :root { --botbar: calc(74px + env(safe-area-inset-bottom)); }
+  body { background: #fbf5f4; }
+
+  /* การ์ดทุกใบบนมือถือ — มนขึ้น ไม่มีเส้นขอบ เงาอมแดงแบบในแบบ */
+  .glass,
+  .panel {
+    border-radius: 20px;
+    border-color: transparent;
+    box-shadow: 0 1px 2px rgb(120 20 35 / 0.05), 0 12px 28px -18px rgb(120 20 35 / 0.3);
+  }
+
+  /* แถบบน — พื้นทึบสีเดียวกับพื้นหน้า (เจ้าของสั่ง 25 ก.ย. 2569 ว่าอย่าให้ใส)
+     แถบนี้ sticky เนื้อหาเลื่อนลอดอยู่ข้างหลังตลอด ถ้าใสจะเห็นตัวหนังสือทะลุขึ้นมาปนกับชื่อหน้า
+     ปุ่มย้อนกลับเป็นวงกลมขาว ชื่อหน้าอยู่กลาง เหมือนเดิม */
+  .app-top {
+    background: #fbf5f4;
+    border-bottom: 0;
+    box-shadow: none;
+  }
+}
+
+/* แท็บบนมือถือ — ขึ้นบรรทัดใหม่แทนการเลื่อนซ้ายขวา (เจ้าของสั่ง 25 ก.ย. 2569)
+   แท็บที่อยู่นอกจอเท่ากับไม่มี เพราะไม่มีอะไรบอกว่ายังมีต่อ */
+@media (max-width: 767.98px) {
+  /* บนมือถือแท็บขึ้นบรรทัดใหม่ได้ เส้นใต้จึงใช้ไม่ได้ — แท็บแถวบนจะมีเส้น แถวล่างไม่มี
+     เปลี่ยนเป็นปุ่มเม็ดยาแทน อันที่เลือกอยู่เป็นสีแดงทึบ มองออกทันทีไม่ว่าจะตกไปบรรทัดไหน */
+  .tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: 8px;
+    gap: 8px;
+    padding: 10px 0;
+  }
+  .tabs button {
+    padding: 8px 13px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+  }
+  .tabs button.on {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+  .tabs button.on b {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: transparent;
+    color: #fff;
+  }
+}
+
+/* ปุ่มกลุ่มแบบเม็ดยา (.seg) บนมือถือ — ขึ้นบรรทัดใหม่แทนการเลื่อนซ้ายขวา
+   หน้าตัวเลือกในรายการมีบทบาท 8 อัน ถ้าเลื่อนเอา บทบาทท้าย ๆ จะไม่มีใครเห็น */
+@media (max-width: 767.98px) {
+  .seg {
+    flex-wrap: wrap;
+    gap: 4px;
+    border-radius: 16px;
+    padding: 4px;
+  }
+  .seg button { height: 34px; }
+}
+
+/* ต้องชนกับจุดที่แถบข้างโผล่ (md = 768px) พอดี ไม่งั้นช่วงแท็บเล็ตจะไม่มีเมนูเลย */
+@media (max-width: 767.98px) {
+  .botnav {
+    display: grid;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 35;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: end;
+    /* มุมบนมนตามแบบ ไม่มีเส้นขอบ เงาลอยขึ้นด้านบน */
+    border: 0;
+    border-radius: 26px 26px 0 0;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: var(--card);
+    box-shadow: 0 -10px 30px -18px rgb(120 20 35 / 0.45);
+  }
+  /* เมนูผู้ใช้กับกระดิ่งห่อปุ่มไว้ในกล่องของตัวเอง (ต้องใช้อ้างอิงตอนคลิกนอกกล่อง)
+     กล่องนั้นจึงต้องโปร่ง ให้ปุ่มข้างในกลายเป็นช่องในแถบแทน */
+  .botnav > .botnav-slot { display: contents; }
+
+  .botnav > *:not(.botnav-slot),
+  .botnav > .botnav-slot > button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 0;
+    background: none;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+    color: var(--muted-foreground);
+    transition: color 0.15s;
+  }
+  .botnav > *:not(.botnav-slot) > span,
+  .botnav > .botnav-slot > button > span {
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.25;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .botnav > .on,
+  .botnav > .botnav-slot > button.on { color: var(--primary); }
+  .botnav > .on > span,
+  .botnav > .botnav-slot > button.on > span { font-weight: 700; }
+
+  /* ปุ่มกลางยกนูน — หน้าที่ใช้ทุกวันคือลงเวลา จึงอยู่ตรงที่นิ้วโป้งถึงง่ายที่สุด (ตามแบบ .fab) */
+  .botnav > .bn-mid { color: var(--muted-foreground); }
+  .botnav > .bn-mid > i {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    margin-top: -30px;
+    border-radius: 50%;
+    background: linear-gradient(160deg, #e8253c, #a00f26);
+    color: #ffffff;
+    border: 5px solid #fbf5f4;
+    box-shadow: 0 12px 22px -10px rgb(208 2 27 / 0.9);
+  }
+}
+
+/* ═══ เอกสารสำเนาที่ PM เปิดดูในกล่อง — กระดาษทึบ อ่านง่ายบนพื้นกระจก ═══ */
+.paper-lite {
+  padding: 20px 22px 24px;
+  border-radius: 14px;
+  background: var(--card-solid);
+  color: #25292f;
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgb(28 20 45 / 0.06), 0 18px 40px -24px rgb(40 25 60 / 0.4);
+}
+
+/* ═══ ตารางรายการบนมือถือ — คลี่ทีละแถวเป็นการ์ด ═════════════════
+   จอแคบไม่มีที่พอวางหลายคอลัมน์ ถ้าปล่อยให้เลื่อนข้าง คนใช้จะพลาดคอลัมน์ที่อยู่นอกจอ
+   ชื่อคอลัมน์เอามาจาก data-label ที่ติดไว้ที่ td ทุกช่อง (หัวตารางถูกซ่อน)
+   เป็นคลาสแบบเลือกใช้ ไม่บังคับทุกตาราง เพราะบางหน้าเขียนการ์ดมือถือแยกไว้แล้ว */
+@media (max-width: 639px) {
+  .data-table.cards-sm { min-width: 0 !important; display: block; }
+  .data-table.cards-sm > thead { display: none; }
+  .data-table.cards-sm > tbody { display: block; }
+  .data-table.cards-sm > tbody > tr {
+    display: block; margin: 10px 14px; padding: 6px 2px;
+    border: 1px solid var(--border); border-radius: 13px; background: var(--card-solid);
+  }
+  .data-table.cards-sm > tbody > tr > td {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; width: auto; border: none; padding: 7px 13px; text-align: right;
+  }
+  .data-table.cards-sm > tbody > tr > td::before {
+    content: attr(data-label); flex: none; max-width: 44%;
+    color: var(--muted-foreground); font-size: 12px; font-weight: 600;
+    text-align: left; line-height: 1.5;
+  }
+  .data-table.cards-sm > tbody > tr > td:not([data-label])::before { content: none; }
+  .data-table.cards-sm > tbody > tr > td > * { text-align: right; }
+  /* ข้อความยาวในการ์ดขึ้นบรรทัดใหม่ได้ ไม่ต้องตัดท้ายเหมือนในตาราง */
+  .data-table.cards-sm .clip { white-space: normal; }
+
+  /* แถวย่อยที่กางออกมามีตารางของตัวเองอยู่แล้ว ไม่ต้องทำการ์ดซ้อนการ์ด */
+  .data-table.cards-sm > tbody > tr.sub { margin: 0; padding: 0; border: none; background: none; }
+  .data-table.cards-sm > tbody > tr.sub > td { display: block; padding: 0; text-align: left; }
+  .data-table.cards-sm > tbody > tr.sub > td::before { content: none; }
+
+  /* แถว "ไม่พบรายการ" กินเต็มความกว้าง ไม่ต้องมีป้ายกำกับ */
+  .data-table.cards-sm > tbody > tr > td[colspan] { display: block; text-align: center; }
+  .data-table.cards-sm > tbody > tr > td[colspan]::before { content: none; }
+
+  /* ตารางในแถวย่อยยังเป็นตารางอยู่ ให้เลื่อนในกรอบตัวเองแทน */
+  .subwrap { overflow-x: auto; }
+  table.inner { min-width: 560px; }
+}
+
+/* ── ประเภทกิจกรรมในตารางงาน PM ──────────────────────────────────
+   สีของกิจกรรมต้องใช้ได้ทั้งพื้นหลังและเส้นขอบซ้ายพร้อมกัน
+   จึงตั้ง color แล้วให้ border-left-color สืบทอดผ่าน currentColor
+   ส่วนม่วงของ "ส่งมอบงาน" ไม่มีในชุดสีหลัก เพราะเป็นความหมายที่ระบบอื่นไม่ใช้ */
+.k-client  { background: var(--destructive-soft); color: var(--destructive); }
+.k-review  { background: #fdf2e3;                 color: #b26414; }
+.k-meeting { background: #e7ecf7;                 color: #2f55b8; }
+.k-other   { background: #eef0f4;                 color: #4a5568; }
+
+/* ── ปฏิทินเดือนของตารางงาน ────────────────────────────────────────
+   วางเป็นแถวละสัปดาห์ ไม่ใช่ตาราง 7x6 ช่องอิสระ เพราะกิจกรรมข้ามวัน
+   ต้องเป็นแถบเดียวที่พาดข้ามหลายคอลัมน์ ถ้าแต่ละวันเป็นช่องของตัวเอง
+   จะทำได้แค่วาดซ้ำวันละใบ ซึ่งอ่านไม่ออกว่าเป็นกิจกรรมเดียวกัน
+
+   แถวที่ 1 ของกริดสงวนไว้ให้เลขวันที่ แถบกิจกรรมจึงเริ่มที่แถว 2 */
+.wk {
+  position: relative; display: grid; grid-template-columns: repeat(7, 1fr);
+  /* แถวแรก 32px สงวนไว้ให้เลขวันที่ แถบกิจกรรมจะได้ไม่ทับตัวเลข */
+  grid-template-rows: 32px; grid-auto-rows: 22px; row-gap: 3px; align-content: start;
+  /* ทุกสัปดาห์สูงเท่ากัน — จำนวนชั้น (--lanes) มาจากสัปดาห์ที่แน่นที่สุดของเดือน
+     คิดความสูงที่นี่ ไม่ใช่ที่ JS เพราะขนาดหัวช่องกับชั้นแถบต่างกันระหว่างจอใหญ่กับมือถือ
+     ถ้า JS คิดเป็นพิกเซลตายตัว จอมือถือจะเหลือที่ว่างใต้แถบเป็นแถบ ๆ */
+  min-height: calc(40px + var(--lanes, 3) * 25px); padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+/* พื้นหลังของแต่ละวัน วางเป็นชั้นล่างสุดเพื่อให้กดเพิ่มกิจกรรมได้ทั้งช่อง
+   โดยไม่ไปบังแถบกิจกรรมที่ลอยอยู่ข้างบน */
+.wk .lines { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(7, 1fr); z-index: 0; }
+.wk .lines button {
+  border-right: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.12s, box-shadow 0.12s;
+}
+/* เดิมใช้ขาวโปร่ง ซึ่งมองไม่เห็นเลยบนปฏิทินพื้นขาว คนใช้เลยไม่รู้ว่าช่องกดได้ */
+.wk .lines button:hover { background: var(--muted); }
+.wk .lines button.off { background: rgba(0, 0, 0, 0.02); }
+.wk .lines button.off:hover { background: rgba(0, 0, 0, 0.05); }
+/* วันที่เลือกอยู่ — ไฮไลต์ทั้งช่อง ไม่ใช่แค่วงรอบตัวเลขที่มุม */
+.wk .lines button.on {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+.wk .dn {
+  grid-row: 1; z-index: 1; pointer-events: none; justify-self: end; align-self: center; margin-right: 7px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  width: 24px; height: 24px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+/* มุมมองสัปดาห์ — แถวเดียวจึงสูงได้ ให้เห็นนัดซ้อนกันหลายชั้น */
+.wk-week { min-height: 320px; }
+.wk .dn.off { color: var(--muted-foreground); opacity: 0.55; }
+.wk .dn.sun { color: var(--destructive); }
+.wk .dn.today { background: var(--primary); color: #ffffff; font-weight: 700; }
+
+/* แถบกิจกรรม — ต่อเนื่องข้ามวันได้เป็นแถบเดียว ไม่ขาดเป็นท่อน */
+.evbar {
+  z-index: 1; min-width: 0; height: 22px; display: flex; align-items: center; gap: 6px;
+  margin: 0 4px; padding: 0 8px; border-radius: 6px; border: none;
+  border-left: 3px solid currentColor; font-family: inherit; font-size: 10.5px;
+  font-weight: 700; cursor: pointer; text-align: left; overflow: hidden;
+}
+.evbar em { font-style: normal; font-weight: 700; opacity: 0.75; font-variant-numeric: tabular-nums; flex: none; }
+.evbar b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.evbar:hover { filter: brightness(0.96); }
+.evbar.pick { box-shadow: 0 0 0 2px rgba(219, 0, 0, 0.4); }
+.evbar.done { opacity: 0.5; }
+.evbar.done b { text-decoration: line-through; }
+/* ต่อจากสัปดาห์ก่อน / ต่อไปสัปดาห์หน้า — ตัดมุมด้านที่ยังไม่จบให้ดูเชื่อมกัน */
+.evbar.contL { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; padding-left: 9px; }
+.evbar.contR { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.evmore {
+  z-index: 1; align-self: center; justify-self: start; margin-left: 8px; border: none;
+  background: none; font-family: inherit; font-size: 10.5px; font-weight: 700;
+  color: var(--muted-foreground); cursor: pointer; padding: 0;
+}
+.evmore:hover { color: var(--primary); }
+
+/*
+ * จอแคบ — ย่อทุกอย่างลงให้ 7 วันอยู่ในจอเดียวได้
+ * ช่องกว้างราว 50px จึงเหลือที่แค่เลขวันกับแถบกิจกรรมสั้น ๆ
+ * รายละเอียดเต็มอ่านได้จากรายการนัดของวันที่เลือก ซึ่งอยู่ใต้ปฏิทินอยู่แล้ว
+ */
+@media (max-width: 639.98px) {
+  /*
+   * ⚠️ 25 ก.ย. 2569 เจ้าของแจ้งว่า "ดูยาก" — ช่องกว้างราว 50px ใส่ชื่อนัดแล้วถูกตัดเหลือ "ประชุ…"
+   * อ่านไม่ออกสักอัน กลายเป็นตัวหนังสือรกเต็มปฏิทิน
+   * จอแคบจึงเหลือแค่ "ขีดสี" บอกว่าวันนั้นมีนัดกี่รายการและเป็นประเภทไหน
+   * ชื่อกับเวลาเต็ม ๆ อ่านได้จากรายการนัดของวันที่เลือก ซึ่งอยู่ใต้ปฏิทินอยู่แล้ว
+   */
+  .wk {
+    grid-template-rows: 26px; grid-auto-rows: 7px; row-gap: 2px;
+    min-height: calc(31px + var(--lanes, 3) * 9px);
+  }
+  /* จอแคบไม่มีที่ให้แถวสัปดาห์สูง 320px — เอาแค่พอวางขีดได้ครบชั้น */
+  .wk-week { min-height: calc(31px + var(--lanes, 3) * 9px); }
+  .wk .dn {
+    width: 22px; height: 22px; margin-right: 2px; font-size: 11.5px; border-radius: 7px;
+  }
+  /* ขีดสีแทนแถบชื่อ — สีเดิมของนัด ความยาวยังคร่อมหลายวันได้เหมือนเดิม */
+  .evbar {
+    height: 8px; margin: 0 3px; padding: 0; gap: 0;
+    border-left-width: 0; border-radius: 4px;
+    /* พื้นของแถบเป็นสีอ่อนไว้รองตัวหนังสือ พอเหลือแค่ขีดเลยจางจนแทบไม่เห็น
+       ใช้สีตัวหนังสือของนัดนั้นมาเป็นสีขีดแทน (!important เพราะพื้นตั้งมาจาก inline style) */
+    background: currentColor !important;
+  }
+  .evbar em, .evbar b { display: none; }
+  /* ขีดสีเป็นแค่สรุปว่าวันนั้นมีนัด — กดทะลุไปที่ช่องวันเลย จะได้เปิดป็อปอัพของวันนั้น
+     ไม่งั้นขีดบังพื้นที่กดของวัน แล้วกดโดนนัดใบเดียวแทนที่จะเห็นทั้งวัน */
+  .evbar, .evhol { pointer-events: none; }
+  .evbar.contL, .evbar.contR { padding-left: 0; }
+  .evmore { margin-left: 3px; font-size: 9px; align-self: start; }
+  /* ชื่อวันหยุดก็ยาวเกินช่อง — เหลือขีดสีแดงเหมือนกัน กดที่วันแล้วอ่านชื่อในรายการข้างล่าง */
+  .evhol { height: 8px; padding: 0; font-size: 0; border-radius: 4px; }
+}
+
+
+/* ── แถบเครื่องมือที่มีช่องกรอกแบบมีป้ายชื่อ ────────────────────────
+   .tools ตั้ง align-items: center ไว้นอก layer ของ Tailwind คลาส items-end จึงแพ้
+   ช่องที่มีป้ายชื่อสูงกว่าปุ่ม พอจัดกึ่งกลาง ปุ่มเลยลอยสูงกว่าช่องกรอก
+   ตั้งที่นี่ที่เดียว ครอบทุกหน้าที่เขียน items-end ไว้ (ข้อมูลพนักงาน · เงินเดือน · สลิป · โปรเจค)
+
+   ปุ่มสูง 36px แต่ช่องกรอก (.field-control) สูง 38px ขอบล่างตรงกันแล้วหัวยังเหลื่อม
+   จึงยืดปุ่มให้เท่าช่องกรอกด้วย เฉพาะจอกว้าง จอมือถือมีความสูง 42px ของมันเองอยู่แล้ว */
+.tools.items-end { align-items: flex-end; }
+@media (min-width: 640px) {
+  .tools.items-end > .btn,
+  .tools:has(> .field-control) > .btn { height: 38px; }
+}
+
+
+/* ── วันหยุดราชการในตารางงาน ─────────────────────────────────────
+   แถบทึบที่กดไม่ได้ (pointer-events: none) คลิกจึงทะลุไปพื้นหลังของวัน
+   ยังกดเพิ่มกิจกรรมในวันหยุดได้ เพราะบางงานก็ต้องทำวันหยุดจริง */
+.wk .dn.hol { color: var(--destructive); }
+.evhol {
+  z-index: 1; min-width: 0; height: 20px; display: flex; align-items: center;
+  margin: 0 4px; padding: 0 7px; border-radius: 5px; pointer-events: none;
+  background: #fde9ec; color: #b3161f; font-size: 10px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.holstrip { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: -4px 0 12px; font-size: 11.5px; }
+.holstrip b { font-weight: 700; color: var(--muted-foreground); font-size: 10.5px; letter-spacing: .02em; }
+.holstrip span { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; background: #fde9ec; color: #b3161f; font-weight: 600; }
+.holstrip span i { font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.holstrip .none { background: none; color: var(--muted-foreground); padding: 0; font-weight: 500; }
+
+/* ช่องเลือกสีกิจกรรม — ตัวอย่างหน้าตาเดียวกับแถบในปฏิทิน (พื้นอ่อน + ขอบซ้ายสีเข้ม) */
+.cpick {
+  width: 46px; height: 28px; border-radius: 8px; border: none; border-left: 4px solid currentColor;
+  cursor: pointer; padding: 0; position: relative;
+}
+.cpick:hover { filter: brightness(.96); }
+.cpick[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 12px; border: 2px solid currentColor;
+}
+
+
+/* ── ปุ่มแคปซูล (ดูทั้งหมด · เลือกช่วงเวลา) ตามต้นแบบแดชบอร์ด PM ──
+   แยกจาก .pill เดิม ซึ่งเป็นป้ายเล็กในแถวตาราง คนละหน้าที่กัน ใช้สีของธีม */
+.pillbtn {
+  display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: 20px;
+  padding: 5px 12px; font-family: inherit; font-size: 11.5px; font-weight: 600;
+  white-space: nowrap; cursor: pointer; color: var(--primary); background: var(--accent);
+}
+.pillbtn:hover { filter: brightness(.97); }
+/* ตัวที่ไม่ได้เลือกเป็นปุ่มขาวมีขอบ ให้ดูออกว่ากดได้ ไม่ใช่ป้ายเทาเฉย ๆ */
+.pillbtn.mute { color: var(--muted-foreground); background: var(--card-solid); border-color: var(--border); }
+.pillbtn.mute:hover { filter: none; color: var(--primary); border-color: var(--primary); }
+.pillbtn.lg { padding: 6px 13px; font-size: 12.5px; }
+
+
+/* ── พิมพ์เฉพาะเอกสารที่เปิดอยู่ในกล่อง (ปุ่ม "ดาวน์โหลด PDF" ของ Proposal) ──
+   ซ่อนทุกอย่างแล้วเปิดเฉพาะแผ่นเอกสาร กล่องถูก portal ไปที่ body จึงไม่ติดการ์ดอื่นมาด้วย
+   ใส่คลาส print-doc ที่ body เฉพาะตอนสั่งพิมพ์ ไม่กระทบการพิมพ์ใบเสนอราคาหน้าเต็ม */
+@media print {
+  body.print-doc * { visibility: hidden !important; }
+  body.print-doc .paper-lite, body.print-doc .paper-lite * { visibility: visible !important; }
+  body.print-doc .paper-lite { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
+}
+
+/* ── มุมมองของ CEO บนหน้าของฝ่ายอื่น (components/ceo-view.tsx) ──
+   ลิงก์ไปหน้าของฝ่ายอื่นดูเป็นข้อความธรรมดา · ปุ่มที่เปลี่ยนข้อมูลถูกซ่อน */
+.ceo-view [data-ceo-hide] { display: none !important; }
+/* GM เปิดหน้าของ PM แบบดูอย่างเดียว (pm-readonly.tsx) */
+.ro-gm [data-ceo-hide], .ro-gm [data-ro-hide] { display: none !important; }
+.ceo-view a[href]:not([href^="/ceo"]) { cursor: default; }
+.ceo-view a[href]:not([href^="/ceo"]):hover { box-shadow: none; }
+.ceo-view a.lnk[href]:not([href^="/ceo"]) { color: inherit; text-decoration: none; }
+
+/* มือถือ: ปุ่มเล็กและปุ่มสลับให้สูงพอนิ้วกดถนัด (ทุกหน้า) — จอกว้างคงขนาดเดิม */
+@media (max-width: 639px) {
+  .btn.btn-mini { height: 38px; padding: 0 13px; font-size: 12.5px; }
+  .seg button { min-height: 36px; }
+}
+
+/* มือถือ: แถบบนบอกชื่อหน้าอยู่แล้ว ไม่ต้องขึ้นชื่อซ้ำในหน้า เหลือคำอธิบายไว้ (ผู้ใช้สั่ง 23 ก.ย. 2569)
+   ประหยัดพื้นที่จอไปหนึ่งบรรทัดใหญ่ทุกหน้า */
+@media (max-width: 639px) {
+  .bar h1 { display: none; }
+  .bar p { margin-top: 0; }
+  .bar .eyebrow { margin-bottom: 0; }
+}
+
+/* ─── หน้าเข้าสู่ระบบ (ไฟล์ตัวอย่าง login-3d-redwhite.html · 24 ก.ย. 2569) ───
+   แผงแดงไล่เฉดกินพื้นที่ซ้าย ภาพ 3 มิติลอยอยู่บนแผงนั้น
+   แผ่นขาวมุมโค้งซ้อนทับจากกลางจอไปทางขวา ฟอร์มอยู่กึ่งกลางแผ่นขาว */
+.login-stage {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 20px;
+  background: var(--background);
+}
+.login-card {
+  position: relative;
+  width: min(1080px, 100%, calc((100dvh - 48px) * 1.6875));
+  aspect-ratio: 1080 / 640;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 10px;
+  /* ไล่เฉดจากแดงของแบรนด์ (#db0000) ไม่ใช่แดงเลือดหมูของไฟล์ตัวอย่าง — ให้เข้าชุดกับทั้งระบบ */
+  background-image: linear-gradient(168deg, #6b0000 0%, #a80000 40%, #db0000 78%, #f05a4a 100%);
+  background-size: 38% 100%;
+  background-repeat: no-repeat;
+  background-color: #ffffff;
+  box-shadow: 0 30px 70px -35px rgba(120, 0, 0, 0.35);
+}
+.login-brand {
+  position: absolute;
+  z-index: 0;
+  top: 30px;
+  left: 36px;
+  display: flex;
+  width: 30%;
+  max-width: 300px;
+  flex-direction: column;
+  /* ชิดซ้ายเสมอ — ค่าตั้งต้นของ flex คือ stretch ทำให้โลโก้ถูกยืดจนดูเหมือนอยู่กลาง */
+  align-items: flex-start;
+  gap: 26px;
+}
+.login-brand p {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: #ffffff;
+}
+/* ผ้าใบวางทับทั้งใบ แต่กดคลิกทะลุไปยังฟอร์มได้ ฉากเองวาดอยู่ฝั่งซ้าย */
+.login-canvas {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* ไม่ตั้ง z-index ให้แผ่นขาว — ถ้าตั้ง มันจะกลายเป็นชั้นของตัวเอง แล้วภาพ 3 มิติจะถูกบังทั้งใบ
+   ตัวละครในไฟล์ตัวอย่างล้ำเข้ามาบนแผ่นขาวได้ ฟอร์มจึงยกขึ้นเหนือผ้าใบด้วย .login-body แทน */
+.login-sheet {
+  position: absolute;
+  inset: 0 0 0 33.3%;
+  overflow-y: auto;
+  border-radius: 40px 0 0 40px;
+  background: #ffffff;
+  padding: clamp(20px, 4vh, 44px) clamp(24px, 4vw, 56px);
+  display: flex;
+  flex-direction: column;
+  /* ชิดบนแล้วเลื่อนได้ — ถ้าจัดกึ่งกลางแล้วเนื้อหาสูงกว่าแผ่น หัวฟอร์มจะถูกตัดหายไปด้านบน */
+  justify-content: flex-start;
+}
+
+/* เนื้อฟอร์มอยู่เหนือผ้าใบ 3 มิติ กดใช้งานได้ตามปกติ */
+.login-body {
+  position: relative;
+  z-index: 3;
+}
+
+@media (max-width: 640px) {
+  .login-stage { padding: 0; place-items: stretch; }
+  .login-card {
+    aspect-ratio: auto;
+    min-height: 100dvh;
+    border-radius: 0;
+    background-size: 100% 320px;
+    background-image: linear-gradient(160deg, #6b0000 0%, #a80000 45%, #db0000 82%, #f05a4a 100%);
+  }
+  /* จอแคบ: โลโก้กับข้อความชิดซ้ายบน ตัวละครไปอยู่ขวาสุดของแถบแดง (ตามไฟล์ตัวอย่าง) */
+  .login-brand { top: 24px; left: 24px; width: auto; max-width: 58%; gap: 12px; }
+  .login-canvas { height: 330px; }
+  .login-sheet {
+    position: relative;
+    inset: auto;
+    margin-top: 290px;
+    border-radius: 28px 28px 0 0;
+    padding: 28px 22px 32px;
+  }
+}
+
+/* ═══ แดชบอร์ดฝ่ายขายบนมือถือ (/dashboard) — ตามต้นแบบ dashboard (2).html ส่วน .mob · ชุด sd-* ═══
+   จอคอมยังเป็นแดชบอร์ดเดิมทั้งหมด (เจ้าของสั่งให้เปลี่ยนเฉพาะมือถือ) — ใช้กับ components/sales-dashboard-mobile.tsx
+   ไอคอนสี่เหลี่ยมนูน (clay) การ์ดมนใหญ่เงาอมแดง · หัว/กระดิ่ง/แถบล่างเป็นของ app-shell อยู่แล้ว
+   ระบบยังไม่มีโหมดมืด จึงใช้สีสว่างตามต้นแบบตรง ๆ */
+.sd {
+  --sd-ink: #2a1f22; --sd-ink2: #6e6164; --sd-ink3: #736669; /* ≥4.5:1 ทั้งบนขาวและพื้นชมพูอ่อน (ต้นแบบ #A3979A จางเกินอ่าน) */
+  --sd-line: #f2e7e8; --sd-soft: #fbf1f2;
+  --sd-rose: #fde8eb; --sd-rose-d: #c0121f;
+  --sd-sky: #e8f1fd; --sd-sky-d: #1f6fd0;
+  --sd-mint: #e5f5ec; --sd-mint-d: #14875a;
+  --sd-peach: #fff0dd; --sd-peach-d: #b4630b;
+  --sd-shadow: 0 1px 2px rgb(120 20 35 / 0.04), 0 16px 36px -22px rgb(120 20 35 / 0.28);
+  color: var(--sd-ink);
+}
+.sd .clay {
+  --c: #fce3e7; --g: #c0121f;
+  position: relative; flex: none; display: flex; align-items: center; justify-content: center;
+  border-radius: 30%; color: var(--g);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 60%), var(--c);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.05), 0 1px 2px rgb(0 0 0 / 0.06);
+}
+.sd .c-rose { --c: #fce3e7; --g: #c0121f; } .sd .c-sky { --c: #e3eefc; --g: #1f6fd0; }
+.sd .c-mint { --c: #ddf2e6; --g: #14875a; } .sd .c-peach { --c: #fdedd6; --g: #b4630b; }
+.sd .c-lilac { --c: #ece6fa; --g: #5b3fbf; } .sd .c-grey { --c: #efebec; --g: #6e6164; }
+.sd .up { color: var(--sd-mint-d); font-weight: 600; }
+.sd .dn { color: var(--sd-rose-d); font-weight: 600; }
+.sd-chip { font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 9px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sd-chip.rose { background: var(--sd-rose); color: var(--sd-rose-d); }
+.sd-chip.peach { background: var(--sd-peach); color: var(--sd-peach-d); }
+.sd-chip.sky { background: var(--sd-sky); color: var(--sd-sky-d); }
+
+/* ─── มือถือ: แดชบอร์ดแบบแอป (ต้นแบบ .mob) — จุดตัดเดียวกับแถบล่างของ app-shell ─── */
+.sd-mob { display: none; }
+@media (max-width: 767.98px) {
+  .sd-desk { display: none !important; }
+  .sd-mob { display: flex; flex-direction: column; gap: 14px; }
+  .sd-hi { font-size: 13px; color: var(--sd-ink2); padding: 0 2px; }
+  .sd-hero { border-radius: 26px; padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 12px; align-items: center; background: linear-gradient(150deg, #fde3e7, #fbeff1 70%); box-shadow: var(--sd-shadow); }
+  .sd-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sd-chips button { border: 0; height: 28px; padding: 0 11px; border-radius: 999px; background: rgb(255 255 255 / 0.7); font: inherit; font-size: 12px; font-weight: 600; color: var(--sd-ink2); cursor: pointer; }
+  .sd-chips button.on { background: #fff; color: var(--primary); box-shadow: 0 4px 10px -6px rgb(120 20 35 / 0.45); }
+  .sd-hero h2 { font-size: 14px; font-weight: 600; color: var(--sd-ink2); margin-top: 14px; }
+  .sd-hero .v { font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sd-hero .d { font-size: 12px; margin-top: 3px; color: var(--sd-ink2); }
+  .sd-ring { position: relative; width: 112px; height: 112px; }
+  .sd-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .sd-ring .c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .sd-ring .c b { font-size: 22px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .sd-ring .c small { font-size: 10.5px; color: var(--sd-ink2); margin-top: 3px; line-height: 1.25; }
+  .sd-mcal { background: #fff; border-radius: 22px; padding: 14px; box-shadow: var(--sd-shadow); }
+  .sd-mcal .hd { display: flex; align-items: center; justify-content: space-between; }
+  .sd-mcal .hd b { font-size: 16px; }
+  .sd-mcal .hd div { display: flex; gap: 8px; }
+  .sd-mcal .hd button { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--sd-line); background: #fff; color: var(--sd-ink2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .sd-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; text-align: center; }
+  .sd-week button { border: 0; background: none; border-radius: 16px; padding: 6px 0 8px; font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--sd-ink); }
+  .sd-week small { font-size: 11px; color: var(--sd-ink3); }
+  .sd-week b { font-size: 15px; font-weight: 600; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+  .sd-week i { width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+  .sd-week .ev i { background: var(--primary); }
+  .sd-week .today b { box-shadow: inset 0 0 0 1.5px var(--primary); color: var(--primary); }
+  .sd-week .sel { background: var(--sd-rose); }
+  .sd-week .sel b { background: var(--primary); color: #fff; box-shadow: none; }
+  .sd-sec { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .sd-sec h3 { font-size: 16px; font-weight: 700; }
+  .sd-sec a { font-size: 12.5px; font-weight: 600; color: var(--primary); }
+  .sd-mlist { display: flex; flex-direction: column; gap: 10px; }
+  .sd-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #fff; border-radius: 20px; padding: 14px; box-shadow: var(--sd-shadow); color: var(--sd-ink); }
+  .sd-item b { display: block; font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sd-item .meta { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 9px; }
+  .sd-item .end { display: flex; align-items: center; gap: 8px; }
+  .sd-item .end .clay { width: 36px; height: 36px; border-radius: 50%; font-weight: 700; }
+  .sd-go { width: 36px; height: 36px; border-radius: 50%; background: #f7eff1; display: flex; align-items: center; justify-content: center; color: var(--sd-ink2); }
+  .sd-mempty { text-align: center; font-size: 13px; color: var(--sd-ink3); background: #fff; border-radius: 20px; padding: 22px; box-shadow: var(--sd-shadow); }
+}

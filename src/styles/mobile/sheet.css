@@ -1,0 +1,32 @@
+/*
+ * กล่องกลางของระบบ (Sheet ใน lead-dialogs.tsx + LeaveDialog) บนจอแคบกว่า md → แผ่นเลื่อนขึ้นจากล่างจอ
+ * ตามภาษาออกแบบมือถือ: เต็มความกว้าง มุมบน 24px สูงไม่เกิน 92vh หัว 16/18/10 เส้นใต้ #F2EAEC
+ * เนื้อหา 14/18 ปุ่มท้ายสูง 48 มุม 14 กว้างเท่ากัน (สองปุ่ม = 1 : 1.4 ปุ่มหลักอยู่ขวา)
+ * ตัวเลือกจับคลาส ui-sheet-* ที่ตัวกล่องใส่ไว้เอง — หน้าไหนอยากแต่งเพิ่มให้ส่ง className ไปที่ panel
+ * เขียนนอก @layer เพราะ .btn / .glass-solid ใน globals.css อยู่นอก layer คลาส Tailwind ทับไม่ได้
+ * ตั้งแต่ md ขึ้นไปไม่มีกฎในไฟล์นี้ — จอคอมหน้าตาเหมือนเดิมทุกพิกเซล
+ */
+@media (max-width: 767.98px) {
+  .ui-sheet { align-items: flex-end; padding: 0; }
+  .ui-sheet-panel {
+    width: 100%; max-width: none; max-height: 92vh; margin: 0;
+    border: 0; border-radius: 24px 24px 0 0; background: #fff;
+  }
+  .ui-sheet-head { padding: 16px 18px 10px; border-bottom: 1px solid #f2eaec; }
+  .ui-sheet-body { flex: 1 1 auto; min-height: 0; max-height: none; padding: 14px 18px; }
+  /* กล่องที่ไม่มีแถบท้าย — เว้นขอบล่างเผื่อแถบโฮมของเครื่อง */
+  .ui-sheet-body:last-child { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+
+  .ui-sheet-foot {
+    flex-wrap: wrap; justify-content: stretch; gap: 10px;
+    padding: 12px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid #f2eaec; background: #fff;
+  }
+  .ui-sheet-foot .btn { height: 48px; border-radius: 14px; justify-content: center; }
+  .ui-sheet-foot > .btn { flex: 1 1 0; min-width: 0; margin: 0; }
+  /* สองปุ่ม = 1fr 1.4fr — ปุ่มที่สอง (ปุ่มหลัก ขวาสุด) กว้างกว่า */
+  .ui-sheet-foot > button.btn:nth-of-type(2):last-of-type { flex-grow: 1.4; }
+  /* ข้อความสถานะ / ช่องกรอกเพิ่มในแถบท้าย ขึ้นเต็มแถวเหนือปุ่ม */
+  .ui-sheet-foot > :not(.btn) { flex: 1 0 100%; margin: 0; }
+  .ui-sheet-foot > span:not(.btn) { text-align: center; }
+}

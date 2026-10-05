@@ -1,0 +1,161 @@
+/*
+ * หน้าโอทีบนมือถือ (ต้นแบบ attendance.html แท็บล่วงเวลา) — ใช้เฉพาะจอแคบกว่า md
+ * ทุกตัวเลือกอยู่ใต้ .m-ot / .m-ot-sheet / .m-ot-dlg เท่านั้น ไม่กระทบหน้าอื่น
+ * เขียนเป็น CSS นอก @layer เพราะคลาสกลาง (.tag .lnk .btn .glass-solid) ใน globals.css อยู่นอก layer
+ * คลาส Tailwind จึงทับไม่ได้
+ */
+@media (max-width: 767.98px) {
+  .m-ot { color: #2a1f22; }
+
+  /* ── หัว: เดือน + จำนวนคำขอ ซ้าย · ปุ่มปฏิทินกลมขวา ── */
+  .m-ot-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .m-ot-head p { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .m-ot-head p b { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+  .m-ot-head p span { font-size: 13px; color: #8a7e81; white-space: nowrap; }
+  .m-ot-calbtn {
+    width: 42px; height: 42px; flex: none; border-radius: 50%;
+    display: grid; place-items: center;
+    border: 1px solid #efe3e5; background: #fff; color: #2a1f22;
+    box-shadow: 0 4px 10px -6px rgba(90, 20, 35, 0.3);
+  }
+  .m-ot-calbtn svg { width: 20px; height: 20px; }
+  .m-ot-approver { margin-top: 4px; font-size: 12.5px; color: #6e6164; }
+
+  /* ── ป้ายวันที่ที่กรองอยู่ ── */
+  .m-ot-pill {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 12px;
+    height: 36px; padding: 0 6px 0 14px; border-radius: 999px;
+    background: #fdecee; color: #b0101f; font-size: 13px; font-weight: 700;
+  }
+  .m-ot-pill button {
+    width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #b0101f;
+    display: grid; place-items: center;
+  }
+  .m-ot-pill button svg { width: 13px; height: 13px; }
+
+  .m-ot-flash { margin-top: 12px; }
+
+  /* ── ชิปสถานะ ── */
+  .m-ot-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .m-ot-chips button {
+    height: 38px; padding: 0 16px; border-radius: 999px;
+    background: #ede8ea; color: #6e6164; font-size: 13.5px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .m-ot-chips button.on { background: #c8102e; color: #fff; }
+  .m-ot-chips button b { background: transparent; font-weight: 600; opacity: 0.8; }
+
+  /* ── การ์ดคำขอ ── */
+  .m-ot-list { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 0; }
+  .m-ot-empty {
+    background: #fff; border-radius: 20px; padding: 40px 16px; text-align: center;
+    color: #8a7e81; font-size: 13.5px; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .m-ot-card {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "ico dt dt hr"
+      "ico wk wk wk"
+      "line line line line"
+      "tm tm st no"
+      "ac ac ac ac";
+    column-gap: 10px; row-gap: 6px; align-items: center;
+    background: #fff; border-radius: 20px; padding: 14px;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .m-ot-card.hit { box-shadow: inset 0 0 0 2px #c8102e; }
+  .m-ot-card .ico {
+    grid-area: ico; align-self: start;
+    width: 40px; height: 40px; border-radius: 50%; background: #f4eeef; color: #c8102e;
+    display: grid; place-items: center;
+  }
+  .m-ot-card .ico svg { width: 20px; height: 20px; }
+  .m-ot-card .dt { grid-area: dt; font-size: 15px; font-weight: 700; color: #2a1f22; min-width: 0; }
+  .m-ot-card .hr { grid-area: hr; font-size: 15px; font-weight: 700; text-align: right; white-space: nowrap; }
+  .m-ot-card .hr .adj { margin-top: 2px; text-align: right; }
+  .m-ot-card .rsn {
+    grid-area: wk; font-size: 13px; color: #6e6164; line-height: 1.45;
+    overflow-wrap: anywhere; align-self: start;
+  }
+  .m-ot-card .rsn .cm { display: block; margin-top: 2px; font-size: 12px; color: #8a7e81; }
+  .m-ot-card .line { grid-area: line; border: 0; border-top: 1.5px dashed #ece3e5; margin: 6px 0 4px; }
+  .m-ot-card .tm {
+    grid-area: tm; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12.5px; font-weight: 600; color: #6e6164; white-space: nowrap;
+  }
+  .m-ot-card .tm svg { width: 14px; height: 14px; color: #8a7e81; flex: none; }
+  .m-ot-card .st { grid-area: st; justify-self: start; }
+  .m-ot-card .no { grid-area: no; font-size: 12px; color: #9a8e91; text-align: right; white-space: nowrap; }
+  .m-ot-card .ac { grid-area: ac; display: flex; justify-content: flex-end; }
+
+  /* ── ปุ่มลอยขอโอที ── */
+  .m-ot-fab {
+    position: fixed; right: 18px; bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 35;
+    width: 58px; height: 58px; border-radius: 50%;
+    background: #c8102e; color: #fff; display: grid; place-items: center;
+    box-shadow: 0 14px 24px -10px rgba(200, 16, 46, 0.9);
+  }
+  .m-ot-fab svg { width: 24px; height: 24px; }
+
+  /* ── แผ่นเลือกวันจากล่างจอ ── */
+  .m-ot-sheet {
+    position: fixed; inset: 0; z-index: 80;
+    display: flex; align-items: flex-end;
+    background: rgba(40, 20, 25, 0.4);
+  }
+  .m-ot-sheet .panel-s {
+    width: 100%; background: #fff; color: #2a1f22;
+    border-radius: 26px 26px 0 0;
+    padding: 10px 18px calc(22px + env(safe-area-inset-bottom));
+  }
+  .m-ot-sheet .grab { width: 40px; height: 4px; border-radius: 4px; background: #e8dde0; margin: 0 auto 12px; }
+  .m-ot-sheet .sh-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .m-ot-sheet .sh-head b { font-size: 17px; font-weight: 700; }
+  .m-ot-sheet .sh-head button {
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid #efe3e5; background: #fff;
+    display: grid; place-items: center; color: #2a1f22;
+  }
+  .m-ot-sheet .sh-head button:disabled { opacity: 0.35; }
+  .m-ot-sheet .sh-head svg { width: 16px; height: 16px; }
+  .m-ot-sheet .wd, .m-ot-sheet .days { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .m-ot-sheet .wd { margin-top: 12px; }
+  .m-ot-sheet .wd span { text-align: center; font-size: 12px; font-weight: 600; color: #9a8e91; padding: 4px 0; }
+  .m-ot-sheet .days button {
+    height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: 2px; background: none; color: #2a1f22;
+  }
+  .m-ot-sheet .days button:disabled { color: #c9bfc2; }
+  .m-ot-sheet .days button em {
+    width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+    font-style: normal; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .m-ot-sheet .days button.today em { color: #c8102e; font-weight: 700; }
+  .m-ot-sheet .days button.sel em { background: #c8102e; color: #fff; }
+  .m-ot-sheet .days button i { width: 5px; height: 5px; border-radius: 50%; background: #c8102e; }
+  .m-ot-sheet .days button i.off { background: transparent; }
+  .m-ot-sheet .all {
+    width: 100%; height: 48px; margin-top: 12px; border-radius: 14px;
+    background: #f6f0f1; color: #2a1f22; font-size: 14.5px; font-weight: 700;
+  }
+
+  /* ── กล่องขอโอที → แผ่นจากล่างจอ ── */
+  /* จอ 640–767 คลาส sm: ของกล่องจะดันกล่องไปไว้บนจอ — ที่นี่บังคับให้เป็นแผ่นล่างจอทั้งช่วง */
+  .m-ot-dlg { background: rgba(40, 20, 25, 0.4); align-items: flex-end; padding: 0; }
+  .m-ot-dlg .m-ot-dlg-body { max-height: none; min-height: 0; flex: 1 1 auto; }
+  .m-ot-dlg > .m-ot-dlg-panel {
+    max-width: none; max-height: 92vh;
+    border: 0; border-radius: 24px 24px 0 0; background: #fff;
+  }
+  .m-ot-dlg .m-ot-dlg-head { padding: 16px 18px 10px; border-bottom: 1px solid #f2eaec; }
+  .m-ot-dlg .m-ot-dlg-body { padding: 14px 18px; }
+  .m-ot-dlg .m-ot-dlg-foot {
+    border-top: 1px solid #f2eaec;
+    padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
+  }
+  .m-ot-dlg .m-ot-dlg-foot .btn {
+    flex: 1 1 0; height: 48px; border-radius: 14px; font-size: 15px; justify-content: center;
+  }
+}

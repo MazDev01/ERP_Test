@@ -1,0 +1,141 @@
+/*
+ * หน้าเบิกค่าใช้จ่ายบนมือถือ (ต้นแบบ expense.html <style id="ex-mobile">) — ใช้เฉพาะจอแคบกว่า md
+ * 1) รายการใบเบิกแยกเดือน/ประเภท  2) ปุ่ม + เลือกประเภท  3) ฟอร์มเต็มจอแล้วส่งขออนุมัติ
+ * ทุกตัวเลือกอยู่ใต้ .exm / .exm-fab / .exm-sheet / .exm-form / .exm-toast เท่านั้น
+ * เขียนนอก @layer เพราะคลาสกลางใน globals.css อยู่นอก layer คลาส Tailwind จึงทับไม่ได้
+ */
+@media (max-width: 767.98px) {
+  .exm { color: #2a1f22; }
+  .exm-mo { margin: 18px 4px 8px; font-size: 15px; font-weight: 700; }
+  .exm-mo:first-child { margin-top: 4px; }
+  .exm-card {
+    width: 100%; box-sizing: border-box;
+    display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: center;
+    padding: 14px; margin-bottom: 10px; border: 0; border-radius: 20px;
+    background: #fff; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+    font: inherit; text-align: left; color: inherit; cursor: pointer;
+  }
+  .exm-ico {
+    grid-row: 1 / 3; width: 42px; height: 42px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex: none;
+  }
+  .exm-card b { font-size: 15px; font-weight: 700; }
+  .exm-card .amt { font-size: 15px; font-weight: 700; white-space: nowrap; text-align: right; }
+  .exm-card .meta { font-size: 12.5px; color: #8a7e81; }
+  .exm-chip {
+    justify-self: end; display: inline-block; font-size: 12px; font-weight: 700;
+    padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .exm-chip.draft { background: #efebec; color: #5e5255; }
+  .exm-chip.pending { background: #fdedd6; color: #94500a; }
+  .exm-chip.approved { background: #ddf2e6; color: #0f7049; }
+  .exm-chip.rejected { background: #fce3e7; color: #b0101f; }
+  .exm-empty { margin: 30px 0; text-align: center; color: #9a8e91; font-size: 14px; }
+
+  .exm-fab {
+    position: fixed; right: 18px; bottom: calc(100px + env(safe-area-inset-bottom, 0px)); z-index: 40;
+    width: 58px; height: 58px; border: 0; border-radius: 50%;
+    background: #c8102e; color: #fff; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 14px 24px -10px rgba(200, 16, 46, 0.9);
+  }
+
+  /* ── เลือกประเภท ── */
+  .exm-sheet {
+    display: flex; position: fixed; inset: 0; z-index: 90;
+    background: rgba(40, 20, 25, 0.4); align-items: flex-end; color: #2a1f22;
+  }
+  .exm-panel {
+    width: 100%; box-sizing: border-box; background: #fff; border-radius: 26px 26px 0 0;
+    padding: 10px 18px calc(22px + env(safe-area-inset-bottom, 0px));
+  }
+  .exm-grab { width: 40px; height: 4px; border-radius: 4px; background: #e8dde0; margin: 0 auto 12px; }
+  .exm-panel h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; }
+  .exm-panel > p { margin: 0 0 14px; font-size: 13px; color: #8a7e81; }
+  .exm-type {
+    width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 10px;
+    border: 1.5px solid #efe3e5; border-radius: 18px; background: #fff;
+    font: inherit; text-align: left; color: #2a1f22; cursor: pointer;
+  }
+  .exm-type:hover { border-color: #c8102e; }
+  .exm-type .exm-ico { width: 46px; height: 46px; }
+  .exm-type .tx { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .exm-type b { font-size: 15.5px; font-weight: 700; }
+  .exm-type small { font-size: 12.5px; color: #8a7e81; }
+
+  /* ── ฟอร์มกรอกรายละเอียด (เต็มจอ ทับแถบล่าง) ── */
+  .exm-form {
+    display: flex; flex-direction: column; position: fixed; inset: 0; z-index: 80;
+    background: #f7f5f6; color: #2a1f22;
+  }
+  .exm-fhead {
+    display: grid; grid-template-columns: 42px 1fr 42px; align-items: center;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 10px; background: #f7f5f6;
+  }
+  .exm-fhead button {
+    width: 42px; height: 42px; border-radius: 50%; border: 1px solid #efe3e5; background: #fff;
+    display: flex; align-items: center; justify-content: center; padding: 0; color: #2a1f22;
+  }
+  .exm-fhead div { text-align: center; min-width: 0; }
+  .exm-fhead b { display: block; font-size: 16.5px; font-weight: 700; }
+  .exm-fhead small { font-size: 12.5px; color: #8a7e81; }
+  .exm-fbody { flex: 1; overflow-y: auto; padding: 4px 16px 20px; }
+  .exm-box { background: #fff; border-radius: 18px; padding: 14px; margin-bottom: 10px; }
+  .exm-box.bad { box-shadow: 0 0 0 1.5px #b0101f; }
+  .exm-lbl { display: block; font-size: 12px; color: #8a7e81; margin: 0 0 4px; }
+  .exm-in {
+    width: 100%; box-sizing: border-box; height: 44px; padding: 0 12px;
+    border: 1px solid #eae0e2; border-radius: 12px; background: #fff;
+    font: inherit; font-size: 14.5px; color: #2a1f22;
+  }
+  .exm-in:focus { outline: 0; border-color: #c8102e; box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.12); }
+  .exm-in:disabled { background: #f6f1f2; color: #5e5255; }
+  .exm-in.bad { border-color: #b0101f; }
+  .exm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .exm-f { display: block; margin-top: 10px; }
+  .exm-ent-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; min-height: 34px; }
+  .exm-ent-h b { font-size: 14px; font-weight: 700; }
+  .exm-del {
+    width: 34px; height: 34px; border: 0; background: none; color: #8a7e81;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .exm-calc {
+    display: flex; justify-content: space-between; align-items: center; margin-top: 10px;
+    padding: 10px 12px; border-radius: 12px; background: #faf4f5; font-size: 13px; color: #6e6164;
+  }
+  .exm-calc b { font-size: 15px; color: #2a1f22; }
+  .exm-why { margin: 8px 2px 0; font-size: 12px; color: #b0101f; }
+  .exm-file { display: block; position: relative; margin-top: 10px; }
+  .exm-filebtn {
+    display: flex; align-items: center; justify-content: center; height: 44px;
+    border: 1.5px dashed #e3d3d7; border-radius: 12px; font-size: 13.5px; font-weight: 600; color: #6e6164;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 10px;
+  }
+  .exm-file input[type="file"] { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; opacity: 0; cursor: pointer; }
+  .exm-add {
+    width: 100%; height: 46px; border: 1.5px dashed #e3d3d7; border-radius: 14px; background: #fff;
+    font: inherit; font-size: 14px; font-weight: 700; color: #2a1f22; margin-bottom: 10px;
+  }
+  .exm-msg { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; }
+  .exm-msg.red { background: #fce3e7; color: #b0101f; }
+  .exm-msg.amber { background: #fdedd6; color: #94500a; }
+  .exm-err { font-size: 12.5px; color: #b0101f; margin: 0; padding: 8px 16px 0; text-align: center; background: #f7f5f6; }
+  .exm-err ul { margin: 2px 0 0; padding: 0; list-style: none; }
+  .exm-ffoot {
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: #fff; border-top: 1px solid #f0e6e8; display: flex; align-items: center; gap: 12px;
+  }
+  .exm-ffoot .tot { flex: 1; display: flex; flex-direction: column; }
+  .exm-ffoot .tot small { font-size: 12px; color: #8a7e81; }
+  .exm-ffoot .tot b { font-size: 19px; font-weight: 700; }
+  .exm-send {
+    height: 50px; padding: 0 22px; border: 0; border-radius: 14px;
+    background: #c8102e; color: #fff; font: inherit; font-size: 15px; font-weight: 700;
+  }
+  .exm-send.ghost { background: #fff; color: #2a1f22; border: 1px solid #e3d3d7; }
+
+  .exm-toast {
+    display: block; position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%); z-index: 95; padding: 10px 16px; border-radius: 12px;
+    background: #2a1f22; color: #fff; font-size: 13.5px; white-space: nowrap;
+  }
+}

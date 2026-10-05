@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แดชบอร์ดบัญชี — ERP MAZ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --maz-red:#D0021B; --maz-red-deep:#8E0012; --maz-red-bright:#E8253C;
+  --ink:#1F2430; --ink-soft:#68707E; --ink-faint:#9AA1AE;
+  --line:#E8EBF0; --field:#FAFBFC; --white:#FFF;
+  --ok:#14875A;   --ok-bg:#E7F5EE;
+  --late:#C0121F; --late-bg:#FDECEE;
+  --early:#B4630B;--early-bg:#FDF2E3;
+  --leave:#1A3E8C;--leave-bg:#E7ECF7;
+  --miss:#6B7280; --miss-bg:#F1F3F6;
+  --off:#8A919E;  --off-bg:#F1F3F6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'IBM Plex Sans Thai',system-ui,sans-serif;color:var(--ink);background:#F4F5F8;display:flex}
+
+/* ---------- sidebar ---------- */
+.side{width:228px;flex:none;color:var(--white);position:relative;background:linear-gradient(170deg,var(--maz-red-bright),var(--maz-red) 42%,var(--maz-red-deep));display:flex;flex-direction:column;padding:24px 0 18px}
+.side::before{content:'';position:absolute;inset:0;pointer-events:none;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.09) 0 1px,transparent 1px 44px),repeating-linear-gradient(90deg,rgba(255,255,255,.09) 0 1px,transparent 1px 44px);mask-image:linear-gradient(160deg,rgba(0,0,0,1) 8%,rgba(0,0,0,.3) 80%);-webkit-mask-image:linear-gradient(160deg,rgba(0,0,0,1) 8%,rgba(0,0,0,.3) 80%)}
+.side > *{position:relative;z-index:1}
+.logo{padding:0 24px 18px;font-size:21px;font-weight:700;letter-spacing:.05em;flex:none}
+.nav{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px;padding:0 12px 12px;scrollbar-width:thin}
+.nav a{display:flex;align-items:center;gap:11px;padding:8px 13px;border-radius:10px;color:rgba(255,255,255,.82);text-decoration:none;font-size:13.5px;font-weight:500;transition:background .15s,color .15s}
+.nav a:hover{background:rgba(255,255,255,.12);color:var(--white)}
+.nav a.on{background:var(--white);color:var(--maz-red);font-weight:600}
+.nav svg{flex:none}
+.grp{padding:12px 20px 5px;font-size:10.5px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.55)}
+.grp:first-child{padding-top:0}
+
+/* ---------- app bar ---------- */
+.main{position:relative;flex:1;min-width:0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.appbar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 26px;background:var(--white);border-bottom:1px solid var(--line)}
+.appbar .where{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:600;min-width:0}
+.appbar .where svg{color:var(--ink-faint);flex:none}
+.appbar .side-tools{display:flex;align-items:center;gap:9px}
+.iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;flex:none}
+.iconbtn:hover{border-color:var(--ink-faint);color:var(--ink)}
+.iconbtn .dot{position:absolute;top:7px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--maz-red);border:1.5px solid var(--white)}
+.me{display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--white);cursor:pointer;font-family:inherit;flex:none}
+.me:hover{border-color:var(--maz-red)}
+.me .av{width:30px;height:30px;border-radius:50%;background:#FCEBEE;color:var(--maz-red);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
+.menu{position:absolute;top:50px;right:26px;z-index:60;width:236px;background:var(--white);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 40px -18px rgba(60,20,30,.34);padding:8px;opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .18s,transform .18s,visibility .18s}
+.menu.on{opacity:1;visibility:visible;transform:none}
+.mehead{display:flex;align-items:center;gap:11px;padding:8px 10px 10px}
+.mehead .av{width:40px;height:40px;border-radius:50%;background:#FCEBEE;color:var(--maz-red);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex:none}
+.mehead .tx{min-width:0}
+.mehead .tx b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mehead .tx span{display:block;font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+.menu a{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;font-size:13px;color:var(--ink);text-decoration:none}
+.menu a:hover{background:#FDECEE;color:var(--maz-red)}
+.menu a.out{color:var(--maz-red)}
+.menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
+
+/* ---------- page ---------- */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 30px 0;flex-wrap:wrap}
+.bar h1{font-size:23px;font-weight:700}
+.bar p{margin-top:3px;font-size:13.5px;color:var(--ink-soft)}
+.tools{display:flex;align-items:center;gap:10px}
+.mo{display:flex;align-items:center;gap:2px;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:3px}
+.mo button{width:30px;height:30px;border:none;background:none;border-radius:8px;cursor:pointer;color:var(--ink-soft);display:flex;align-items:center;justify-content:center}
+.mo button:hover:not(:disabled){background:var(--field);color:var(--ink)}
+.mo button:disabled{opacity:.35;cursor:default}
+.mo span{padding:0 12px;font-size:13.5px;font-weight:600;min-width:120px;text-align:center}
+.btn{height:36px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.btn:hover{border-color:var(--ink-faint);color:var(--ink)}
+.btn.solid{border:none;background:linear-gradient(100deg,var(--maz-red-bright),var(--maz-red-deep));color:var(--white);height:36px}
+.btn.solid:hover{filter:brightness(1.06)}
+.btn.solid.out{background:linear-gradient(100deg,#3B4657,#20293A)}
+.btn.solid:disabled{cursor:default;background:#E7EAEF;color:var(--ink-faint);filter:none}
+
+
+
+.panel{margin:16px 30px 22px;background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column}
+.strip{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 20px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{background:none;border:none;cursor:pointer;font-family:inherit;padding:14px 13px 12px;font-size:13.5px;font-weight:500;color:var(--ink-soft);border-bottom:2.5px solid transparent}
+.tabs button:hover{color:var(--ink)}
+.tabs button.on{color:var(--maz-red);border-bottom-color:var(--maz-red);font-weight:600}
+.tabs button b{margin-left:6px;font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--field);color:var(--ink-faint)}
+.tabs button.on b{background:#FCEBEE;color:var(--maz-red)}
+.legend{display:flex;align-items:center;gap:12px;padding:8px 0;font-size:11.5px;color:var(--ink-faint);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:50%;flex:none}
+
+.scroll{flex:1;min-height:0;overflow:auto}
+.pages{display:flex;gap:5px}
+.pages button{min-width:31px;height:31px;padding:0 8px;border-radius:8px;cursor:pointer;border:1px solid var(--line);background:var(--white);font-family:inherit;font-size:13px;color:var(--ink-soft)}
+.pages button.on{background:var(--maz-red);border-color:var(--maz-red);color:var(--white);font-weight:600}
+.pages button:disabled{opacity:.35;cursor:default}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{position:sticky;top:0;background:var(--white);z-index:2}
+th{text-align:left;font-size:12px;font-weight:600;color:var(--ink-faint);padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+th.c,td.c{text-align:center}
+th.r,td.r{text-align:right}
+td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.today{background:#FEF7F8}
+.day b{font-weight:600;font-variant-numeric:tabular-nums}
+.day span{display:block;font-size:11.5px;color:var(--ink-faint);margin-top:1px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-faint)}
+.diff{font-size:11.5px;font-weight:600;margin-left:6px}
+.diff.late{color:var(--late)}
+.diff.early{color:var(--early)}
+.sub2{display:block;font-size:11px;color:var(--ink-faint);margin-top:1px;font-weight:400}
+
+.tag{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.t-ok{background:var(--ok-bg);color:var(--ok)}
+.t-late{background:var(--late-bg);color:var(--late)}
+.t-early{background:var(--early-bg);color:var(--early)}
+.t-leave{background:var(--leave-bg);color:var(--leave)}
+.t-miss{background:var(--miss-bg);color:var(--miss)}
+
+.foot{flex:none;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 20px;font-size:13px;color:var(--ink-soft);flex-wrap:wrap}
+.foot .sum{font-variant-numeric:tabular-nums}
+.foot .sum b{color:var(--ink);font-weight:600;margin-left:6px}
+
+:focus-visible{outline:2.5px solid var(--maz-red);outline-offset:3px}
+@media (max-width:1180px){
+  .side{width:74px}
+  .logo{padding:0 0 22px;text-align:center;font-size:17px}
+  .nav a span,.grp{display:none}
+  .nav a{justify-content:center;padding:12px 0}
+  th.hide,td.hide{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+/* ---------- เพิ่มเฉพาะหน้าการลา ---------- */
+.mo span{min-width:150px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:16px 30px 0}
+.card{border-radius:16px;padding:15px 17px;background:var(--white);border:1px solid var(--line)}
+.card .ct{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card .ct b{font-size:13.5px;font-weight:600}
+.card .ct em{font-style:normal;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--field);color:var(--ink-faint)}
+.card .big{margin-top:9px;font-size:27px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.card .big u{text-decoration:none;font-size:13px;font-weight:600;color:var(--ink-soft);margin-left:5px}
+.card .meta{margin-top:3px;font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.card .track{display:block;height:5px;border-radius:4px;background:rgba(31,36,48,.09);margin-top:11px;overflow:hidden}
+.card .track i{display:block;height:100%;border-radius:4px;background:var(--maz-red)}
+
+.t-pend{background:var(--early-bg);color:var(--early)}
+.t-appr{background:var(--ok-bg);color:var(--ok)}
+.t-rej{background:var(--late-bg);color:var(--late)}
+.t-cxl{background:var(--miss-bg);color:var(--miss)}
+
+.over{display:block;margin-top:4px;font-size:11px;font-weight:600;color:var(--late);line-height:1.3}
+.why{display:block;font-size:11px;color:var(--ink-faint);margin-top:2px}
+.clip{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.span{display:block;white-space:nowrap}
+.lnk{background:none;border:none;padding:0;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--maz-red);cursor:pointer}
+.lnk:hover{text-decoration:underline}
+
+/* ---------- กล่องยื่นใบลา ---------- */
+.veil{position:fixed;inset:0;z-index:80;background:rgba(28,20,45,.42);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;visibility:hidden;transition:opacity .18s,visibility .18s}
+.veil.on{opacity:1;visibility:visible}
+.box{width:100%;max-width:560px;max-height:100%;border-radius:18px;background:var(--white);border:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;transform:translateY(8px);transition:transform .18s}
+.veil.on .box{transform:none}
+.bhead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.bhead h2{font-size:16.5px;font-weight:700}
+.bbody{flex:1;min-height:0;overflow:auto;padding:18px 20px}
+.bfoot{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid var(--line)}
+.fld{margin-bottom:15px}
+.fld:last-child{margin-bottom:0}
+.fld > label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input[type=text],input[type=date],input[type=time],select,textarea{width:100%;height:38px;padding:0 11px;border-radius:10px;border:1px solid var(--line);background:var(--field);font-family:inherit;font-size:13.5px;color:var(--ink)}
+textarea{height:78px;padding:9px 11px;resize:vertical;line-height:1.5}
+select{cursor:pointer}
+.seg{display:flex;gap:3px;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{flex:1;height:30px;border:none;background:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:500;color:var(--ink-soft)}
+.seg button.on{background:var(--white);color:var(--maz-red);font-weight:600;box-shadow:0 1px 3px rgba(28,20,45,.1)}
+.calc{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border-radius:11px;background:var(--field);border:1px solid var(--line);font-size:13px}
+.calc b{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px}
+.warn{margin-top:9px;padding:10px 13px;border-radius:11px;font-size:12.5px;line-height:1.55;background:var(--late-bg);color:var(--late);border:1px solid rgba(192,18,31,.2)}
+.warn.hide{display:none}
+.file{display:flex;align-items:center;gap:11px}
+.file input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.file .pick{height:36px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--ink-soft);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;flex:none}
+.file .pick:hover{border-color:var(--ink-faint);color:var(--ink)}
+.file .fname{font-size:12.5px;color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{margin-top:7px;font-size:11.5px;color:var(--ink-faint);line-height:1.5}
+
+/* ---------- ช่องติกเลือกช่วงครึ่งวัน ---------- */
+.picks{display:flex;flex-direction:column;gap:2px}
+.pickone{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;cursor:pointer;font-size:13.5px;font-weight:500;color:var(--ink)}
+.pickone:hover{background:rgba(31,36,48,.05)}
+.pickone.on{color:var(--maz-red);font-weight:600}
+.pickone input{-webkit-appearance:radio;appearance:radio;width:17px;height:17px;margin:0;padding:0;flex:none;accent-color:var(--maz-red);background:none;border:none;box-shadow:none;cursor:pointer}
+.pickone em{font-style:normal;font-size:12px;color:var(--ink-faint);margin-left:auto;font-variant-numeric:tabular-nums}
+.pickone.on em{color:var(--maz-red)}
+
+/* ---------- ตัวเลือกวันที่แบบไทย ---------- */
+.dwrap{position:relative}
+.dwrap input{cursor:pointer;padding-right:36px}
+.dwrap .calbtn{position:absolute;bottom:0;right:0;width:36px;height:38px;border:none;background:none;cursor:pointer;color:var(--ink-faint);display:flex;align-items:center;justify-content:center}
+.dwrap .calbtn:hover{color:var(--maz-red)}
+.cal{position:absolute;z-index:90;top:100%;margin-top:5px;left:0;width:276px;padding:12px;border-radius:14px;background:var(--white);border:1px solid var(--line);box-shadow:0 22px 46px -20px rgba(40,25,60,.42);display:none}
+.cal.on{display:block}
+.cal.up, .tpop.up{top:auto;bottom:100%;margin-top:0;margin-bottom:5px}
+.calhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.calhead b{font-size:13.5px;font-weight:600}
+.calnav{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--white);cursor:pointer;color:var(--ink-soft);display:flex;align-items:center;justify-content:center;flex:none}
+.calnav:hover{border-color:var(--ink-faint);color:var(--ink)}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.calgrid span.dw{display:block;text-align:center;font-size:10.5px;font-weight:700;color:var(--ink-faint);padding:5px 0}
+.calgrid button{height:32px;border:none;background:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.calgrid button:hover{background:var(--field)}
+.calgrid button.off{color:var(--ink-faint)}
+.calgrid button.hol{color:var(--late)}
+.calgrid button.on{background:var(--maz-red);color:var(--white);font-weight:700}
+.calgrid button.blank{visibility:hidden;cursor:default}
+
+/* ---------- ตัวเลือกเวลาแบบ stepper ---------- */
+.twrap{position:relative}
+.twrap input{cursor:pointer;padding-right:36px;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.twrap .clockbtn{position:absolute;bottom:0;right:0;width:36px;height:38px;border:none;background:none;cursor:pointer;color:var(--ink-faint);display:flex;align-items:center;justify-content:center}
+.twrap .clockbtn:hover{color:var(--maz-red)}
+.tpop{position:absolute;z-index:90;top:100%;margin-top:5px;left:0;padding:13px;border-radius:14px;background:var(--white);border:1px solid var(--line);box-shadow:0 22px 46px -20px rgba(40,25,60,.42);display:none}
+.tpop.on{display:flex;align-items:flex-start;gap:8px}
+.tcol{display:flex;flex-direction:column;align-items:center;gap:5px;width:78px}
+.tcol .h{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--ink-faint);margin-bottom:1px}
+.tcol .step{width:34px;height:26px;border:none;background:none;border-radius:7px;cursor:pointer;color:var(--ink-soft);display:flex;align-items:center;justify-content:center;flex:none}
+.tcol .step:hover:not(:disabled){background:var(--field);color:var(--maz-red)}
+.tcol .step:disabled{opacity:.28;cursor:default}
+.tcol .val{display:block;width:100%;text-align:center;font-size:23px;font-weight:700;font-variant-numeric:tabular-nums;padding:7px 0;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--ink)}
+.tsep{font-size:21px;font-weight:700;color:var(--ink-faint);padding-top:47px}
+
+
+/* ---------- เฉพาะหน้าโอที ---------- */
+.cards.two-up{grid-template-columns:repeat(2,1fr)}
+.adj{display:block;margin-top:4px;font-size:11px;font-weight:600;color:var(--early);line-height:1.3}
+
+@media (max-width:900px){
+  .cards{grid-template-columns:1fr;margin:14px 18px 0}
+  .two{grid-template-columns:1fr}
+}
+
+/* ---------- เฉพาะหน้าเบิกค่าใช้จ่าย ---------- */
+.strip .stat{margin-left:auto;padding-right:4px}
+.form{padding:22px 26px 26px}
+.ftitle{text-align:center;font-size:16px;font-weight:700}
+.fsub{text-align:center;font-size:13px;color:var(--ink-soft);margin-top:3px}
+.meta{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px 26px}
+.mrow{display:flex;align-items:center;gap:10px;font-size:13px}
+.mrow > span,.mrow > label{flex:none;width:130px;color:var(--ink-soft);font-weight:600}
+.mrow > b{font-weight:600}
+.mrow input{flex:1;min-width:0;height:34px;padding:0 11px;border-radius:9px;border:1px solid var(--line);background:var(--field);font-family:inherit;font-size:13px;color:var(--ink)}
+.lead{margin-top:14px;font-size:13px;color:var(--ink-soft)}
+
+table.grid{width:100%;border-collapse:collapse;margin-top:12px}
+table.grid th{padding:9px 8px;background:var(--field);border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--ink-soft);text-align:left}
+table.grid td{padding:5px 6px;border:1px solid var(--line);font-size:13px;vertical-align:middle}
+table.grid th.c,table.grid td.c{text-align:center}
+table.grid th.r,table.grid td.r{text-align:right}
+table.grid td.num{font-variant-numeric:tabular-nums}
+table.grid input{width:100%;height:32px;padding:0 8px;border:none;background:none;font-family:inherit;font-size:13px;color:var(--ink);outline:none}
+table.grid input:focus{background:var(--white);box-shadow:inset 0 0 0 1.6px var(--maz-red);border-radius:7px}
+table.grid input:disabled{color:var(--ink-soft)}
+table.grid input.c{text-align:center}
+table.grid input.r{text-align:right}
+table.grid .f-date{cursor:pointer}
+table.grid td.dcell{white-space:nowrap}
+table.grid td.tsum{font-weight:700;background:var(--field)}
+table.grid td.tsum.grand{color:var(--maz-red);font-size:14px}
+table.grid .del{width:28px;height:28px;border-radius:7px;border:none;background:none;color:var(--ink-faint);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+table.grid .del:hover{color:var(--late);background:var(--late-bg)}
+.btn.addrow{margin-top:12px}
+.note-red{margin-top:14px;font-size:12px;color:var(--late)}
+.cal.tablecal{position:absolute;top:0;left:0;z-index:140}
+@media (max-width:900px){ .meta{grid-template-columns:1fr} .form{padding:18px} }
+
+
+/* ---------- เฉพาะแดชบอร์ดบัญชี ---------- */
+.rangeNote{margin-top:3px;font-size:12.5px;color:var(--ink-faint)}
+/* ต้องล้าง padding และ gap ที่กฎ .seg ก่อนหน้าตั้งไว้ ไม่งั้นหน้าตาไม่ตรงกับแดชบอร์ดฝ่ายขาย */
+.seg{display:flex;gap:0;padding:0;background:var(--field);border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none}
+.seg button{flex:none;border:none;border-radius:0;background:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;color:var(--ink-soft);padding:0 11px;height:30px}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--white);color:var(--maz-red);font-weight:600;box-shadow:inset 0 0 0 1px var(--maz-red)}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:13px}
+.card .big2{margin-top:6px;font-size:21px;font-weight:700;letter-spacing:-.01em}
+/* align-items:start ให้แต่ละกล่องสูงเท่าเนื้อหาของตัวเอง ไม่ถูกยืดตามกล่องที่สูงกว่าจนเหลือที่ว่าง */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:0 30px 13px;align-items:start}
+/* โดนัทใช้พื้นที่น้อยกว่า ยกความกว้างที่เหลือให้กราฟแท่งซึ่งมี 5 เดือน */
+.grid2.charts{grid-template-columns:minmax(0,1.34fr) minmax(0,0.66fr)}
+/* .panel เดิมมี margin 16px 30px 22px สำหรับวางเดี่ยวเต็มความกว้าง
+   อยู่ในกริดต้องล้างทิ้ง ไม่งั้นช่องไฟกลายเป็น 30+30+13 = 73px */
+.grid2 > .panel{margin:0}
+.panel.pad{padding:18px 20px}
+.panel h2{font-size:15px;font-weight:700}
+.panel h2.ph{padding:0}
+.panel .sub{margin-top:3px;font-size:12.5px;color:var(--ink-faint)}
+td.blank{padding:40px;text-align:center;color:var(--ink-faint)}
+.late{display:inline-block;padding:1px 9px;border-radius:20px;font-size:11.5px;font-weight:700;background:var(--late-bg);color:var(--late)}
+
+.donutwrap{margin-top:12px;display:flex;align-items:center;gap:18px}
+.donut{width:132px;height:132px;flex:none}
+.donut .ctr{font-family:inherit;text-anchor:middle}
+.donut .ctr .n{font-size:19px;font-weight:700;fill:var(--ink)}
+.donut .ctr .l{font-size:8.5px;fill:var(--ink-faint)}
+.rows{flex:1;min-width:0;display:flex;flex-direction:column;gap:11px}
+.rows .row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.rows .nm{display:flex;align-items:center;gap:8px;color:var(--ink-soft)}
+.rows .nm i{width:9px;height:9px;border-radius:50%;display:block;flex:none}
+.rows .vl{font-weight:600;font-variant-numeric:tabular-nums}
+
+.legend{display:flex;gap:16px;margin-top:10px;font-size:12px;color:var(--ink-soft)}
+.legend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:6px}
+.bars{margin-top:12px;display:flex;align-items:flex-end;gap:10px;height:150px;width:100%}
+.bcol{flex:1 1 0;min-width:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.blb,.bvl{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:clip}
+.bpair{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:5px}
+.bpair .bar{width:15px;border-radius:4px 4px 0 0;display:block}
+.bars.many{gap:5px}
+.bars.many .bpair{gap:2px}
+.bars.many .bpair .bar{width:9px;border-radius:3px 3px 0 0}
+.bars.many .blb{font-size:10px}
+.bars.many .bvl{font-size:9px}
+.bpair .b1{background:#F3B7C0}
+.bpair .b2{background:var(--maz-red)}
+.blb{font-size:11.5px;color:var(--ink-soft)}
+.bvl{display:block;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.bvl em{font-style:normal;margin-right:5px;opacity:.8}
+@media (max-width:1100px){ .cards{grid-template-columns:repeat(2,1fr)} .grid2{grid-template-columns:1fr} }
+@media (max-width:640px){ .cards{grid-template-columns:1fr} .donutwrap{flex-direction:column;align-items:stretch} .donut{align-self:center} }
+
+/* แต่ละรายการอยู่คนละบรรทัด ไม่ใช้เครื่องหมายคั่น */
+.il{display:block;line-height:1.6}
+/* ตัวเลือกที่ถูกเลือกอยู่ในดรอปดาวน์ เป็นสีชมพูอ่อน */
+select option:checked{
+  background:#FDECEE linear-gradient(0deg,#FDECEE,#FDECEE);
+  color:var(--maz-red);font-weight:600}
+/* ================= glass theme ================= */
+body{background:#F2F3F7}
+body::before{
+  content:'';position:fixed;inset:-20%;z-index:-2;pointer-events:none;
+  background:
+    radial-gradient(38% 42% at 78% 6%,  rgba(255,64,92,.34),  transparent 68%),
+    radial-gradient(34% 40% at 12% 18%, rgba(255,140,90,.26), transparent 66%),
+    radial-gradient(42% 44% at 62% 88%, rgba(96,132,255,.28), transparent 68%),
+    radial-gradient(36% 40% at 18% 82%, rgba(120,220,200,.24),transparent 66%),
+    radial-gradient(30% 34% at 92% 60%, rgba(196,120,255,.22),transparent 66%),
+    #F4F5F9;
+  filter:blur(40px);
+}
+/* ชั้นฝ้าบางๆ ให้สีไม่จัดเกินและตัวหนังสืออ่านง่าย */
+body::after{
+  content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:rgba(255,255,255,.34);
+}
+
+/* ---- พื้นผิวกระจก ---- */
+.panel, .card, .kpi, .pcard, .revcard, .box, .edu-wrap{
+  background:rgba(255,255,255,.46);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+  border:1px solid rgba(255,255,255,.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.85),
+    inset 0 -1px 0 rgba(255,255,255,.28),
+    0 1px 2px rgba(28,20,45,.05),
+    0 18px 40px -20px rgba(40,25,60,.30);
+}
+.appbar, .topbar{
+  background:rgba(255,255,255,.52);
+  backdrop-filter:blur(26px) saturate(190%);
+  -webkit-backdrop-filter:blur(26px) saturate(190%);
+  border-bottom:1px solid rgba(255,255,255,.55);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8), 0 8px 26px -20px rgba(40,25,60,.5);
+}
+.menu{
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.search, .seg, .mo, .iconbtn, .me, .btn.ghost, .chip, .drop, .master, .opt, .pages button, .tabs, .sw{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+.iconbtn:hover, .me:hover, .btn.ghost:hover, .chip:hover{background:rgba(255,255,255,.72)}
+.chip.on, .opt.on, .seg button.on, .pages button.on{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+
+/* ปุ่มหลักเป็นแก้วสีแดง ไม่ใช่สีทึบ */
+.btn.solid, .add, .solid{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34), 0 12px 26px -12px rgba(208,2,27,.6);
+}
+
+/* ตารางโปร่ง เห็นชั้นสีด้านหลัง */
+thead th{background:rgba(255,255,255,.62)!important;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+tbody tr:hover{background:rgba(255,255,255,.42)}
+tr.sub td{background:rgba(255,255,255,.34)}
+table.rounds, table.revs, table.inner{background:rgba(255,255,255,.5)}
+
+/* ช่องกรอกทึบกว่าเล็กน้อยเพื่อให้อ่านง่าย */
+input, select, textarea{
+  background:rgba(255,255,255,.58);
+  border-color:rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 2px rgba(40,25,60,.05);
+}
+input:hover, select:hover, textarea:hover{background:rgba(255,255,255,.72)}
+input:focus, select:focus, textarea:focus{background:rgba(255,255,255,.92)}
+input:disabled, input[readonly]{background:rgba(240,241,245,.62)}
+
+/* กระดาษเอกสารต้องทึบ เพราะต้องพิมพ์จริง */
+.paper{
+  background:#FFF;backdrop-filter:none;-webkit-backdrop-filter:none;
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 2px 8px rgba(28,20,45,.06), 0 30px 66px -30px rgba(40,25,60,.45);
+}
+
+@supports not (backdrop-filter: blur(2px)){
+  body::before{filter:none;opacity:.5}
+  .panel,.card,.kpi,.pcard,.revcard,.box,.edu-wrap,.menu,.appbar,.topbar{background:rgba(255,255,255,.94)}
+}
+@media print{ body::before,body::after{display:none} }
+
+/* ===== glass theme — ส่วนเพิ่ม (ใช้ร่วมทุกหน้า) ===== */
+/* บล็อกด้านบนคลุมแค่ .panel .card .menu .appbar ฯลฯ ส่วนนี้เก็บของที่ตกสำรวจ
+   ห้ามเขียน CSS ของหน้าไว้ใต้บล็อกนี้ ไม่งั้นจะไปทับธีมกระจก */
+
+/* กล่องที่ลอยทับเนื้อหา ต้องทึบกว่าการ์ดพื้นหลัง ไม่งั้นตารางด้านหลังทะลุจนอ่านไม่ออก */
+.drawer, .list, .tip, /* เมนูบัญชีลอยทับเนื้อหา ถ้าโปร่งจะเห็นข้อความข้างหลังทะลุจนอ่านยาก ต้องทึบ */
+.menu{
+  background:rgba(255,255,255,.97);
+  backdrop-filter:blur(30px) saturate(180%);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  border-color:rgba(31,36,48,.1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 26px 54px -24px rgba(40,25,60,.45);
+}
+.cal, .tpop{
+  background:rgba(255,255,255,.93);
+  backdrop-filter:blur(34px) saturate(200%);
+  -webkit-backdrop-filter:blur(34px) saturate(200%);
+  border-color:rgba(255,255,255,.8);
+}
+.box{
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(36px) saturate(200%);
+  -webkit-backdrop-filter:blur(36px) saturate(200%);
+  border-color:rgba(255,255,255,.75);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95), 0 34px 70px -28px rgba(40,25,60,.5);
+}
+
+/* ปุ่มเล็กในตารางและแถบเครื่องมือ ให้เป็นแก้วระดับเดียวกับ .iconbtn */
+.act, .del, .mini, .more, .calbar button, .file .rm, .b-line, .pick, .calnav, .tcol .val{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+/* ไม่ใส่ .del:hover เพราะหน้าใบเสนอราคากำหนดพื้นแดงอ่อนตอน hover ไว้แล้ว */
+.act:hover, .mini:hover, .more:hover, .calbar button:hover, .file .rm:hover, .b-line:hover, .pick:hover, .calnav:hover{
+  background:rgba(255,255,255,.76);
+}
+
+/* ปฏิทินไทยและตัวเลือกเวลาแบบ stepper (หน้าการลา) */
+.calgrid button:hover{background:rgba(31,36,48,.06)}
+.calgrid button.on:hover{background:var(--maz-red)}
+.tcol .step:hover:not(:disabled){background:rgba(31,36,48,.06)}
+.card .track{background:rgba(31,36,48,.13)}
+.calc{
+  background:rgba(255,255,255,.5);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(31,36,48,.09);
+}
+.bhead, .bfoot{border-color:rgba(31,36,48,.09)}
+
+/* กล่องไฟล์แนบ */
+.file{
+  background:rgba(255,255,255,.42);
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-color:rgba(255,255,255,.6);
+}
+
+/* หน้าเข้าสู่ระบบ */
+.shell, .formside, .scoop{
+  background:rgba(255,255,255,.6);
+  backdrop-filter:blur(30px) saturate(190%);
+  -webkit-backdrop-filter:blur(30px) saturate(190%);
+}
+
+/* ตัวเครื่องในหน้าตัวอย่างสถานะบัญชี เป็นภาพจำลองมือถือ ต้องทึบ ไม่ใส่กระจก */
+
+@supports not (backdrop-filter: blur(2px)){
+  .drawer,.list,.tip,.cal,.tpop,.box{background:rgba(255,255,255,.98)}
+  .shell,.formside,.scoop{background:rgba(255,255,255,.96)}
+}
+
+/* ===== เลื่อนทั้งคอลัมน์เนื้อหาเป็นก้อนเดียว ไม่เลื่อนในตาราง (ใช้ร่วมทุกหน้า) ===== */
+/* เดิมตารางมีสกรอลล์ของตัวเองซ้อนอยู่ข้างใน เอาออกให้เลื่อนทีเดียวทั้งคอลัมน์
+   ตัวที่เลื่อนคือ .main ไม่ใช่ทั้งหน้า เมนูซ้ายเลยอยู่กับที่เสมอ ไม่ต้องพึ่ง sticky
+   (ถ้าให้ทั้งหน้ายาวแล้วใช้ sticky เมนูจะหายตอนเลื่อนในกรอบพรีวิวที่สูงเท่าเนื้อหา) */
+/* ต้องระบุ main.main เพราะมีปุ่มที่ใช้คลาส main ด้วย ถ้าเขียน .main เฉยๆ ปุ่มจะสูงเท่าจอ */
+main.main{height:100vh;overflow:auto}
+.panel{flex:none}
+.scroll, .scrollarea, .stage{flex:none;min-height:0;overflow:visible}
+/* ยกเว้นดรอปดาวน์ค้นหา ต้องเลื่อนในกล่องตัวเองเหมือนเดิม */
+.list .scrollarea{max-height:264px;overflow:auto}
+/* แถบหัวลอยอยู่บนสุดของคอลัมน์เนื้อหา และต้องทึบพอให้อ่านออกตอนเนื้อหาเลื่อนลอดใต้ */
+.appbar, .topbar{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.86)}
+/* แผงเลื่อนข้างและกล่องซ้อนยังเลื่อนในตัวเองตามเดิม */
+.drawer .body, .bbody{overflow:auto}
+@media print{ .appbar, .topbar{position:static} .main{height:auto;overflow:visible} }
+
+.twrap input.bad, .dwrap input.bad{
+  border-color:var(--late);
+  background:var(--late-bg);
+  color:var(--late);
+  font-weight:600;
+}
+.twrap input.bad ~ .clockbtn, .dwrap input.bad ~ .calbtn{color:var(--late)}
+
+/* ===== มือถือ: ตารางรายการเปลี่ยนเป็นการ์ดต่อแถว (ใช้ร่วมทุกหน้า) =====
+   จอ 640px ลงมา ตารางหลายคอลัมน์อ่านยากมากถ้าเลื่อนแนวนอน
+   จึงพับแต่ละแถวเป็นการ์ด โดยเอาชื่อคอลัมน์จาก th มาไว้หน้าเซลล์
+   ใช้เฉพาะตารางรายการ (.scroll > table) ไม่แตะตารางในเอกสาร A4 หรือตารางกรอกในฟอร์ม */
+@media (max-width:640px){
+  /* ตารางที่แปลงเป็นการ์ดจะแคบพอดีอยู่แล้ว ส่วนตารางกรอกในฟอร์มยังกว้าง ต้องเลื่อนข้างได้
+     ถ้าตั้ง visible เนื้อหาจะถูกตัดหายโดยไม่มีทางเลื่อนไปดู */
+  .scroll{overflow-x:auto}
+  .scroll > table.grid{min-width:760px}
+  .scroll > table:not(.grid){min-width:0!important;display:block;border-collapse:separate;border-spacing:0}
+  .scroll > table:not(.grid) > thead{display:none}
+  .scroll > table:not(.grid) > tbody{display:block}
+
+  .scroll > table:not(.grid) > tbody > tr{
+    display:block;margin:10px 14px;padding:6px 2px;
+    border:1px solid var(--line);border-radius:13px;background:var(--white);
+  }
+  .scroll > table:not(.grid) > tbody > tr > td{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+    width:auto;border:none;padding:7px 13px;text-align:right;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td::before{
+    content:attr(data-label);flex:none;max-width:44%;
+    color:var(--ink-faint);font-size:12px;font-weight:600;text-align:left;line-height:1.5;
+  }
+  .scroll > table:not(.grid) > tbody > tr > td:not([data-label])::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td > *{text-align:right}
+  .scroll > table:not(.grid) > tbody > tr > td .clip{white-space:normal}
+
+  /* แถวว่างและแถวที่กางรายละเอียดคร่อมทั้งแถว ให้แสดงเต็มความกว้างตามเดิม */
+  .scroll > table:not(.grid) > tbody > tr.sub{margin:0;padding:0;border:none;border-radius:0;background:none}
+  .scroll > table:not(.grid) > tbody > tr.sub > td{display:block;text-align:left;padding:0}
+  .scroll > table:not(.grid) > tbody > tr.sub > td::before{content:none}
+  .scroll > table:not(.grid) > tbody > tr > td.blank,
+  .scroll > table:not(.grid) > tbody > tr > td.empty{display:block;text-align:center}
+  .scroll > table:not(.grid) > tbody > tr > td.blank::before,
+  .scroll > table:not(.grid) > tbody > tr > td.empty::before{content:none}
+
+  /* ตารางย่อยข้างในการ์ดยังเป็นตารางปกติ แต่ให้เลื่อนข้างได้ */
+  .subwrap{overflow-x:auto}
+  table.inner{min-width:560px}
+
+
+  /* แถบหัวหน้า: ชื่อหน้ากับปุ่มเครื่องมือไม่พอในบรรทัดเดียว ต้องตกบรรทัดแทนการถูกตัดหาย */
+  .bar{flex-wrap:wrap;gap:12px}
+  .bar .tools{width:100%;flex-wrap:wrap;justify-content:flex-start;gap:9px}
+  .bar .tools .mo{flex:1 1 auto;min-width:0;justify-content:space-between}
+  .bar .tools .btn, .bar .tools .seg{flex:1 1 auto;justify-content:center}
+  .bar h1{font-size:20px}
+
+  /* กริดที่ตั้งความกว้างคอลัมน์เป็นพิกเซลตายตัวไว้ ต้องบีบให้พอดีจอ ไม่งั้นลูกล้นออกไป */
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .profile{grid-template-columns:1fr!important}
+  .facts{grid-template-columns:1fr!important}
+  .two, .two-up, .wide-left, .moneygrid{grid-template-columns:1fr!important}
+
+  /* ตารางอื่นที่ไม่ได้อยู่ในกรอบเลื่อน ต้องมีกรอบเลื่อนของตัวเอง */
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+
+  /* ช่องค้นหาและแถวป้าย-ค่า ตั้งความกว้างตายตัวไว้ ต้องยืดหดตามจอ */
+  .search{width:100%!important;min-width:0}
+  .search input{width:100%;min-width:0}
+  .mrow{flex-wrap:wrap;gap:4px 10px}
+  .mrow > span, .mrow > label{width:auto;min-width:120px}
+  .card, .panel{min-width:0}
+
+  /* ปุ่มยาวๆ อย่างส่งออก Excel และแถวปุ่มด้านขวาให้ตกบรรทัด ไม่ดันออกนอกจอ */
+  .right, .acts, .btnrow{flex-wrap:wrap}
+  .btn{white-space:nowrap}
+  .bars .bar{max-width:100%}
+
+  /* แถบเลขหน้าและปุ่มสาธิตให้ตกบรรทัดแทนที่จะดันออกนอกจอ */
+  .pages{flex-wrap:wrap;justify-content:center}
+  .foot{flex-wrap:wrap;gap:10px}
+  .demo{flex-wrap:wrap;justify-content:center}
+
+  /* ตารางกรอกในกล่องซ้อน ให้เลื่อนข้างในกล่องแทนที่จะดันกล่องล้นจอ */
+  .bbody{overflow-x:auto}
+  .bbody table.grid{min-width:420px}
+
+  /* แท็บบนมือถือให้เลื่อนแนวนอนแทนที่จะตกบรรทัด */
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:none}
+  .strip{flex-wrap:wrap;gap:8px}
+  .legend{display:none}
+}
+
+/* ===== แท็บเล็ต: กล่องที่ตั้งความกว้างเป็นพิกเซลตายตัวต้องยืดหดตามจอด้วย ===== */
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr)!important;max-width:100%!important}
+  .pcard, .scoop{max-width:100%!important;width:auto!important;min-width:0}
+  .pcard table, .card table{display:block;overflow-x:auto;max-width:100%}
+}
+/* ===== จอแคบมาก: การ์ดสรุปเรียงลงคอลัมน์เดียว ===== */
+@media (max-width:420px){
+  .cards{grid-template-columns:minmax(0,1fr)!important}
+  .cards > *{min-width:0}
+  /* กริดหลายคอลัมน์ในแดชบอร์ดเหลือคอลัมน์เดียว ไม่งั้นคอลัมน์กว้างเกินจอ */
+  .grid, .grid2, .grid3{grid-template-columns:minmax(0,1fr)!important}
+  .grid > *, .grid2 > *, .grid3 > *{min-width:0}
+}
+
+/* ===== มือถือ: เปลี่ยนเมนูข้างเป็นแถบล่าง ===== */
+.botnav{display:none}
+.bnsheet{display:none}
+@media (max-width:640px){
+  /* ซ่อนแถบข้าง ใช้แถบล่างแทน เพราะนิ้วโป้งเอื้อมถึงง่ายกว่า */
+  .side{display:none!important}
+  main.main{margin-left:0!important;padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+  body{padding-bottom:0}
+
+  .botnav{
+    display:flex;position:fixed;left:0;right:0;bottom:0;z-index:90;
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.94);
+    backdrop-filter:blur(26px) saturate(180%);
+    -webkit-backdrop-filter:blur(26px) saturate(180%);
+    border-top:1px solid rgba(31,36,48,.09);
+    box-shadow:0 -6px 22px -14px rgba(40,25,60,.35);
+  }
+  .bn-i{
+    flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:6px 2px;border:none;background:none;cursor:pointer;text-decoration:none;
+    font-family:inherit;color:var(--ink-faint);border-radius:12px;
+  }
+  .bn-i svg{width:21px;height:21px;flex:none}
+  .bn-i span{font-size:10.5px;font-weight:600;line-height:1.25;text-align:center;
+             max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bn-i.on{color:var(--maz-red)}
+  .bn-i.on svg{stroke-width:2.1}
+  .bn-i:active{background:rgba(208,2,27,.07)}
+
+  /* แผ่นเมนูทั้งหมด เลื่อนขึ้นจากด้านล่าง */
+  .bnsheet{
+    display:block;position:fixed;inset:0;z-index:95;
+    background:rgba(28,20,45,.42);
+    opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s;
+  }
+  .bnsheet.on{opacity:1;visibility:visible}
+  .bnpanel{
+    position:absolute;left:0;right:0;bottom:0;
+    background:var(--white);border-radius:20px 20px 0 0;
+    padding:10px 16px calc(18px + env(safe-area-inset-bottom));
+    transform:translateY(14px);transition:transform .22s;
+    max-height:78vh;overflow:auto;
+  }
+  .bnsheet.on .bnpanel{transform:translateY(0)}
+  .bngrab{width:38px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+  .bntitle{font-size:13px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;padding-left:4px}
+  .bnlist{display:flex;flex-direction:column}
+  .bnrow{
+    display:flex;align-items:center;gap:13px;padding:13px 12px;border-radius:12px;
+    text-decoration:none;color:var(--ink);font-size:14.5px;font-weight:500;
+  }
+  .bnrow svg{width:19px;height:19px;flex:none;color:var(--ink-faint)}
+  .bnrow.on{background:#FEF5F6;color:var(--maz-red);font-weight:700}
+  .bnrow.on svg{color:var(--maz-red)}
+  .bnrow:active{background:var(--field)}
+}
+</style>
+
+
+<!-- ===== PWA (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#D0021B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ERP MAZ">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<script src="./pwa.js" defer></script>
+<style>.lchart{margin-top:10px}
+.lchart .lsvg{display:block;width:100%;height:auto}
+.lchart text{font-family:inherit}</style>
+<style>
+.bellbox{position:absolute;top:calc(100% + 8px);right:0;width:320px;max-width:calc(100vw - 24px);background:#FFF;border:1px solid var(--line,#E8EBF0);border-radius:14px;box-shadow:0 18px 40px rgba(31,36,48,.14);padding:10px 0;display:none;z-index:80}
+.bellbox.on{display:block}
+.bellh{margin:0;padding:4px 16px 8px;font-size:13px;font-weight:700;color:var(--ink,#1F2430)}
+.bellbox ul{list-style:none;margin:0;padding:0}
+.bellbox li a{display:flex;flex-direction:column;gap:2px;padding:10px 16px;text-decoration:none;color:inherit;border-top:1px solid var(--line,#E8EBF0)}
+.bellbox li a:hover{background:rgba(208,2,27,.04)}
+.bellbox li b{font-size:13px;font-weight:600;color:var(--ink,#1F2430)}
+.bellbox li span{font-size:12px;color:var(--ink-soft,#68707E)}
+.bellbox li em{font-style:normal;font-size:11.5px;color:var(--ink-faint,#9AA1AE)}
+.bellnone{margin:0;padding:10px 16px;font-size:12.5px;color:var(--ink-faint,#9AA1AE)}
+</style>
+</head>
+<body>
+
+<aside class="side">
+  <p class="logo">MAZ</p>
+  <nav class="nav">
+    <p class="grp">บัญชี</p>
+    <a href="acc-dashboard.html" class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7.5" height="8" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.6"/><rect x="3" y="14" width="7.5" height="7" rx="1.6"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.6"/></svg><span>แดชบอร์ด</span></a>
+    <a href="billing.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 3h9l5 5v13H6Z"/><path d="M14 3v6h6"/><path d="M9 13h7M9 17h5"/></svg><span>วางบิล</span></a>
+    <a href="receipts.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 8h6M9 12h6"/></svg><span>ใบเสร็จ/กำกับภาษี</span></a>
+    <a href="wht.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 20 20 4"/><circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/></svg><span>ยื่นภาษี</span></a>
+    <p class="grp">ของฉัน</p>
+    <a href="attendance.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>เวลาทำงาน</span></a>
+    <a href="leave.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="16" rx="2.4"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M9.5 15.5l1.8 1.8 3.4-3.6"/></svg><span>การลา</span></a>
+    <a href="expense.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3v18"/><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.1 4.5 3-2 3-4.5 3-4.5-1.1-4.5-3"/></svg><span>เบิกค่าใช้จ่าย</span></a>
+  </nav>
+</aside>
+
+<main class="main">
+
+  <header class="appbar">
+    <p class="where"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7.5" height="8" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.6"/><rect x="3" y="14" width="7.5" height="7" rx="1.6"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.6"/></svg>แดชบอร์ดบัญชี</p>
+    <div class="side-tools">
+      <button class="iconbtn" aria-label="แจ้งเตือน"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 15v-4a6 6 0 1 0-12 0v4l-1.5 2.5h15Z"/><path d="M10 20h4"/></svg><span class="dot"></span></button>
+      <button class="me" id="meBtn" aria-haspopup="menu" aria-expanded="false" aria-label="บัญชีของฉัน">
+        <span class="av">ชจ</span>
+      </button>
+      <nav class="menu" id="meMenu" role="menu" aria-labelledby="meBtn">
+        <div class="mehead">
+          <span class="av">ชจ</span>
+          <span class="tx"><b>ชนัญชิดา ใจดี</b><span>พนักงานขาย</span></span>
+        </div>
+        <hr>
+        <a href="profile.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>โปรไฟล์ของฉัน</a>
+        <a href="profile.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>เปลี่ยนรหัสผ่าน</a>
+        <hr>
+        <a href="./install.html" role="menuitem"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 21h14"/></svg>ติดตั้งแอป</a>
+        <a href="login.html" role="menuitem" class="out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>ออกจากระบบ</a>
+      </nav>
+    </div>
+  </header>
+
+
+
+
+  <div class="bar">
+    <div>
+      <h1>แดชบอร์ดบัญชี</h1>
+      <p class="rangeNote" id="rangeNote">—</p>
+    </div>
+    <div class="tools">
+      <div class="seg" id="range" role="group" aria-label="ช่วงเวลา">
+        <button data-r="m" class="on">เดือนนี้</button>
+        <button data-r="q">ไตรมาส</button>
+        <button data-r="y">ปีนี้</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="grid2 charts">
+    <section class="panel pad">
+      <h2>วางบิล เทียบ รับชำระ</h2>
+      <p class="sub">ยอดตามใบแจ้งหนี้ที่ออก เทียบกับเงินที่รับเข้าจริงในเดือนเดียวกัน</p>
+      <div class="legend"><span><i style="background:#F3B7C0"></i>วางบิล</span><span><i style="background:var(--maz-red)"></i>รับชำระ</span></div>
+      <div class="lchart" id="bars"></div>
+    </section>
+
+    <section class="panel pad">
+      <h2>สถานะใบแจ้งหนี้</h2>
+      <div class="donutwrap">
+        <svg class="donut" id="donut" viewBox="0 0 120 120" role="img" aria-labelledby="donutTitle"><title id="donutTitle">สัดส่วนสถานะใบแจ้งหนี้</title></svg>
+        <div class="rows" id="donutRows"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <div class="strip"><h2 class="ph">ลูกหนี้ค้างนานสุด</h2></div>
+      <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:150px">เลขที่ใบแจ้งหนี้</th>
+            <th>ลูกค้า</th>
+            <th class="c" style="width:100px">เกินกำหนด</th>
+            <th class="c" style="width:130px">ยอดคงเหลือ</th>
+          </tr>
+        </thead>
+        <tbody id="ageRows"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="strip"><h2 class="ph">หัก ณ ที่จ่าย</h2></div>
+      <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:110px">วันที่จ่าย</th>
+            <th>ผู้รับเงิน</th>
+            <th style="width:110px">แบบยื่น</th>
+            <th class="r" style="width:140px">ภาษีที่หัก (บาท)</th>
+          </tr>
+        </thead>
+        <tbody id="whtRows"></tbody>
+      </table>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  var TODAY=new Date(2026,8,7);              // 7 ก.ย. 2569
+  var cur='m';                               // เดือนนี้ / ไตรมาส / ปีนี้ ใช้ชุดเดียวกับแดชบอร์ดฝ่ายขาย
+  // ช่วงเวลาอิงปฏิทินจริง ไม่ใช่นับถอยหลังเป็นวัน จะได้ตรงกับรอบบัญชี
+  function from(){
+    var y=TODAY.getFullYear(), m=TODAY.getMonth();
+    if(cur==='m') return new Date(y, m, 1);
+    if(cur==='q') return new Date(y, Math.floor(m/3)*3, 1);
+    return new Date(y, 0, 1);
+  }
+  function inRange(iso){
+    if(!iso) return false;
+    var d=parse(iso);
+    return d>=from() && d<=TODAY;
+  }
+
+  var MONFULL=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  var MON=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function pad(n){ return n<10?'0'+n:''+n; }
+  function parse(s){ var p=String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+  function th(iso){ if(!iso) return '—'; var d=parse(iso); return d.getDate()+' '+MON[d.getMonth()]+' '+(d.getFullYear()+543); }
+  function baht(n){ return (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function k(n){ return n>=1000 ? Math.round(n/1000)+'k' : String(Math.round(n)); }
+  function daysLate(iso){ return Math.round((TODAY-parse(iso))/86400000); }
+  function pct(a,b){ return b ? Math.round(a*1000/b)/10 : 0; }
+
+  // TODO: ดึงจาก invoice + payment + wht_certificate ของ Supabase
+  /* ใบแจ้งหนี้และใบเสร็จชุดเดียวกับหน้าวางบิล หน้าใบเสร็จ และแดชบอร์ด CEO (build/acdata.py)
+     รับชำระแล้ว = ออกใบเสร็จแล้ว ยอดคงเหลือและสถานะคำนวณจากใบเสร็จ
+     TODO: ดึงจาก invoice + receipt + wht_certificate ของ Supabase */
+  var RECEIPTS=[
+    {no:'RCP26-070006', inv:'INV26-070022', deal:'DL-2569-0018', seq:1, cus:'เอ็มเทคเอ็นจิเนียริ่ง', date:'2026-07-31', total:40560, vat:true},
+    {no:'RCP26-080005', inv:'INV26-080018', deal:'DL-2569-0017', seq:1, cus:'ครัวคุณจิ', date:'2026-08-18', total:10400, vat:true},
+    {no:'RCP26-090007', inv:'INV26-090014', deal:'DL-2569-0009', seq:1, cus:'สยามพลาสติก', date:'2026-09-05', total:171200, vat:true}
+  ];
+  var INVOICES=[
+    {no:'INV26-090014', deal:'DL-2569-0009', cus:'สยามพลาสติก', seq:1,
+     issue:'2026-09-02', due:'2026-09-15', total:171200, col:[]},
+    {no:'INV26-080018', deal:'DL-2569-0017', cus:'ครัวคุณจิ', seq:1,
+     issue:'2026-08-05', due:'2026-08-20', total:10400, col:[]},
+    {no:'INV26-080031', deal:'DL-2569-0017', cus:'ครัวคุณจิ', seq:2, status:'cancelled',
+     issue:'2026-08-21', due:'2026-09-05', total:15600,
+     col:[{date:'2026-09-01', channel:'โทรศัพท์', result:'ฝ่ายบัญชีลูกค้าแจ้งรอบจ่ายทุกวันที่ 25', next:'2026-09-25'}]},
+    {no:'INV26-070022', deal:'DL-2569-0018', cus:'เอ็มเทคเอ็นจิเนียริ่ง', seq:1,
+     issue:'2026-07-10', due:'2026-07-25', total:40560, col:[]}
+  ];
+
+  // ยอดคงเหลือและสถานะคำนวณจากใบเสร็จ ออกใบเสร็จแล้ว = ชำระครบ  TODO: คำนวณใน query จาก receipt
+  INVOICES.forEach(function(v){
+    var paid=RECEIPTS.some(function(r){ return r.inv===v.no; });
+    if(v.status==='cancelled') return;
+    v.outstanding = paid ? 0 : v.total;
+    v.status = paid ? 'paid' : 'pending';
+  });
+
+  var PAYMENTS=RECEIPTS.map(function(r){ return {inv:r.inv, date:r.date, received:r.total, wht:0}; });
+  // ภาษีหัก ณ ที่จ่ายที่ลูกค้าหักไว้ รอหนังสือรับรอง  TODO: ⚠️ สถานะได้รับหนังสือแล้วยังไม่มีข้อมูลจริง
+  // รายจ่ายที่บริษัทหักภาษีจากผู้รับเงิน ชุดเดียวกับหน้ายื่นภาษี
+  // TODO: ดึงจากตาราง wht_entry ของ Supabase แทนการคัดลอกข้อมูลตัวอย่าง
+  var WHT_TYPES=[
+    {v:'service',   label:'ค่าบริการ / รับจ้างทำของ', rate:3},
+    {v:'rent',      label:'ค่าเช่าทรัพย์สิน',          rate:5},
+    {v:'ads',       label:'ค่าโฆษณา',                rate:2},
+    {v:'transport', label:'ค่าขนส่ง',                rate:1},
+    {v:'pro',       label:'ค่าวิชาชีพอิสระ',           rate:3},
+    {v:'other',     label:'อื่นๆ',                    rate:3}
+  ];
+  var WHT_ROWS=[
+    {date:'2026-09-03', name:'บริษัท ทรู คอร์ปอเรชั่น จำกัด (มหาชน)', tax:'0107536000081',
+     kind:'53', type:'service', base:2500, rate:3, no:'MAZ-WHT-6909-001'},
+    {date:'2026-09-01', name:'บริษัท ไทยเรียลตี้ พร็อพเพอร์ตี้ จำกัด', tax:'0105551000123',
+     kind:'53', type:'rent', base:35000, rate:5, no:'MAZ-WHT-6909-002'},
+    {date:'2026-09-05', name:'นายวิชัย ตั้งใจดี', tax:'1509901234567',
+     kind:'3', type:'pro', base:12000, rate:3, no:''},
+    {date:'2026-08-28', name:'บริษัท เอสเอ็มโลจิสติกส์ จำกัด', tax:'0105549009911',
+     kind:'53', type:'transport', base:8400, rate:1, no:'MAZ-WHT-6908-014'}
+  ];
+  function whtRate(r){ var t=WHT_TYPES.filter(function(x){ return x.v===r.type; })[0]; return r.rate||(t?t.rate:3); }
+  function whtAmount(r){ return Math.round(r.base*whtRate(r))/100; }
+  function whtKind(k){ return k==='53' ? 'ภ.ง.ด.53' : 'ภ.ง.ด.3'; }
+
+  var VST={
+    pending:{label:'รอชำระ',       color:'#E8A33D'},
+    partial:{label:'ชำระบางส่วน',  color:'#2F7DD1'},
+    paid:   {label:'ชำระครบ',      color:'#2E9E6B'}
+  };
+
+
+  function drawCards(){
+    var billed=INVOICES.filter(function(v){ return inRange(v.issue); })
+                       .reduce(function(a,v){ return a+v.total; },0);
+    var got=PAYMENTS.filter(function(p){ return inRange(p.date); })
+                    .reduce(function(a,p){ return a+p.received+p.wht; },0);
+    var openInv=INVOICES.filter(function(v){ return v.outstanding>0; });
+    var out=openInv.reduce(function(a,v){ return a+v.outstanding; },0);
+    var late=INVOICES.filter(function(v){ return v.outstanding>0 && daysLate(v.due)>0; });
+    var lateSum=late.reduce(function(a,v){ return a+v.outstanding; },0);
+    document.getElementById('cards').innerHTML=
+      card('วางบิลในช่วงนี้', baht(billed)+' บาท', 'ยอดตามใบแจ้งหนี้ที่ออกในช่วงที่เลือก')+
+      card('รับชำระในช่วงนี้', baht(got)+' บาท', 'เงินโอนบวกภาษีที่ถูกหัก')+
+      card('ลูกหนี้คงเหลือ', openInv.length+' ใบแจ้งหนี้', 'ยังไม่ได้รับชำระ')+
+      card('เกินกำหนด', baht(lateSum)+' บาท', late.length+' ใบแจ้งหนี้');
+  }
+  function card(t,big,meta){
+    return '<div class="card"><div class="ct"><b>'+esc(t)+'</b></div>'+
+      '<p class="big2">'+esc(big)+'</p><p class="meta">'+esc(meta)+'</p></div>';
+  }
+
+  function drawDonut(){
+    var list=['pending','partial','paid'].map(function(s){
+      return [VST[s].label, INVOICES.filter(function(v){ return v.status===s && inRange(v.issue); }).length, VST[s].color];
+    });
+    var total=list.reduce(function(a,r){ return a+r[1]; },0);
+    var R=45, C=2*Math.PI*R, off=0;
+    var segs=list.filter(function(r){ return r[1]>0; }).map(function(r){
+      var len=total ? C*r[1]/total : 0;
+      var s='<circle class="seg" cx="60" cy="60" r="'+R+'" fill="none" stroke="'+r[2]+'" stroke-width="17"'+
+        ' stroke-dasharray="'+len.toFixed(2)+' '+(C-len).toFixed(2)+'"'+
+        ' stroke-dashoffset="'+(-off).toFixed(2)+'" transform="rotate(-90 60 60)">'+
+        '<title>'+esc(r[0])+' '+r[1]+' ใบ '+pct(r[1],total)+'%</title></circle>';
+      off+=len; return s;
+    }).join('');
+    document.getElementById('donut').innerHTML=
+      '<circle cx="60" cy="60" r="'+R+'" fill="none" stroke="#EDEFF3" stroke-width="17"></circle>'+segs+
+      '<g class="ctr"><text class="n" x="60" y="59">'+total+'</text><text class="l" x="60" y="72">ใบแจ้งหนี้</text></g>';
+    // เหลือแค่ชื่อสถานะ จำนวนกับสัดส่วนดูได้จากการชี้ที่ส่วนโค้ง
+    document.getElementById('donutRows').innerHTML=list.map(function(r){
+      return '<div class="row"><span class="nm"><i style="background:'+r[2]+'"></i>'+esc(r[0])+'</span></div>';
+    }).join('');
+  }
+
+  // 30 วันแบ่งเป็นสัปดาห์ 90 วันและ 1 ปีแบ่งเป็นเดือน
+  function buckets(){
+    var out=[], i;
+    if(cur==='m'){
+      for(i=3;i>=0;i--){
+        var e=new Date(TODAY); e.setDate(e.getDate()-i*7);
+        var st=new Date(e); st.setDate(st.getDate()-6);
+        out.push({label:st.getDate()+'–'+e.getDate()+' '+MON[e.getMonth()], from:st, to:e});
+      }
+    }else{
+      // จำนวนเดือนคิดจากช่วงจริง ไม่ตั้งตายตัว ไม่งั้นเดือนต้นช่วงจะตกหล่นจากกราฟ
+      var f=from();
+      var n=(TODAY.getFullYear()*12+TODAY.getMonth())-(f.getFullYear()*12+f.getMonth())+1;
+      for(i=n-1;i>=0;i--){
+        var d=new Date(TODAY.getFullYear(), TODAY.getMonth()-i, 1);
+        var last=new Date(d.getFullYear(), d.getMonth()+1, 0);
+        // ข้ามปีต้องมีปีกำกับ ไม่งั้นเห็นชื่อเดือนซ้ำกันสองที่
+        var lb=MON[d.getMonth()]+(n>12 ? ' '+String(d.getFullYear()+543).slice(-2) : '');
+        out.push({label:lb, from:d, to:last});
+      }
+    }
+    return out;
+  }
+  function sumBetween(rows, key, pick, b){
+    return rows.filter(function(r){
+      if(!r[key]) return false;
+      var d=parse(r[key]);
+      return d>=b.from && d<=b.to;
+    }).reduce(function(a,r){ return a+pick(r); },0);
+  }
+  // เส้นโค้งผ่านจุดของแต่ละเดือน ใช้เส้นโค้งแบบ Catmull-Rom แปลงเป็น cubic bezier
+  function smoothPath(pts){
+    if(!pts.length) return '';
+    if(pts.length===1) return 'M'+pts[0][0]+' '+pts[0][1];
+    var d='M'+pts[0][0]+' '+pts[0][1];
+    for(var i=0;i<pts.length-1;i++){
+      var p0=pts[i-1]||pts[i], p1=pts[i], p2=pts[i+1], p3=pts[i+2]||pts[i+1];
+      var c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+      var c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+      d+=' C'+c1x.toFixed(1)+' '+c1y.toFixed(1)+','+c2x.toFixed(1)+' '+c2y.toFixed(1)+','+p2[0]+' '+p2[1];
+    }
+    return d;
+  }
+  function drawBars(){
+    var bs=buckets().map(function(b){
+      return [b.label,
+        sumBetween(INVOICES,'issue',function(v){ return v.total; },b),
+        sumBetween(PAYMENTS,'date',function(p){ return p.received+p.wht; },b)];
+    });
+    var el=document.getElementById('bars');
+    var W=Math.max(240, el.clientWidth||700), H=240, L=54, R=16, T=14, B=34;
+    var max=Math.max.apply(null, bs.map(function(m){ return Math.max(m[1],m[2]); }))||1;
+    max=Math.ceil(max/50000)*50000 || 50000;
+    var n=bs.length, step=n>1?(W-L-R)/(n-1):0;
+    function X(i){ return n>1 ? L+i*step : (L+W-R)/2; }
+    function Y(v){ return T+(H-T-B)*(1-v/max); }
+    var g='';
+    for(var s=0;s<=4;s++){
+      var val=max*s/4, yy=Y(val);
+      g+='<line x1="'+L+'" y1="'+yy.toFixed(1)+'" x2="'+(W-R)+'" y2="'+yy.toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>'+
+         '<text x="'+(L-8)+'" y="'+(yy+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="var(--ink-faint)">'+k(val)+'</text>';
+    }
+    // แรเงาใต้เส้น: ใช้เส้นโค้งเดียวกันแล้วปิดรูปลงมาที่เส้นฐาน
+    function series(idx, color, label, fillId){
+      var pts=bs.map(function(m,i){ return [X(i), +Y(m[idx]).toFixed(1)]; });
+      var base=Y(0).toFixed(1);
+      var area=smoothPath(pts)+' L'+pts[pts.length-1][0].toFixed(1)+' '+base+' L'+pts[0][0].toFixed(1)+' '+base+' Z';
+      return '<path d="'+area+'" fill="url(#'+fillId+')" stroke="none"/>'+
+        '<path d="'+smoothPath(pts)+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linecap="round"/>'+
+        pts.map(function(pt,i){
+          return '<circle cx="'+pt[0].toFixed(1)+'" cy="'+pt[1]+'" r="4" fill="#FFF" stroke="'+color+'" stroke-width="2"><title>'+
+            esc(bs[i][0]+' '+label+' '+baht(bs[i][idx])+' บาท')+'</title></circle>';
+        }).join('');
+    }
+    bs.forEach(function(m,i){
+      g+='<text x="'+X(i).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="11.5" fill="var(--ink-soft)">'+esc(m[0])+'</text>';
+    });
+    el.innerHTML='<svg class="lsvg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="วางบิลเทียบรับชำระรายเดือน">'+
+      '<defs>'+
+        '<linearGradient id="gBill" x1="0" y1="0" x2="0" y2="1">'+
+          '<stop offset="0%" stop-color="#F3B7C0" stop-opacity=".45"/><stop offset="100%" stop-color="#F3B7C0" stop-opacity="0"/>'+
+        '</linearGradient>'+
+        '<linearGradient id="gPaid" x1="0" y1="0" x2="0" y2="1">'+
+          '<stop offset="0%" stop-color="#D0021B" stop-opacity=".28"/><stop offset="100%" stop-color="#D0021B" stop-opacity="0"/>'+
+        '</linearGradient>'+
+      '</defs>'+
+      g+series(1,'#F3B7C0','วางบิล','gBill')+series(2,'var(--maz-red)','รับชำระ','gPaid')+'</svg>';
+  }
+
+  var _rz=null;
+  window.addEventListener('resize', function(){ clearTimeout(_rz); _rz=setTimeout(drawBars,150); });
+
+  function drawAging(){
+    var list=INVOICES.filter(function(v){ return v.outstanding>0 && daysLate(v.due)>0; })
+                     .sort(function(a,b){ return daysLate(b.due)-daysLate(a.due); }).slice(0,5);
+    document.getElementById('ageRows').innerHTML = list.length ? list.map(function(v){
+      return '<tr><td class="day"><b>'+esc(v.no)+'</b></td>'+
+        '<td>'+esc(v.cus)+'</td>'+
+        '<td class="c"><span class="late">'+daysLate(v.due)+' วัน</span></td>'+
+        '<td class="c num"><b style="font-weight:600">'+baht(v.outstanding)+'</b></td></tr>';
+    }).join('') : '<tr><td colspan="4" class="blank">ไม่มีใบแจ้งหนี้ที่เกินกำหนด</td></tr>';
+  }
+
+  function drawWht(){
+    var list=WHT_ROWS.filter(function(r){ return inRange(r.date); })
+                     .sort(function(x,y){ return x.date<y.date?1:-1; }).slice(0,5);
+    document.getElementById('whtRows').innerHTML = list.length ? list.map(function(r){
+      return '<tr><td class="day"><b>'+esc(th(r.date))+'</b></td>'+
+        '<td>'+esc(r.name)+'</td>'+
+        '<td><span class="span">'+esc(whtKind(r.kind))+'</span></td>'+
+        '<td class="r num"><b style="font-weight:600">'+baht(whtAmount(r))+'</b></td></tr>';
+    }).join('') : '<tr><td colspan="4" class="blank">ไม่มีรายการหักภาษีในช่วงนี้</td></tr>';
+  }
+
+  function render(){
+    var f=from();
+    var Q=['มกราคม – มีนาคม','เมษายน – มิถุนายน','กรกฎาคม – กันยายน','ตุลาคม – ธันวาคม'];
+    var MF=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+    var y=TODAY.getFullYear()+543;
+    document.getElementById('rangeNote').textContent =
+      cur==='m' ? MF[TODAY.getMonth()]+' '+y
+    : cur==='q' ? 'ไตรมาส '+(Math.floor(TODAY.getMonth()/3)+1)+' '+Q[Math.floor(TODAY.getMonth()/3)]+' '+y
+    :             'ปี '+y+' มกราคม – '+MF[TODAY.getMonth()]+' '+y;
+    drawCards(); drawDonut(); drawBars(); drawAging(); drawWht();
+  }
+
+  document.getElementById('range').addEventListener('click', function(e){
+    var b=e.target.closest('button[data-r]'); if(!b) return;
+    cur=b.getAttribute('data-r');
+    Array.prototype.forEach.call(this.children, function(x){ x.classList.toggle('on', x===b); });
+    render();
+  });
+
+  // ---------- เมนูบัญชี ----------
+  var meBtn=document.getElementById('meBtn'), meMenu=document.getElementById('meMenu');
+  function closeMe(){ meMenu.classList.remove('on'); meBtn.setAttribute('aria-expanded','false'); }
+  meBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var open=!meMenu.classList.contains('on');
+    meMenu.classList.toggle('on',open);
+    meBtn.setAttribute('aria-expanded', open?'true':'false');
+  });
+  document.addEventListener('click', function(e){ if(!meMenu.contains(e.target)) closeMe(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeMe(); });
+
+  render();
+})();
+</script>
+<!-- ===== ตารางเป็นการ์ดบนมือถือ (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<script>
+(function(){
+  // บนจอแคบตารางถูกจัดใหม่เป็นการ์ด แต่ละเซลล์ต้องมีป้ายชื่อคอลัมน์ของตัวเอง
+  // เพราะหัวตารางถูกซ่อน จึงคัดชื่อจาก th มาใส่เป็น data-label ให้ทุก td
+  function label(t){
+    var ths = t.querySelectorAll(':scope > thead > tr > th');
+    if(!ths.length) return;
+    var rows = t.querySelectorAll(':scope > tbody > tr');
+    Array.prototype.forEach.call(rows, function(tr){
+      if(tr.classList.contains('sub')) return;          // แถวที่กางรายละเอียดคร่อมทั้งแถว ไม่ต้องมีป้าย
+      Array.prototype.forEach.call(tr.children, function(td, i){
+        if(!ths[i]) return;
+        var txt = ths[i].textContent.trim();
+        if(txt) td.setAttribute('data-label', txt);
+        else td.removeAttribute('data-label');
+      });
+    });
+  }
+  function run(){
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table'), label);
+  }
+  run();
+  // ตารางถูกวาดใหม่ด้วย JS ตลอด ต้องติดป้ายใหม่ทุกครั้งที่แถวเปลี่ยน
+  if(window.MutationObserver){
+    var mo = new MutationObserver(run);
+    Array.prototype.forEach.call(document.querySelectorAll('.scroll > table > tbody'), function(tb){
+      mo.observe(tb, {childList:true});
+    });
+  }
+})();
+</script>
+
+<!-- ===== แถบเมนูล่างบนมือถือ (ใส่ร่วมทุกหน้าโดย apply_glass.py) ===== -->
+<script>
+(function(){
+  var side = document.querySelector('.side .nav');
+  if(!side) return;
+
+  var links = Array.prototype.slice.call(side.querySelectorAll('a'));
+  if(!links.length) return;
+
+  // เอา 4 เมนูแรกขึ้นแถบล่าง ที่เหลือไปอยู่ในปุ่ม "อื่นๆ"
+  var MAIN = 4;
+  var main = links.slice(0, MAIN), rest = links.slice(MAIN);
+
+  function iconOf(a){
+    var svg = a.querySelector('svg');
+    return svg ? svg.outerHTML : '';
+  }
+  function labelOf(a){
+    var s = a.querySelector('span');
+    return s ? s.textContent.trim() : a.textContent.trim();
+  }
+
+  var bn = document.createElement('nav');
+  bn.className = 'botnav';
+  bn.setAttribute('aria-label','เมนูหลัก');
+
+  bn.innerHTML = main.map(function(a){
+    return '<a href="'+a.getAttribute('href')+'" class="bn-i'+(a.classList.contains('on')?' on':'')+'">'+
+      iconOf(a)+'<span>'+labelOf(a)+'</span></a>';
+  }).join('') +
+  (rest.length
+    ? '<button type="button" class="bn-i" id="bnMore" aria-haspopup="true" aria-expanded="false">'+
+      '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">'+
+      '<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>'+
+      '<circle cx="19" cy="12" r="1.4" fill="currentColor"/></svg><span>อื่นๆ</span></button>'
+    : '');
+  document.body.appendChild(bn);
+
+  if(rest.length){
+    var sheet = document.createElement('div');
+    sheet.className = 'bnsheet';
+    sheet.innerHTML =
+      '<div class="bnpanel" role="menu">'+
+        '<div class="bngrab"></div>'+
+        '<p class="bntitle">เมนูทั้งหมด</p>'+
+        '<div class="bnlist">'+
+          links.map(function(a){
+            return '<a href="'+a.getAttribute('href')+'" class="bnrow'+(a.classList.contains('on')?' on':'')+'" role="menuitem">'+
+              iconOf(a)+'<span>'+labelOf(a)+'</span></a>';
+          }).join('')+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(sheet);
+
+    var moreBtn = document.getElementById('bnMore');
+    function open(){ sheet.classList.add('on'); moreBtn.setAttribute('aria-expanded','true'); }
+    function close(){ sheet.classList.remove('on'); moreBtn.setAttribute('aria-expanded','false'); }
+    moreBtn.addEventListener('click', function(e){ e.stopPropagation(); sheet.classList.contains('on')?close():open(); });
+    sheet.addEventListener('click', function(e){ if(e.target===sheet) close(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+    // ถ้าเมนูที่กำลังเปิดอยู่ไม่ได้อยู่ใน 4 อันแรก ให้ปุ่มอื่นๆ ติดสถานะแทน
+    if(rest.some(function(a){ return a.classList.contains('on'); })) moreBtn.classList.add('on');
+  }
+})();
+</script>
+
+<script>
+(function(){
+  /* กระดิ่งแจ้งเตือน รายการตัวอย่างแยกตามฝ่ายของหน้านี้
+     TODO: อ่านจริงจากตาราง notification ของผู้ใช้ที่ล็อกอิน (ยังไม่มีใน ERD) และบันทึกว่าอ่านแล้ว */
+  var ROLE='acc', ALL={
+  sales:[
+    {t:'ใบเสนอราคา MAZ-2569-0041 จะหมดอายุในอีก 3 วัน', s:'วีพีโลจิสติกส์ ยังไม่ได้ส่งไปวางบิล', at:'วันนี้', href:'quotations.html'},
+    {t:'ข้อเสนอรอบที่ 2 ของ PS-2569-0031 เสร็จแล้ว', s:'ปิยะวัฒน์ (SA) ส่งกลับมาให้ออกใบเสนอราคา', at:'เมื่อวาน', href:'presales.html'}
+  ],
+  acc:[
+    {t:'มีดีลใหม่รอวางบิล', s:'พูลผลอะไหล่ ยังไม่ได้แบ่งงวด', at:'วันนี้', href:'billing.html'},
+    {t:'ใบแจ้งหนี้เลยกำหนดชำระ', s:'มีใบที่ลูกค้ายังไม่ชำระหลังครบกำหนด', at:'เมื่อวาน', href:'billing.html?tab=due'}
+  ],
+  hr:[
+    {t:'ยอดเงินเดือนรอ CEO อนุมัติ', s:'ปิดรอบได้เมื่อ CEO อนุมัติยอดแล้ว', at:'วันนี้', href:'hr-payroll.html'},
+    {t:'นักศึกษาฝึกงานยื่นใบลา', s:'ณัฐริกา ใจอารีย์ ลากิจ 11 ก.ย. 2569', at:'วันนี้', href:'hr-dashboard.html'}
+  ],
+  pm:[
+    {t:'มีงานเข้าใหม่รอรับ 3 งาน', s:'ลูกค้าชำระงวดแรกแล้ว เอกสารจากฝ่ายขายติดมาด้วย', at:'วันนี้', href:'pm-inbox.html'},
+    {t:'มีงานรอตรวจ', s:'พนักงานส่งงานให้ตรวจแล้ว', at:'เมื่อวาน', href:'pm-reviews.html'}
+  ],
+  ps:[
+    {t:'มีคำขอใหม่รอรับงาน', s:'มั่นคงก่อสร้าง ต้องการวันที่ 12 ก.ย. 2569', at:'วันนี้', href:'presales-work.html'},
+    {t:'ฝ่ายขายส่งข้อมูลเพิ่มแล้ว', s:'วีพีโลจิสติกส์ ตอบเรื่องจำนวนรถที่ใช้จริง', at:'เมื่อวาน', href:'presales-work.html'}
+  ],
+  ceo:[
+    {t:'ยอดเงินเดือนรอบสิงหาคม 2569 รออนุมัติ', s:'ฝ่ายบุคคลส่งมา 2 กลุ่ม', at:'วันนี้', href:'ceo-approvals.html'},
+    {t:'คำขอทำงานล่วงเวลารออนุมัติ', s:'ตำแหน่ง SA, Dev และ Website', at:'เมื่อวาน', href:'ceo-approvals.html'}
+  ]
+}, list=ALL[ROLE]||[], read=false;
+  var btn=document.querySelector('.iconbtn[aria-label="แจ้งเตือน"]'); if(!btn) return;
+  btn.setAttribute('aria-haspopup','true'); btn.setAttribute('aria-expanded','false');
+  var box=document.createElement('div');
+  box.className='bellbox'; box.setAttribute('role','dialog'); box.setAttribute('aria-label','การแจ้งเตือน');
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  box.innerHTML='<p class="bellh">การแจ้งเตือน</p>'+(list.length ? '<ul>'+list.map(function(n){
+      return '<li><a href="'+esc(n.href)+'"><b>'+esc(n.t)+'</b><span>'+esc(n.s)+'</span><em>'+esc(n.at)+'</em></a></li>';
+    }).join('')+'</ul>' : '<p class="bellnone">ไม่มีการแจ้งเตือนใหม่</p>');
+  btn.parentNode.style.position='relative';
+  btn.parentNode.appendChild(box);
+  function close(){ box.classList.remove('on'); btn.setAttribute('aria-expanded','false'); }
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var o=!box.classList.contains('on');
+    box.classList.toggle('on',o); btn.setAttribute('aria-expanded',o?'true':'false');
+    // เปิดดูแล้วถือว่าอ่านแล้ว จุดแดงบนกระดิ่งหายไป
+    if(o && !read){ read=true; var d=btn.querySelector('.dot'); if(d) d.style.display='none'; }
+  });
+  box.addEventListener('click', function(e){ e.stopPropagation(); });
+  document.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+/* ─── รายละเอียดผู้สนใจ บนมือถือ (ต้นแบบ lead-detail.html ≤760px) ───
+   ทุกตัวเลือกอยู่ใต้ .ld-m และอยู่ใน media query — จอคอมไม่ถูกแตะ
+   การซ่อน/แสดงทำที่ wrapper ด้วย md:hidden / max-md:hidden ไม่ตั้ง display ของ wrapper ที่นี่
+   (CSS นอก @layer ชนะคลาส hidden ของ Tailwind) */
+@media (max-width: 767.98px) {
+  /* หัวเรื่อง: ชื่อ + ป้ายสถานะซ้าย ปุ่มสร้างใบเสนอราคาขวาคร่อมสองแถว */
+  .ld-m .ld-title {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "nm btn" "tg btn";
+    column-gap: 10px;
+    row-gap: 4px;
+    align-items: center;
+  }
+  .ld-m .ld-title h1 {
+    grid-area: nm;
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 700;
+    white-space: normal;
+    color: #2a1f22;
+  }
+  .ld-m .ld-title .ld-tg { grid-area: tg; justify-self: start; }
+  .ld-m .ld-title .btn.ld-q {
+    grid-area: btn;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    gap: 5px;
+    box-shadow: none;
+  }
+  .ld-m .ld-title .btn.ld-q svg { width: 14px; height: 14px; }
+
+  /* ปุ่มที่เหลือย้ายไปท้ายหน้า */
+  .ld-m .ld-bottom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    /* อยู่ในกริด gap 12px อยู่แล้ว รวมเป็น 14px ตามต้นแบบ */
+    margin: 2px 0 0;
+  }
+  .ld-m .ld-bottom .btn {
+    height: 46px;
+    border-radius: 12px;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  /* การ์ด */
+  .ld-m .ld-card {
+    margin: 0;
+    border-radius: 20px;
+    border: 0;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+    padding: 16px;
+  }
+  .ld-m .ld-card h2 { font-size: 15px; }
+
+  /* แท็บในการ์ด → ชิป */
+  .ld-m .ld-card .tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0;
+    border: 0;
+    padding: 0 0 10px;
+    overflow-x: auto;
+  }
+  .ld-m .ld-card .tabs button {
+    flex: none;
+    height: 36px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: #ede8ea;
+    color: #6e6164;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ld-m .ld-card .tabs button.on { background: #c8102e; color: #fff; }
+
+  /* ไทม์ไลน์การติดต่อแนวนอน — เก่าซ้าย ใหม่/นัดถัดไปขวา */
+  .ld-m .ld-tl {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 6px 2px 4px;
+  }
+  .ld-m .ld-tl::-webkit-scrollbar { display: none; }
+  .ld-m .ld-tl > .ev {
+    position: relative;
+    flex: 0 0 min(200px, 50%);
+    padding: 26px 12px 0 0;
+  }
+  .ld-m .ld-tl > .ev::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 7px;
+    height: 2px;
+    background: #e9dee1;
+  }
+  .ld-m .ld-tl > .ev:first-child::before { right: auto; width: 16px; }
+  .ld-m .ld-tl > .ev::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #c8102e;
+    box-shadow: 0 0 0 4px #fdecee;
+  }
+  .ld-m .ld-tl > .ev.next::after { background: #fff; border: 2px solid #c8102e; }
+  .ld-m .ld-tl .when {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #2a1f22;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+  .ld-m .ld-tl .when .chan {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #f3eef0;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6e6164;
+  }
+  .ld-m .ld-tl .sum {
+    margin: 0 0 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #faf6f7;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #2a1f22;
+    overflow-wrap: anywhere;
+  }
+  .ld-m .ld-tl .ev.next .sum { background: #fff; border: 1.5px dashed #f1c9d0; }
+  .ld-m .ld-tl .na { font-size: 12px; color: #6e6164; }
+  .ld-m .ld-tl .na span { display: block; font-size: 11px; color: #9a8e91; }
+}

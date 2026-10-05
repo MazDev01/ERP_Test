@@ -1,0 +1,88 @@
+/*
+ * ข้อมูลพนักงานบนมือถือ (ต้นแบบ hr-employees.html <style id="he-mobile"> + "he-mobile-dialogs")
+ * ทุก selector อยู่ใต้ .he-m (ราก HrEmployeesPage) · กล่องที่ portal ไปที่ body จับด้วย .he-dlg (Sheet) / .he-detail (กล่องประวัติ)
+ * เนื้อหาในกล่องประวัติ (.he-dbody .he-sect .he-kv) ยังขึ้นต้นด้วย body:has(.he-m) เพื่อไม่ให้หลุดไปหน้าอื่นที่ใช้ชิ้นส่วนเดียวกัน
+ * จุดตัดเดียวกับแถบล่างของ app-shell (md = 768px) จอคอมไม่ถูกแตะ
+ * สีตัวอักษรจางของต้นแบบ (#8A7E81 / #9A8E91) ต่ำกว่า 4.5:1 บนพื้นขาว จึงใช้ #6E6164 แทน
+ */
+@media (max-width: 767.98px) {
+  /* แถบหัวเรื่องจอคอม (ค้นหา/ตัวกรอง/ปุ่มเพิ่ม) — มือถือใช้แถวบน ช่องค้นหา ชิป แผ่นตัวกรอง และปุ่มลอยแทน */
+  .he-m > .bar { display: none; }
+
+  /* การ์ดพนักงาน: รูปกลม 52px | ชื่อ + สถานะ / ตำแหน่ง / แผนก · ชิปแถวล่างคั่นเส้นประ */
+  .he-m .he-list { gap: 10px; }
+  .he-m .he-card {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 12px; row-gap: 2px;
+    align-items: start; padding: 14px; border: 0; border-radius: 20px; background: #fff;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .he-m .he-card:hover { border: 0; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04); }
+  .he-m .he-photo {
+    grid-row: 1 / 4; width: 52px; height: 52px; border-radius: 50%; border: 0; background: #f3eef0;
+  }
+  .he-m .he-photo svg { width: 24px; height: 24px; margin: 0; }
+  .he-m .he-photo em { display: none; }
+  .he-m .he-info { display: contents; }
+  .he-m .he-top {
+    grid-column: 2; display: flex; flex-wrap: nowrap; align-items: flex-start;
+    justify-content: space-between; gap: 8px;
+  }
+  .he-m .he-name { min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.3; }
+  .he-m .he-top > span { flex: none; font-size: 11.5px; padding: 3px 9px; white-space: nowrap; }
+  .he-m .he-pos { grid-column: 2; margin: 0; font-size: 13px; font-weight: 600; color: #2a1f22; }
+  .he-m .he-dept { grid-column: 2; font-size: 13px; color: #6e6164; }
+  .he-m .he-chips {
+    grid-column: 1 / -1; margin: 10px 0 0; padding-top: 10px; gap: 6px;
+    border-top: 1.5px dashed #ece3e5;
+  }
+  .he-m .he-chip { font-size: 12px; padding: 3px 10px; border: 0; border-radius: 999px; }
+  .he-m .he-chip-plain { background: #faf6f7; color: #6e6164; }
+  /* วงแหวนทดลองงาน — คนที่ไม่ได้ทดลองงานไม่ต้องขึ้น (หัวกลุ่มบอกประเภทแล้ว) */
+  .he-m .he-side {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;
+    width: 100%; margin: 6px 0 0; padding: 0; border: 0; text-align: left;
+  }
+  .he-m .he-side:not(:has(svg)) { display: none; }
+  .he-m .he-side > span:last-child { margin: 0; font-size: 12px; color: #6e6164; }
+}
+
+/* กล่องเพิ่ม / แก้ไข / ผ่านทดลองงาน (Sheet) เป็นแผ่นจากล่างจอด้วย Sheet กลาง (styles/mobile/sheet.css) + คลาส .he-dlg
+   กล่องประวัติ (hr-employee-detail.tsx) เขียนโครงเอง จับด้วยคลาส .he-detail ที่ตัวกล่องใส่ไว้ */
+@media (max-width: 767.98px) {
+  .he-dlg > .ui-sheet-head h2 { font-size: 18px; }
+
+  .he-detail { align-items: flex-end; justify-content: stretch; padding: 0; }
+  .he-detail > div {
+    width: 100%; max-width: none; max-height: 92vh; margin: 0; border-radius: 24px 24px 0 0;
+    background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .he-detail .he-dfoot {
+    gap: 10px; padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
+    border-top: 1px solid #f2eaec; background: #fff;
+  }
+  .he-detail .he-dfoot > .btn { flex: 1; height: 48px; border-radius: 14px; justify-content: center; }
+  .he-detail .he-dfoot > .btn:last-child { flex: 1.4; }
+
+  /* กล่องประวัติ: เนื้อหาเว้นข้าง 18px หัวข้อหมวดไม่มีกรอบ */
+  body:has(.he-m) .he-dbody { padding: 0 18px 18px; }
+  body:has(.he-m) .he-sect { margin-top: 12px; padding: 0; border: 0; border-radius: 0; background: none; }
+  body:has(.he-m) .he-sect h3 { margin: 6px 0; font-size: 14px; }
+
+  /* dl.kv — แถวละคู่ ชื่อซ้าย ค่าขวา ในกล่องพื้นชมพูจาง */
+  body:has(.he-m) dl.he-kv {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; margin: 0;
+    padding: 4px 14px; border-radius: 14px; background: #faf6f7;
+  }
+  body:has(.he-m) dl.he-kv > dt,
+  body:has(.he-m) dl.he-kv > dd {
+    margin: 0; padding: 10px 0; border-bottom: 1px solid #f0e6e8; font-size: 13.5px;
+  }
+  body:has(.he-m) dl.he-kv > dt {
+    padding-right: 12px; white-space: nowrap; font-weight: 500; color: #6e6164;
+  }
+  body:has(.he-m) dl.he-kv > dd { text-align: right; font-weight: 600; }
+  body:has(.he-m) dl.he-kv > dd:not(.text-destructive):not(.text-muted-foreground) { color: #2a1f22; }
+  body:has(.he-m) dl.he-kv > dt:last-of-type,
+  body:has(.he-m) dl.he-kv > dd:last-of-type { border-bottom: 0; }
+  body:has(.he-m) dl.he-kv > dd ul { margin: 0; padding: 0; list-style: none; text-align: right; }
+}

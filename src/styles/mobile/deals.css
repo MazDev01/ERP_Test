@@ -1,0 +1,108 @@
+/*
+ * หน้าดีลบนมือถือ (ต้นแบบ deals.html @media max-width:760px) — ทุก selector อยู่ใต้ .deals-m
+ * จุดตัดเดียวกับแถบล่างของ app-shell (md = 768px) จอคอมไม่ถูกแตะ
+ * ไม่มี padding ซ้ายขวาเพิ่ม เพราะ <main> ของ app-shell เว้น 16px ไว้แล้ว (เท่าที่ต้นแบบใช้)
+ */
+@media (max-width: 767.98px) {
+  /* แถบบน — ซ่อนชื่อหน้า/จำนวน (ชื่อหน้าอยู่บนแถบของ shell แล้ว) เหลือช่องค้นหาเต็มแถว */
+  .deals-m > .bar { display: block; padding: 8px 0 0; margin-bottom: 0; }
+  .deals-m > .bar > div:first-child { display: none; }
+  .deals-m > .bar .search {
+    width: 100%; height: 46px; border-radius: 999px; border: 1px solid #efe6e8;
+    background: #fff; padding: 0 14px; gap: 8px; color: #8a7e81;
+  }
+  .deals-m > .bar .search input { height: 100%; font-size: 14.5px; color: #2a1f22; }
+
+  /* แผงหลักหายไป เหลือการ์ดลอยบนพื้นหน้า */
+  .deals-m > .panel {
+    background: transparent; border: 0; box-shadow: none; margin: 0; padding: 0;
+    border-radius: 0; overflow: visible; backdrop-filter: none;
+  }
+
+  /* แท็บสถานะ → ปุ่มเม็ดยากลางจอ */
+  .deals-m .strip { padding: 12px 0 0; border: 0; background: none; }
+  .deals-m .strip .tabs {
+    display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
+    padding: 0 0 4px; justify-content: center; width: 100%;
+  }
+  .deals-m .strip .tabs button {
+    flex: none; height: 38px; padding: 0 16px; border: 0; border-radius: 999px;
+    background: #ede8ea; color: #6e6164; font-size: 13.5px; font-weight: 600;
+  }
+  .deals-m .strip .tabs button.on { background: #c8102e; color: #fff; }
+  .deals-m .strip .tabs button b,
+  .deals-m .strip .tabs button.on b {
+    background: transparent; border: 0; color: inherit; opacity: 0.85;
+    margin-left: 4px; padding: 0; font-size: inherit;
+  }
+
+  /* การ์ดดีล */
+  .deals-m .dl-rows { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 0; }
+  .deals-m .dl-card {
+    position: relative; display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "ico cus amt"
+      "ico no st"
+      "ico pg pg"
+      "ico quo quo"
+      "line line line"
+      "deli deli act"
+      "sub sub sub";
+    column-gap: 12px; row-gap: 4px; align-items: start;
+    padding: 14px; border-radius: 20px; background: #fff;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+    color: #2a1f22;
+  }
+  .deals-m .dl-card::after {
+    content: ""; grid-area: line; border-top: 1.5px dashed #ece3e5; margin: 8px 0 4px;
+  }
+  .deals-m .dl-av {
+    grid-area: ico; width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; background: #e8f0fc; color: #1a5db5;
+  }
+  .deals-m .dl-cus {
+    grid-area: cus; font-size: 15.5px; font-weight: 700; color: #2a1f22;
+    line-height: 1.35; align-self: center; min-width: 0; overflow-wrap: anywhere;
+  }
+  .deals-m .dl-no {
+    grid-area: no; font-size: 12px; color: #8a7e81;
+    display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center;
+  }
+  .deals-m .dl-has {
+    padding: 2px 8px; border-radius: 999px; background: #e8f0fc; color: #1a5db5;
+    font-size: 11px; font-weight: 600;
+  }
+  .deals-m .dl-amt {
+    grid-area: amt; justify-self: end; align-self: center;
+    font-size: 15.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .deals-m .dl-st { grid-area: st; justify-self: end; }
+  .deals-m .dl-pg { grid-area: pg; }
+  .deals-m .dl-pg > span { margin-top: 0; font-size: 11.5px; color: #8a7e81; }
+  .deals-m .dl-quo { grid-area: quo; justify-self: start; margin-top: 4px; }
+  .deals-m .dl-quo a,
+  .deals-m .dl-quo span {
+    display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid #efe6e8; background: #fff; font-size: 12px; font-weight: 600; color: #6e6164;
+  }
+  .deals-m .dl-deli {
+    grid-area: deli; display: flex; align-items: center; gap: 5px; align-self: center;
+    font-size: 12.5px; font-weight: 600; color: #6e6164;
+  }
+  .deals-m .dl-deli svg { width: 14px; height: 14px; color: #8a7e81; flex: none; }
+  .deals-m .dl-act { grid-area: act; justify-self: end; display: flex; gap: 6px; }
+  .deals-m .dl-act .iconbtn { width: 36px; height: 36px; border-radius: 10px; }
+  .deals-m .dl-sub { grid-area: sub; }
+
+  /* ท้ายแผง — เหลือแค่ตัวแบ่งหน้า */
+  .deals-m .foot {
+    border: 0; background: none; justify-content: center; align-items: center; padding: 10px 0;
+  }
+  .deals-m .foot > span { display: none; }
+  .deals-m .foot:not(:has(.pages)) { display: none; }
+  .deals-m .foot .pages { justify-content: center; }
+}
+
+/* กล่องแนบสัญญา / ยกเลิกดีล เป็นแผ่นจากล่างจอด้วย Sheet กลาง (styles/mobile/sheet.css) — ไม่ต้องแต่งที่นี่ */

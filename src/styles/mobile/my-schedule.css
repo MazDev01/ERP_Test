@@ -1,0 +1,10 @@
+/*
+ * ตารางงานของทีมงานบนมือถือ (ต้นแบบ my-schedule.html <style id="ms-mobile">) — ใช้เฉพาะจอแคบกว่า md
+ * ตัวปฏิทินเขียนด้วยคลาส Tailwind ใน my-schedule-page.tsx ไฟล์นี้มีแค่กล่องรายละเอียดนัดหมาย
+ * แผ่นจากล่างจอมาจาก Sheet กลาง (styles/mobile/sheet.css) — ตรงนี้แต่งเฉพาะกล่องของหน้านี้ผ่านคลาส .m-ms-dlg
+ */
+
+@media (max-width: 767.98px) {
+  /* กล่องนี้ไม่มีแถบท้าย — เว้นล่างตามต้นแบบ 18px + แถบโฮม */
+  .m-ms-dlg > .ui-sheet-body:last-child { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+}

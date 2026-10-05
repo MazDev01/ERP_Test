@@ -1,0 +1,75 @@
+/*
+ * สลิปเงินเดือนของฉันบนมือถือ (ต้นแบบ my-payslip.html: pay-rows / myslip-mobile / myslip-icons / myslip-filter)
+ * ใช้เฉพาะจอแคบกว่า md · ทุกตัวเลือกอยู่ใต้ .m-ps หรือกล่องสลิปที่มี .m-ps-slip อยู่ข้างใน
+ * เขียนนอก @layer เพราะคลาสกลาง (.btn .glass-solid .field-control) ใน globals.css อยู่นอก layer
+ */
+@media (max-width: 767.98px) {
+  .m-ps { color: #2a1f22; }
+
+  /* ── ตัวกรองช่วงวันที่ ── */
+  .m-ps-filter { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .m-ps-filter label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; color: #8a7e81; }
+  .m-ps-filter .field-control {
+    height: 44px; width: 100%; padding: 0 12px; border-radius: 12px;
+    border: 1px solid #efe6e8; background: #fff; font-size: 14px; color: #2a1f22;
+  }
+  .m-ps-filter .clr {
+    grid-column: 1 / -1; justify-self: end; height: 32px; padding: 0 12px; border-radius: 999px;
+    background: #f3eef0; color: #6e6164; font-size: 12.5px; font-weight: 600;
+  }
+  .m-ps-none { margin: 24px 0; text-align: center; color: #9a8e91; font-size: 14px; }
+
+  /* ── การ์ดหนึ่งรอบ ── */
+  .m-ps-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .m-ps-card {
+    display: flex; flex-direction: column;
+    background: #fff; border-radius: 20px; padding: 14px;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  }
+  .m-ps-card .mon { padding-bottom: 6px; font-size: 16px; font-weight: 700; color: #2a1f22; }
+  .m-ps-card dl > div {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 11px 2px; border-bottom: 1px solid #f2eaec;
+  }
+  .m-ps-card dl > div:last-child,
+  .m-ps-card dl > div:has(+ .net) { border-bottom: 0; }
+  .m-ps-card dt { font-size: 13px; color: #6e6164; white-space: nowrap; }
+  .m-ps-card dd { font-size: 14.5px; font-weight: 600; text-align: right; }
+  .m-ps-card dl > .net {
+    margin-top: 8px; padding: 12px 14px; border: 0; border-radius: 12px; background: #fdf0f2;
+  }
+  .m-ps-card .net dt { font-size: 12.5px; }
+  .m-ps-card .net dd { font-size: 18px; font-weight: 700; color: #2a1f22; }
+  .m-ps-card .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+  .m-ps-card .acts button {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid #e6dadd; background: #fff;
+    color: #2a1f22; display: grid; place-items: center;
+  }
+  .m-ps-card .acts button:hover { color: #c8102e; border-color: #c8102e; }
+  .m-ps-card .acts svg { width: 18px; height: 18px; }
+
+  /* ── กล่องสลิป: แผ่นจากล่างจอมาจาก Sheet กลาง (styles/mobile/sheet.css) — ตรงนี้แค่ปุ่มท้ายกว้างเท่ากันตามต้นแบบ ── */
+  .m-ps-dlg.ui-sheet-panel > .ui-sheet-foot > button.btn:nth-of-type(n) { flex: 1 1 0; }
+  .m-ps-dlg > .ui-sheet-foot .btn { font-size: 15px; }
+
+  .m-ps-slip { display: flex; flex-direction: column; gap: 14px; }
+  .m-ps-net {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    padding: 16px; border-radius: 16px; background: #fdf0f2;
+  }
+  .m-ps-net span { font-size: 13px; color: #8a5560; }
+  .m-ps-net b { font-size: 26px; font-weight: 700; color: #2a1f22; line-height: 1.2; }
+
+  /* รายได้ / รายการหัก / ค่าใช้จ่ายคืน เป็นตารางพื้นชมพูอ่อน */
+  .m-ps-slip > section { margin: 0; border-radius: 14px; overflow: hidden; background: #faf6f7; }
+  .m-ps-slip > section h3 {
+    margin: 0; padding: 12px 14px 6px; border: 0; font-size: 14px; font-weight: 700; color: #2a1f22;
+  }
+  .m-ps-slip > section dl { gap: 0; }
+  .m-ps-slip > section dl > div {
+    align-items: center; gap: 12px; padding: 11px 14px; border: 0; border-top: 1px solid #f0e6e8;
+  }
+  .m-ps-slip > section dt { font-size: 14px; font-weight: 400; color: #6e6164; }
+  .m-ps-slip > section dd { flex: none; max-width: 45%; font-size: 14px; font-weight: 700; color: #2a1f22; }
+  .m-ps-slip > section dl > div.border-t dt { font-weight: 700; color: #2a1f22; }
+}

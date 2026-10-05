@@ -1,0 +1,510 @@
+/*
+ * โปรไฟล์บนมือถือ (ต้นแบบ profile-glass.html) — ใช้เฉพาะจอแคบกว่า md
+ * ทุกตัวเลือกอยู่ใต้ .pf-m (ราก ProfilePage) — จอคอมไม่ถูกแตะ
+ * เขียนนอก @layer จึงชนะคลาส Tailwind และ .glass/.field-control ของ globals.css ได้เอง
+ *
+ * สองโหมดตาม data-m บนราก:
+ *   landing = ไม่มี ?tab= → การ์ดโปรไฟล์ + แถวเมนู (แถบบนของ shell ยังอยู่: ปุ่มกลับหน้าหลัก + "โปรไฟล์")
+ *   pane    = มี ?tab=   → แผงนั้นเต็มจอพร้อมหัวของตัวเอง (ปุ่มกลับหน้ารวม) — ซ่อนแถบบนของ shell ไม่ให้หัวซ้อนสองชั้น
+ */
+@media (max-width: 767.98px) {
+  /* แถบบนของ shell: หน้ารวมทาสีเดียวกับขอบบนของพื้นไล่ชมพู · หน้าแผงซ่อนเพราะมีหัวของตัวเอง */
+  body:has(.pf-m[data-m="landing"]) .app-top { background: #fbe1e6; }
+  body:has(.pf-m[data-m="pane"]) .app-top { display: none; }
+
+  .pf-m {
+    display: block;
+    position: relative;
+    isolation: isolate;
+    color: #2a1f22;
+  }
+
+  /* พื้นไล่ชมพูด้านบน (เหมือนหน้าแจ้งเตือน/หน้าหลักมือถือ) — ยืดเต็มกว้างเลยระยะขอบของ main */
+  .pf-m .pf-glow {
+    display: block;
+    position: absolute;
+    z-index: -1;
+    top: -18px;
+    left: -16px;
+    right: -16px;
+    height: 360px;
+    pointer-events: none;
+    background:
+      radial-gradient(55% 55% at 90% 8%, #fcd3da 0%, rgba(252, 211, 218, 0) 70%),
+      radial-gradient(60% 50% at 15% 25%, #fff 0%, rgba(255, 255, 255, 0) 70%),
+      linear-gradient(180deg, #fbe1e6 0%, #faf6f6 85%);
+  }
+
+  /* การ์ดซ้ายแบบจอคอมไม่ใช้บนมือถือ — หน้ารวม (.pf-land) แทน */
+  .pf-m .pf-desk { display: none; }
+  .pf-m[data-m="landing"] .pf-pane { display: none; }
+
+  /* ── หน้ารวม ── */
+  .pf-m[data-m="landing"] .pf-land {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 6px;
+  }
+  .pf-m .pf-hero {
+    padding: 24px 16px 20px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .pf-m .pf-ava {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex: none;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px #fff, 0 10px 24px -12px rgba(26, 93, 181, 0.6);
+  }
+  .pf-m .pf-ava > img,
+  .pf-m .pf-ava > span {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+  }
+  .pf-m .pf-ava > img { display: block; object-fit: cover; }
+  .pf-m .pf-ava > span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e3eefc;
+    color: #1a5db5;
+    font-size: 30px;
+    font-weight: 700;
+  }
+  .pf-m .pf-cam {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    background: #2a1f22;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pf-m .pf-hero h2 {
+    margin: 16px 0 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 19px;
+    font-weight: 700;
+  }
+  .pf-m .pf-hero p {
+    margin: 6px 0 0;
+    max-width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #6b5f62;
+  }
+  .pf-m .pf-edit {
+    margin-top: 16px;
+    height: 42px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 999px;
+    background: #c8102e;
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 10px 20px -12px rgba(200, 16, 46, 0.9);
+  }
+
+  .pf-m .pf-rows { display: flex; flex-direction: column; gap: 8px; }
+  .pf-m .pf-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 54px;
+    padding: 0 16px;
+    border-radius: 16px;
+    text-decoration: none;
+    text-align: left;
+    font: inherit;
+    color: #2a1f22;
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+  }
+  .pf-m .pf-row-ico { display: flex; flex: none; color: #6b5f62; }
+  .pf-m .pf-row-ico svg { width: 20px; height: 20px; }
+  .pf-m .pf-row-lbl { flex-grow: 1; min-width: 0; font-size: 14.5px; font-weight: 600; }
+  .pf-m .pf-row-cv { flex: none; color: #9a8e91; }
+  .pf-m .pf-row-out,
+  .pf-m .pf-row-out .pf-row-ico { color: #c8102e; }
+
+  /* ── หน้าแผง ── */
+  .pf-m .pf-pane { display: flex; flex-direction: column; gap: 14px; }
+  .pf-m[data-m="pane"] .pf-head {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    align-items: center;
+    padding-top: calc(6px + env(safe-area-inset-top));
+  }
+  .pf-m .pf-head h1 {
+    margin: 0;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pf-m .pf-back {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border-radius: 50%;
+    color: #2a1f22;
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pf-m .pf-pane > p { margin: 0; }
+
+  /* กล่องแผงเดิมโปร่งใส — กลุ่มข้างในกลายเป็นการ์ดแก้วทีละใบ */
+  .pf-m .pf-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .pf-m .pf-sheet > * { margin: 0; }
+  .pf-m .pf-intro { display: none; }
+  .pf-m .pf-stack { display: flex; flex-direction: column; gap: 14px; }
+
+  .pf-m .pf-grp,
+  .pf-m .pf-card,
+  .pf-m .pf-master,
+  .pf-m .pf-sheet > .glass-thin {
+    margin: 0;
+    padding: 16px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+  }
+  .pf-m .pf-grp h3 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: normal;
+    color: #2a1f22;
+  }
+  .pf-m .pf-grp-head { margin-bottom: 14px; }
+  .pf-m .pf-grp-head h3 { margin: 0; }
+
+  /* ฟิลด์: สองคอลัมน์ ช่องยาวกินเต็มแถว */
+  .pf-m .pf-grid,
+  .pf-m .pf-edu-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .pf-m .pf-grid > .pf-wide,
+  .pf-m .pf-edu-body > .pf-wide { grid-column: 1 / -1; }
+  .pf-m .pf-f { min-width: 0; }
+  .pf-m .pf-f > label {
+    margin-bottom: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #6b5f62;
+  }
+  .pf-m .pf-pane .field-control {
+    height: 46px;
+    padding: 0 12px;
+    border-radius: 14px;
+    border: 1px solid #f0e4e6;
+    background: rgba(255, 255, 255, 0.92);
+    font-size: 14.5px;
+    font-weight: 400;
+    color: #2a1f22;
+  }
+  .pf-m .pf-pane .field-control:focus,
+  .pf-m .pf-pane .field-control[aria-expanded="true"] {
+    border-color: #c8102e;
+    box-shadow: 0 0 0 3px rgba(200, 16, 46, 0.12);
+  }
+  .pf-m .pf-pane .field-control[readonly] {
+    background: rgba(245, 238, 239, 0.9);
+    color: #6b5f62;
+  }
+  .pf-m .pf-pane textarea.field-control {
+    height: auto;
+    min-height: 86px;
+    padding: 10px 12px;
+  }
+
+  /* เพศ: เรดิโอ → แถบเลือกแบ่งช่อง */
+  .pf-m .pf-seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+    height: 46px;
+    padding: 4px;
+    border-radius: 14px;
+    background: rgba(245, 238, 239, 0.9);
+  }
+  .pf-m .pf-seg > label {
+    position: relative;
+    justify-content: center;
+    gap: 0;
+    height: 38px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b5f62;
+  }
+  .pf-m .pf-seg > label > input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .pf-m .pf-seg > label:has(input:checked) {
+    background: #fff;
+    color: #b0101f;
+    box-shadow: 0 4px 10px -6px rgba(140, 20, 40, 0.5);
+  }
+  .pf-m .pf-seg > label:has(input:focus-visible) { outline: 2px solid #c8102e; outline-offset: 1px; }
+
+  /* ประวัติการศึกษา: พับเก็บทีละระดับ */
+  .pf-m .pf-edu { display: flex; flex-direction: column; gap: 10px; }
+  .pf-m .pf-edu > * { margin: 0; }
+  .pf-m .pf-edu-item {
+    padding: 0;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid #f0e4e6;
+  }
+  .pf-m .pf-edu-item summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .pf-m .pf-edu-item summary::-webkit-details-marker { display: none; }
+  .pf-m .pf-edu-item summary span { flex: none; font-size: 12px; font-weight: 400; color: #9a8e91; }
+  .pf-m .pf-edu-item[open] summary span { display: none; }
+  .pf-m .pf-edu-body { padding: 0 14px 14px; }
+
+  /* แถบปุ่มล่างติดเหนือแถบเมนูล่าง: ยกเลิก / บันทึก */
+  .pf-m .pf-bar {
+    position: sticky;
+    bottom: var(--botbar, 84px);
+    z-index: 10;
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 10px;
+    margin: 0 -16px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: linear-gradient(180deg, rgba(250, 246, 246, 0) 0%, #faf6f6 30%);
+  }
+  .pf-m .pf-bar > button {
+    height: 50px;
+    border-radius: 16px;
+    font-size: 14.5px;
+  }
+  .pf-m .pf-bar > button:first-child {
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 12px 30px -22px rgba(140, 20, 40, 0.45);
+    color: #2a1f22;
+    font-weight: 600;
+  }
+  .pf-m .pf-bar > button:last-child {
+    border: 0;
+    background: #c8102e;
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 12px 22px -12px rgba(200, 16, 46, 0.9);
+  }
+
+  /* ── การแจ้งเตือน ── */
+  .pf-m .pf-master {
+    order: -1;
+    gap: 12px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .pf-m .pf-master small {
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.45;
+    color: #6b5f62;
+  }
+  .pf-m .pf-events { padding: 16px 16px 2px; }
+  .pf-m .pf-grp-title { display: block; margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+  .pf-m .pf-chhead { display: none; }
+  .pf-m .pf-ev {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 6px;
+    align-items: center;
+    padding: 14px 0;
+    border: 0;
+    border-top: 1px solid rgba(42, 31, 34, 0.07);
+  }
+  .pf-m .pf-ev-txt { grid-row: 1 / span 3; align-self: start; }
+  .pf-m .pf-ev-txt b { font-size: 14px; font-weight: 600; }
+  .pf-m .pf-ev-txt span { font-size: 12px; line-height: 1.45; color: #6b5f62; }
+  .pf-m .pf-ch {
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    min-height: 30px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #6b5f62;
+  }
+  .pf-m .pf-ch-lbl { display: inline; }
+  .pf-m .pf-events > p { margin: 0 0 12px; }
+
+  /* สวิตช์ 50×30 (ช่องทางย่อย 40×24) แดงเมื่อเปิด */
+  .pf-m .pf-sw {
+    width: 50px;
+    height: 30px;
+    border-radius: 15px;
+    background: #d9cdd0;
+  }
+  .pf-m .pf-sw[aria-checked="true"] { background: #c8102e; }
+  .pf-m .pf-sw > span {
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    translate: none;
+  }
+  .pf-m .pf-sw[aria-checked="true"] > span { translate: 20px 0; }
+  .pf-m .pf-sw-sm { width: 40px; height: 24px; border-radius: 12px; }
+  .pf-m .pf-sw-sm > span { width: 18px; height: 18px; }
+  .pf-m .pf-sw-sm[aria-checked="true"] > span { translate: 16px 0; }
+
+  /* ตัวเลือกเวลา → ชิป 36px */
+  .pf-m .pf-chip {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid #f0e4e6;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b5f62;
+  }
+  .pf-m .pf-chip[aria-pressed="true"] {
+    border-color: #c8102e;
+    background: #c8102e;
+    color: #fff;
+  }
+  .pf-m .pf-quiet { padding: 0; font-size: 14px; font-weight: 600; }
+  .pf-m .pf-quiet small { font-size: 12px; font-weight: 400; color: #6b5f62; }
+
+  /* ── รหัสผ่าน ── */
+  .pf-m .pf-pwgrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .pf-m .pf-pwgrid > * { grid-column: 1 / -1; }
+  .pf-m .pf-pwnew .pf-hint { display: none; }
+  .pf-m .pf-rules {
+    display: grid;
+    gap: 6px;
+    margin: -4px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pf-m .pf-rules li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #6b5f62;
+    transition: color 0.15s;
+  }
+  .pf-m .pf-dot {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 1.5px solid #d9cdd0;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .pf-m .pf-dot svg { opacity: 0; transition: opacity 0.15s; }
+  .pf-m .pf-rules li.ok { color: #0f7049; }
+  .pf-m .pf-rules li.ok .pf-dot { background: #14875a; border-color: #14875a; }
+  .pf-m .pf-rules li.ok .pf-dot svg { opacity: 1; }
+}
+
+/* main มีระยะขอบ 30px ตั้งแต่ 640px — พื้นไล่ชมพูยืดตาม */
+@media (min-width: 640px) and (max-width: 767.98px) {
+  .pf-m .pf-glow { left: -30px; right: -30px; }
+  .pf-m .pf-bar { margin: 0 -30px; padding: 12px 30px; }
+}
+
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  .pf-m .pf-sw,
+  .pf-m .pf-sw > span,
+  .pf-m .pf-dot,
+  .pf-m .pf-dot svg { transition: none; }
+}
