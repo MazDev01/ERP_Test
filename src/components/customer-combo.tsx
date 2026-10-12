@@ -171,7 +171,7 @@ export function CustomerCombo({
               </div>
               <p className="mt-1 border-t border-border px-3 pt-2 text-[11.5px] text-muted-foreground">
                 {total > shown.length
-                  ? `แสดง ${shown.length} จาก ${total} รายการที่ตรง — พิมพ์เพิ่มเพื่อค้นให้แคบลง`
+                  ? `แสดง ${shown.length} จาก ${total} รายการที่ตรง`
                   : `ตรงทั้งหมด ${total} รายการ`}
               </p>
             </>

@@ -96,7 +96,7 @@ export function RenameButton({ onClick }: { onClick: () => void }) {
 // ─── เอกสารแนบของโปรเจค ───────────────────────────────────────────
 
 /** ปุ่ม "+" ข้างเอกสาร — เปิดกล่องแนบเอกสาร */
-export function AddDocButton({ onClick, className = "" }: { onClick: () => void; className?: string }) {
+export function AddDocButton({ onClick, className = "", label }: { onClick: () => void; className?: string; label?: string }) {
   return (
     <button
       type="button"
@@ -107,6 +107,7 @@ export function AddDocButton({ onClick, className = "" }: { onClick: () => void;
       className={`btn glass-thin ${className}`}
     >
       <PlusIcon className="size-[15px]" strokeWidth={2.2} />
+      {label}
     </button>
   );
 }
@@ -156,7 +157,6 @@ export function AddDocsDialog({ pj, onClose }: { pj: string; onClose: () => void
         hint="เอกสารที่ทีมควรเห็น เช่น บรีฟ คู่มือแบรนด์ ไฟล์จากลูกค้า"
         linkPlaceholder="หรือวางลิงก์ เช่น Google Drive, Canva, Figma"
       />
-      <p className="mt-2.5 text-[12px] text-muted-foreground">ทีมที่ได้รับงานในโปรเจคนี้จะเห็นเอกสารเหล่านี้</p>
     </Sheet>
   );
 }

@@ -139,8 +139,6 @@ export function AdminAttendancePage() {
     setErr("");
   }
 
-  const hist = [...s.attHistory].sort((a, b) => b.at.localeCompare(a.at));
-
   return (
     <div className="space-y-4">
       <AdminHead
@@ -200,9 +198,6 @@ export function AdminAttendancePage() {
               กรอกพิกัดให้ถูกต้องก่อนจึงจะเห็นแผนที่
             </div>
           )}
-          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-            กดบนแผนที่เพื่อย้ายหมุด วงกลมเส้นประคือรัศมีที่ลงเวลาได้
-          </p>
 
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <Input2 label="ละติจูด">
@@ -213,7 +208,7 @@ export function AdminAttendancePage() {
             </Input2>
           </div>
           <div className="mt-3">
-            <Input2 label="รัศมีที่ลงเวลาได้" hint={`ตั้งได้ ${KM_MIN} ถึง ${KM_MAX} กิโลเมตร · พนักงานต้องอยู่ในวงนี้จึงกดเข้างานได้`}>
+            <Input2 label="รัศมีที่ลงเวลาได้" hint={`ตั้งได้ ${KM_MIN} ถึง ${KM_MAX} กิโลเมตร`}>
               <div className="flex items-center gap-2">
                 <input
                   value={d.km}
@@ -245,13 +240,7 @@ export function AdminAttendancePage() {
           <div className="min-w-[240px]">
             <Input2
               label="วันที่เริ่มใช้ค่าใหม่"
-              hint={
-                at > todayIso()
-                  ? "ตั้งล่วงหน้า ระบบสลับให้เองเมื่อถึงวัน"
-                  : minAt
-                    ? `เลือกได้ตั้งแต่ ${thaiDate(minAt)} เป็นต้นไป`
-                    : "มีผลตั้งแต่วันที่เลือกเป็นต้นไป"
-              }
+              hint={!(at > todayIso()) && minAt ? `เลือกได้ตั้งแต่ ${thaiDate(minAt)} เป็นต้นไป` : undefined}
             >
               <DateField
                 value={at}
@@ -274,61 +263,9 @@ export function AdminAttendancePage() {
         </div>
       </section>
 
-      <section className="glass overflow-hidden rounded-[18px]">
-        <div className="border-b border-border px-4 py-3.5 sm:px-5">
-          <h2 className="text-[14.5px] font-bold">ประวัติการตั้งค่า</h2>
-        </div>
-        {hist.length === 0 ? (
-          <p className="py-8 text-center text-[13px] text-muted-foreground">
-            ยังไม่เคยบันทึกค่าใหม่ — ค่าที่ใช้อยู่ตอนนี้คือเวลา {s.schedule.start}–{s.schedule.end} พักเที่ยง{" "}
-            {s.schedule.lunchStart}–{s.schedule.lunchEnd} รัศมี {place.radius / 1000} กม.
-          </p>
-        ) : (
-          <div className="px-4 pt-3 pb-4 sm:px-5">
-            <div className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground sm:grid-cols-[130px_150px_150px_100px_84px]">
-              <span>เริ่มใช้</span>
-              <span className="max-sm:hidden">เวลาทำงาน</span>
-              <span className="max-sm:hidden">พักเที่ยง</span>
-              <span className="max-sm:hidden">รัศมี</span>
-              <span className="text-right">สถานะ</span>
-            </div>
-            {hist.map((h) => {
-              const st = statusOf(s.attHistory, h);
-              return (
-                <div
-                  key={h.at}
-                  className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-2 border-b border-border py-2.5 last:border-b-0 sm:grid-cols-[130px_150px_150px_100px_84px]"
-                >
-                  <span className="num text-[13.5px] font-semibold">
-                    {thaiDate(h.at)}
-                    <small className="block text-[11.5px] font-medium text-muted-foreground sm:hidden">
-                      {h.times.start}–{h.times.end} · พัก {h.times.lunchStart}–{h.times.lunchEnd} · {h.place.radius / 1000} กม.
-                    </small>
-                  </span>
-                  <span className="num text-[13px] max-sm:hidden">
-                    {h.times.start} – {h.times.end}
-                  </span>
-                  <span className="num text-[13px] max-sm:hidden">
-                    {h.times.lunchStart} – {h.times.lunchEnd}
-                  </span>
-                  <span className="num text-[13px] max-sm:hidden">{h.place.radius / 1000} กม.</span>
-                  <span className="text-right">
-                    <em className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold not-italic ${st.cls}`}>{st.label}</em>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      {/* ประวัติการตั้งค่าย้ายไปเมนูย่อย "ประวัติการตั้งค่า" (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
 
-      {/* ค่าที่ไม่มีในต้นแบบแต่ระบบต้องใช้ — เดิมอยู่หน้าเวลาทำงานที่ถูกยุบมารวมที่นี่ */}
-      <PayAndLate />
-
-      <p className="text-[12px] leading-relaxed text-muted-foreground">
-        ตำแหน่งจากเบราว์เซอร์ใช้ได้เฉพาะเว็บที่เปิดผ่าน https และพนักงานต้องอนุญาตให้เข้าถึงตำแหน่ง ·
-        รอบเงินเดือนที่ปิดไปแล้วใช้ตัวเลขที่บันทึกไว้ตอนปิด ไม่คิดใหม่ตามค่าที่แก้
-      </p>
+      {/* รอบเงินเดือน เริ่มนับโอที การหักมาสาย ย้ายไปหน้าการคำนวณเงินเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
     </div>
   );
 }
@@ -374,7 +311,7 @@ function describeLate(a: RateSettings, b: RateSettings) {
   return out;
 }
 
-function PayAndLate() {
+export function PayAndLate() {
   const d = useSectionDraft("schedule", "เวลาทำงาน", describeSched);
   const r = useSectionDraft("rates", "เวลาทำงาน", describeLate);
   const s = d.draft;
@@ -397,9 +334,9 @@ function PayAndLate() {
 
   return (
     <>
-      <UiCard title="รอบเงินเดือน เริ่มนับโอที และการหักมาสาย" note={bad ? undefined : `รอบ${cutText}`}>
+      <UiCard title="รอบเงินเดือน เริ่มนับโอที และการหักมาสาย">
         <div className={`grid gap-4 sm:grid-cols-2 ${mode === "fixed" ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
-          <UiInput2 label={SCHED_LABEL.payCutDay ?? ""} hint="รอบถัดไปเริ่มวันรุ่งขึ้น · ตั้งได้วันที่ 1–28">
+          <UiInput2 label={SCHED_LABEL.payCutDay ?? ""}>
             <input
               type="number"
               min={1}
@@ -409,23 +346,11 @@ function PayAndLate() {
               className={`${inputCls} num`}
             />
           </UiInput2>
-          <UiInput2 label={SCHED_LABEL.otStart ?? ""} hint="ช่วงระหว่างเลิกงานถึงเวลานี้ถือเป็นพักเย็น ไม่นับโอที">
+          <UiInput2 label={SCHED_LABEL.otStart ?? ""}>
             <input type="time" value={s.otStart} onChange={(e) => set("otStart", e.target.value)} className={`${inputCls} num`} />
           </UiInput2>
-          <UiInput2 label={SCHED_LABEL.forgotPunchOutAfterHours ?? ""}>
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={s.forgotPunchOutAfterHours}
-              onChange={(e) => set("forgotPunchOutAfterHours", Number(e.target.value))}
-              className={`${inputCls} num`}
-            />
-          </UiInput2>
-          <UiInput2
-            label="หักเงินเมื่อมาสาย"
-            hint={mode === "wage" ? `เงินเดือน ${baht(SAMPLE_SALARY)} บาท → นาทีละ ${baht(wagePerMin)} บาท` : undefined}
-          >
+          {/* ไม่มีช่องเตือนลืมตอกออก และไม่มีข้อความอธิบายใต้ช่อง (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+          <UiInput2 label="หักเงินเมื่อมาสาย">
             <select
               value={mode}
               onChange={(e) => r.setDraft({ ...late, lateMode: e.target.value as LateMode })}
@@ -460,10 +385,6 @@ function PayAndLate() {
           )}
         </div>
         {/* กติกาที่เจ้าของยืนยัน 29 ก.ย. 2569 — คิดตามเวลางานอย่างเดียว ไม่หักกลบกับการอยู่เลยเวลา */}
-        <p className="mt-3 rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px] text-muted-foreground">
-          มาสายนับจากเวลาเข้างานอย่างเดียว <b className="font-semibold text-foreground">อยู่เลยเวลาเลิกงานไม่นำมาหักกลบ</b>{" "}
-          เวลาที่อยู่ต่อจะเป็นโอทีก็ต่อเมื่อมีใบโอทีที่อนุมัติแล้ว
-        </p>
       </UiCard>
 
       <SaveBar
@@ -481,5 +402,57 @@ function PayAndLate() {
         onDefault={() => d.toDefault()}
       />
     </>
+  );
+}
+
+/** ประวัติค่าเวลาทำงานและจุดลงเวลา — แสดงที่หน้าประวัติการตั้งค่า (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+export function AttHistory() {
+  const s = useSystemSettings();
+  const hist = [...s.attHistory].sort((a, b) => b.at.localeCompare(a.at));
+  if (hist.length === 0) return null;
+  return (
+    <section className="glass overflow-hidden rounded-[18px]">
+      <div className="border-b border-border px-4 py-3.5 sm:px-5">
+        <h2 className="text-[14.5px] font-bold">เวลาทำงานและจุดลงเวลา</h2>
+      </div>
+      {(
+        <div className="px-4 pt-3 pb-4 sm:px-5">
+          <div className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground sm:grid-cols-[130px_150px_150px_100px_84px]">
+            <span>เริ่มใช้</span>
+            <span className="max-sm:hidden">เวลาทำงาน</span>
+            <span className="max-sm:hidden">พักเที่ยง</span>
+            <span className="max-sm:hidden">รัศมี</span>
+            <span className="text-right">สถานะ</span>
+          </div>
+          {hist.map((h) => {
+            const st = statusOf(s.attHistory, h);
+            return (
+              <div
+                key={h.at}
+                className="grid grid-cols-[minmax(0,1fr)_84px] items-center gap-2 border-b border-border py-2.5 last:border-b-0 sm:grid-cols-[130px_150px_150px_100px_84px]"
+              >
+                <span className="num text-[13.5px] font-semibold">
+                  {thaiDate(h.at)}
+                  <small className="block text-[11.5px] font-medium text-muted-foreground sm:hidden">
+                    {h.times.start}–{h.times.end} · พัก {h.times.lunchStart}–{h.times.lunchEnd} · {h.place.radius / 1000} กม.
+                  </small>
+                </span>
+                <span className="num text-[13px] max-sm:hidden">
+                  {h.times.start} – {h.times.end}
+                </span>
+                <span className="num text-[13px] max-sm:hidden">
+                  {h.times.lunchStart} – {h.times.lunchEnd}
+                </span>
+                <span className="num text-[13px] max-sm:hidden">{h.place.radius / 1000} กม.</span>
+                <span className="text-right">
+                  <em className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold not-italic ${st.cls}`}>{st.label}</em>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+
   );
 }

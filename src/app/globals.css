@@ -145,6 +145,8 @@ body.modal-open {
 /* กล่องที่เลื่อนได้ภายใน เช่น เนื้อในป็อบอัพ — จองที่แถบเลื่อนไว้ตลอด
    ไม่งั้นพอเปิดตัวเลือกเวลาแล้วแถบโผล่ ขอบช่องกรอกจะกระตุกไปทางซ้าย */
 .scroll-stable { scrollbar-gutter: stable; }
+/* ตารางรายการไม่เว้นที่ให้แถบเลื่อน — หัวตารางเต็มกว้าง ไม่มีช่องว่างท้ายแถว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+.scroll-stable:has(> table.data-table) { scrollbar-gutter: auto; }
 
 body {
   /* หน้าจอนี้ห้ามเลื่อนไปทางข้าง — แถบหัวกับแถบแดงเป็น sticky/fixed จึงอยู่กับที่
@@ -613,7 +615,8 @@ body {
 .task-range:focus-visible { outline: 2.5px solid var(--ring); outline-offset: 3px; }
 
 /* ═══ หน้าเช็คอิน — พื้นแดงทึบและอนิเมชันหน้าตัวการ์ตูน ═══════════ */
-.checkin-top { background: var(--primary); }
+/* ไล่เฉดแดงชุดเดียวกับหน้าเข้าสู่ระบบ (.login-card) (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+.checkin-top { background: linear-gradient(168deg, #6b0000 0%, #a80000 40%, #db0000 78%, #f05a4a 100%); }
 
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 .bob { animation: bob 4.4s ease-in-out infinite; }
@@ -1225,6 +1228,9 @@ table.sheet tr.bad td { background: var(--destructive-soft); }
 }
 /* มุมมองสัปดาห์ — แถวเดียวจึงสูงได้ ให้เห็นนัดซ้อนกันหลายชั้น */
 .wk-week { min-height: 320px; }
+/* มุมมองเดือนเตี้ยลง ทั้งเดือนพอดีหนึ่งหน้าจอไม่ต้องเลื่อน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+.wk:not(.wk-week) { grid-template-rows: 30px; grid-auto-rows: 20px; row-gap: 2px; min-height: calc(34px + var(--lanes, 3) * 22px); padding-bottom: 4px; }
+.wk:not(.wk-week) .evbar { height: 20px; }
 .wk .dn.off { color: var(--muted-foreground); opacity: 0.55; }
 .wk .dn.sun { color: var(--destructive); }
 .wk .dn.today { background: var(--primary); color: #ffffff; font-weight: 700; }
@@ -1547,4 +1553,36 @@ table.sheet tr.bad td { background: var(--destructive-soft); }
   .sd-item .end .clay { width: 36px; height: 36px; border-radius: 50%; font-weight: 700; }
   .sd-go { width: 36px; height: 36px; border-radius: 50%; background: #f7eff1; display: flex; align-items: center; justify-content: center; color: var(--sd-ink2); }
   .sd-mempty { text-align: center; font-size: 13px; color: var(--sd-ink3); background: #fff; border-radius: 20px; padding: 22px; box-shadow: var(--sd-shadow); }
+}
+
+/* ═══ แบบฟอร์มกรมสรรพากร (50 ทวิ · ใบแนบ ภ.ง.ด.3/53) ผู้ใช้สั่ง 9 ต.ค. 2569 ═══
+   ขาวดำ เส้นบาง หน้าตาตามแบบราชการ — กระดาษแนวตั้ง rd-form · แนวนอน rd-land */
+.rd-form { color: #000; font-size: 11.5px; line-height: 1.45; padding: 28px 32px !important; page: rdform; width: 794px !important; min-height: 1123px !important; max-width: none !important; flex: none; }
+.rd-land { width: 1123px !important; min-height: 794px !important; page: rdland; }
+.rd-form .bx { border: 1px solid #000; }
+.rd-form .bt { border-top: 1px solid #000; }
+.rd-form .bb { border-bottom: 1px solid #000; }
+.rd-form .bl { border-left: 1px solid #000; }
+.rd-form .br { border-right: 1px solid #000; }
+.rd-form .dot { border-bottom: 1px dotted #000; display: inline-block; min-height: 1.35em; padding: 0 4px; }
+.rd-form .ck { display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid #000; font-size: 10px; line-height: 1; vertical-align: -2px; margin-right: 4px; }
+.rd-form .digits { display: inline-flex; align-items: center; gap: 0; }
+.rd-form .digits i { display: inline-grid; place-items: center; width: 15px; height: 18px; border: 1px solid #000; margin-left: -1px; font-style: normal; font-size: 11.5px; }
+.rd-form .digits b { width: 6px; }
+.rd-form table { width: 100%; border-collapse: collapse; }
+.rd-form th, .rd-form td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; }
+.rd-form th { font-weight: 600; text-align: center; vertical-align: middle; }
+.rd-form td.r { text-align: right; white-space: nowrap; }
+.rd-form td.c { text-align: center; }
+.rd-form table.inc td { border-top: none; border-bottom: none; }
+.rd-form table.inc tr.tot td { border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.rd-form .stamp { width: 74px; height: 74px; border: 1px solid #000; border-radius: 50%; display: grid; place-items: center; text-align: center; font-size: 9.5px; line-height: 1.3; }
+.rd-form input, .rd-form textarea, .rd-form select { font: inherit; color: #000; background: #fffbe6; border: 1px solid #b9b3a0; border-radius: 3px; padding: 1px 4px; }
+.rd-form input.bad, .rd-form textarea.bad { border-color: var(--destructive); background: var(--destructive-soft); }
+.rd-form button.ck { cursor: pointer; background: #fffbe6; }
+@page rdform { size: A4; margin: 8mm; }
+@page rdland { size: A4 landscape; margin: 8mm; }
+@media print {
+  .rd-form { padding: 0 !important; width: auto !important; min-height: auto !important; }
+  .rd-form input, .rd-form textarea, .rd-form select, .rd-form button.ck { background: none; }
 }

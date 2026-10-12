@@ -30,12 +30,17 @@ import {
   hrCycle,
   hrDept,
   hrPos,
-  inPeriod,
+  inRange,
   dailyRateIn,
+  dailyRoundId,
+  defaultDailyRange,
+  rangeLabel,
   isDaily,
   payIn,
-  prorate,
+  prorateIn,
   workedDaysIn,
+  type Cycle,
+  extraKeyOf,
   extraOf,
   lineIn,
   type Adjust,
@@ -46,15 +51,23 @@ import {
   GROUP_LABEL,
 } from "@/lib/hr-data";
 import {
+  countDailyDownload,
+  countDailyView,
   countDownload,
   countView,
+  makeDailySlips,
   makeSlips,
+  publishDailySlips,
+  unpublishDailySlips,
   publishSlips,
   unpublishSlips,
   useHr,
 } from "@/lib/hr-store";
 import {
+  DayRangePicker,
+  HrStepTabs,
   HrSteps,
+  useUrlRange,
   PayCalendar,
   PayCard,
   PayHead,
@@ -65,6 +78,7 @@ import {
   usePayGroup,
   useUrlMonth,
   type PayCardRow,
+  MonthStepper,
 } from "./hr-steps";
 import { useComSource, useHrTime } from "@/lib/hr-link";
 import {
@@ -83,12 +97,13 @@ type SlipState = "none" | "made" | "pub";
 
 /* เหตุผลเดียวกันทุกปุ่มที่กดไม่ลงในหน้านี้ — ผู้ใช้ต้องอ่านแล้วรู้ว่าต้องไปทำอะไรต่อ */
 const LOCK_WHY =
-  "รอบเงินเดือนปิดแล้ว แก้ตัวเลขไม่ได้ · ถ้าคำนวณผิด ให้บันทึกเป็นรายการปรับปรุงในรอบถัดไป หรือเปิดรอบกลับที่หน้าคำนวณเงินเดือน";
+  "รอบเงินเดือนปิดแล้ว แก้ตัวเลขไม่ได้ · ถ้าคำนวณผิด ให้บันทึกเป็นรายการปรับปรุงในรอบถัดไป";
 
 const STATE: Record<SlipState, { label: string; cls: string }> = {
-  none: { label: "ยังไม่ได้สร้าง", cls: "t-miss" },
-  made: { label: "สร้างแล้ว รอเผยแพร่", cls: "t-early" },
-  pub: { label: "เผยแพร่แล้ว", cls: "t-ok" },
+  /* ไม่มีปุ่มสร้างสลิปแยกแล้ว — ยังไม่ส่ง = รอส่งสลิป (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  none: { label: "รอส่งสลิป", cls: "t-early" },
+  made: { label: "รอส่งสลิป", cls: "t-early" },
+  pub: { label: "ส่งสลิปแล้ว", cls: "t-ok" },
 };
 
 export function HrPayslipPage() {
@@ -99,7 +114,7 @@ export function HrPayslipPage() {
   const months = hr.periods.map((p) => p.month);
 
   /* เปิดมาที่รอบล่าสุดที่ปิดเงินเดือนแล้ว (ต้นแบบเปิดที่รอบที่มีสลิป) ยังไม่มีรอบที่ปิดค่อยใช้รอบล่าสุด */
-  /* มาจากขั้นก่อนหน้าพร้อม ?m= เปิดรอบนั้นเลย (ต้นแบบ urlMonth) */
+  /* มาจากขั้นก่อนหน้าพร้อม ?m= แสดงรอบนั้นเลย (ต้นแบบ urlMonth) */
   const urlMonth = useUrlMonth(months);
   /* คิดใหม่ทุกครั้งที่ยังไม่ได้เลือกเอง — useState จำค่าตอน hydrate ซึ่งสโตร์ยังเป็นค่าตั้งต้น
      รอบที่เพิ่งปิดไปจึงไม่ถูกเลือก แล้วหน้านี้เปิดค้างที่รอบเก่าที่เผยแพร่ไปแล้ว */
@@ -130,16 +145,43 @@ export function HrPayslipPage() {
   const slip = hr.slips.find((s) => s.month === month);
   /* สถานะของกลุ่มที่เปิดอยู่ — อีกกลุ่มเดินของมันเอง */
   const day = tab === "day";
-  const payClosed = Boolean(day ? payrun?.dayClosed : payrun?.closed);
-  const madeAt = day ? slip?.dayMadeAt : slip?.madeAt;
-  const published = Boolean(day ? slip?.dayPublished : slip?.published);
+
+  /*
+   * กลุ่มทดลองงาน — สลิปออกทีละรอบจ่ายรายวัน (ช่วงวันที่) ไม่ใช่รอบเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569)
+   * ค่าตั้งต้น: รอบที่ปิดเงินเดือนแล้วแต่ยังไม่ส่งสลิป ล่าสุด → รอบที่ส่งแล้วล่าสุด → ต่อจากรอบล่าสุดถึงวันนี้
+   */
+  const urlRange = useUrlRange();
+  const [pickedRange, setPickedRange] = useState<Cycle | null>(null);
+  const lastPaid = [...hr.dailyRounds].filter((r) => r.payClosedAt).sort((a, b) => b.to.localeCompare(a.to))[0];
+  const dayRange =
+    pickedRange ??
+    urlRange ??
+    (hr.dailyRounds.some((r) => r.payClosedAt && !r.published)
+      ? defaultDailyRange(hr.dailyRounds, today, (r) => Boolean(r.payClosedAt) && !r.published)
+      : lastPaid
+        ? { from: lastPaid.from, to: lastPaid.to }
+        : defaultDailyRange(hr.dailyRounds, today));
+  const round = day ? hr.dailyRounds.find((r) => r.id === dailyRoundId(dayRange)) : undefined;
+
+  const payClosed = day ? Boolean(round?.payClosedAt) : Boolean(payrun?.closed);
+  const madeAt = day ? round?.slipsMadeAt : slip?.madeAt;
+  const published = day ? Boolean(round?.published) : Boolean(slip?.published);
 
   const state: SlipState = !madeAt ? "none" : published ? "pub" : "made";
   const locked = state === "pub";
+  /* ส่งสลิป = สร้าง (ถ้ายังไม่เคย) แล้วเปิดกล่องยืนยันการส่ง · ส่งแล้วกดอีกครั้ง = ยกเลิกการส่ง */
+  function sendSlips() {
+    if (state === "none") {
+      if (day) {
+        if (round) makeDailySlips(round.id, today);
+      } else makeSlips(month, today, tab);
+    }
+    setPublishing(true);
+  }
 
-  const inCycle = hr.emp.filter((e) => inPeriod(e, month));
-  const people = inCycle.filter((e) => (day ? isDaily(e) : !isDaily(e)));
-  const cycle = hrCycle(month);
+  const cycle: Cycle = day ? dayRange : hrCycle(month);
+  const roundLabel = day ? rangeLabel(dayRange) : thaiMonth(month);
+  const people = hr.emp.filter((e) => inRange(e, cycle) && (day ? isDaily(e) : !isDaily(e)));
   /* ส่ง today เข้าไปเสมอ — ค่าจ้างรายวันนับถึงวันนี้เหมือนหน้าคำนวณเงินเดือน
      ถ้าไม่ส่ง ยอดค่าจ้างจะคิดทั้งรอบแต่คอลัมน์ "วันที่มาทำงาน" นับถึงวันนี้ สองช่องในแถวเดียวกันจะไม่ตรงกัน */
   /*
@@ -147,12 +189,14 @@ export function HrPayslipPage() {
    * รอบเก่าที่ปิดไว้ก่อนระบบเก็บยอด (ไม่มี snapshot) จึงค่อยคิดสดด้วยสูตรเดียวกับหน้าคำนวณเงินเดือน
    */
   const rows = people.map((e) => {
-    const saved = lineIn(payrun, tab, e.id);
+    const saved = day
+      ? (round?.payClosedAt ? round.sum?.lines.find((x) => x.id === e.id) : undefined) ?? null
+      : lineIn(payrun, tab, e.id);
     return {
       e,
       c: saved ? calcOfLine(saved) : payIn(e, cycle, time, hr.extras, today, src),
       /* รายการปรับปรุงพร้อมเหตุผลของรอบที่ปิดไว้ — ของเดือนนั้นอาจถูกแก้ภายหลัง จึงอ่านจาก snapshot ก่อน */
-      adjust: saved?.adjust ?? extraOf(hr.extras, e.id, month).adjust,
+      adjust: saved?.adjust ?? extraOf(hr.extras, e.id, extraKeyOf(e, cycle)).adjust,
       days: saved ? saved.days : workedDaysIn(e, cycle, time, today),
       rate: saved ? saved.rate : dailyRateIn(e, cycle),
       snapped: Boolean(saved),
@@ -171,67 +215,58 @@ export function HrPayslipPage() {
   function openSlip(id: string) {
     setViewing(id);
     /* นับเฉพาะรอบที่เผยแพร่แล้ว ก่อนหน้านั้นคนที่เปิดคือ HR เองที่มาตรวจงาน */
-    countView(month, id);
+    if (day) {
+      if (round) countDailyView(round.id, id);
+    } else countView(month, id);
+  }
+
+  function pickDayRange(c: Cycle) {
+    setPickedRange(c);
+    setViewing(null);
   }
 
   return (
     <div className={`hp-page space-y-4 ${g.picked ? "" : "hp-pick"}`}>
       <PayHead
-        title={thaiMonth(month)}
+        title={roundLabel}
         onBack={g.picked ? g.home : undefined}
-        onCal={() => setCal(true)}
+        onCal={day ? undefined : () => setCal(true)}
         calLabel="เลือกเดือน"
       />
       <PayTiles onOpen={g.open} />
 
+      {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
-        <div />
-        <div className="tools">
-          {/* เลื่อนรอบทีละเดือนตามต้นแบบ — ไปได้เฉพาะรอบที่มีในระบบ */}
-          <div className="mo glass-thin">
-            <button
-              type="button"
-              aria-label="เดือนก่อนหน้า"
-              disabled={monthIdx <= 0}
-              onClick={() => switchMonth(months[monthIdx - 1])}
-            >
-              <ChevronLeftIcon className="size-[15px]" strokeWidth={2.4} />
-            </button>
-            <span>{thaiMonth(month)}</span>
-            <button
-              type="button"
-              aria-label="เดือนถัดไป"
-              disabled={monthIdx >= months.length - 1}
-              onClick={() => switchMonth(months[monthIdx + 1])}
-            >
-              <ChevronRightIcon className="size-[15px]" strokeWidth={2.4} />
-            </button>
-          </div>
+        <h1 className="sr-only">สลิปเงินเดือน</h1>
+        <div className="tools ml-auto">
+          {day ? (
+            <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+          ) : (
+            /* เลื่อนรอบทีละเดือนตามต้นแบบ — ไปได้เฉพาะรอบที่มีในระบบ */
+            <MonthStepper months={months} value={month} onChange={switchMonth} />
+          )}
         </div>
       </div>
 
-      <HrSteps month={month} group={g.group} />
+      <HrSteps month={month} range={day ? dayRange : null} group={g.group} className="md:hidden" />
+      {day && (
+        <div className="hp-only-m">
+          <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+        </div>
+      )}
 
       <section className="panel glass flex flex-col">
         <div className="strip">
-          {/* แท็บสลับกลุ่มเอาออก — เลือกกลุ่มจากเมนูย่อยแทน (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
+          <HrStepTabs month={month} range={day ? dayRange : null} group={g.group} />
           {/* มือถือใช้แถวปุ่มเต็มความกว้างข้างล่างแทน (.hp-slipact) */}
           <span className="my-2 ml-auto flex gap-2 max-md:hidden">
             <button
               type="button"
-              className="btn glass-thin h-9 disabled:opacity-45"
-              disabled={!payClosed || state !== "none"}
-              onClick={() => makeSlips(month, today, tab)}
-            >
-              สร้างสลิป
-            </button>
-            <button
-              type="button"
               className="btn solid btn-solid h-9 disabled:opacity-45"
-              disabled={!payClosed || state === "none"}
-              onClick={() => setPublishing(true)}
+              disabled={!payClosed}
+              onClick={sendSlips}
             >
-              {locked ? "ยกเลิกการเผยแพร่" : "เผยแพร่"}
+              {locked ? "ยกเลิกการส่งสลิป" : "ส่งสลิป"}
             </button>
           </span>
         </div>
@@ -242,37 +277,23 @@ export function HrPayslipPage() {
           <div className="hp-slipact">
             <button
               type="button"
-              className="btn glass-thin"
-              disabled={!payClosed || state !== "none"}
-              onClick={() => makeSlips(month, today, tab)}
-            >
-              สร้างสลิป
-            </button>
-            <button
-              type="button"
               className="btn solid btn-solid"
-              disabled={!payClosed || state === "none"}
-              onClick={() => setPublishing(true)}
+              disabled={!payClosed}
+              onClick={sendSlips}
             >
-              {locked ? "ยกเลิกการเผยแพร่" : "เผยแพร่"}
+              {locked ? "ยกเลิกการส่งสลิป" : "ส่งสลิป"}
             </button>
           </div>
-          {payClosed && state !== "none" && <p className="hp-hint-ps">สร้างสลิปของรอบนี้แล้ว</p>}
         </div>
 
-        {/* ปิดรอบแล้วต้องอ่านออกทันทีว่าทำไมทุกช่องแก้ไม่ได้ ไม่ใช่ให้ไปเดาเอาจากปุ่มที่กดไม่ลง */}
-        {payClosed && (
-          <p className="mx-3 mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-            ตัวเลขในหน้านี้เป็นยอดที่บันทึกไว้ตอนปิดรอบ แก้ไม่ได้ทุกช่อง · ถ้าคำนวณผิด
-            ให้บันทึกเป็นรายการปรับปรุงในรอบถัดไปพร้อมเหตุผล หรือเปิดรอบกลับที่หน้าคำนวณเงินเดือน
-          </p>
-        )}
+        {/* ไม่มีข้อความอธิบายการทำงานของระบบตอนปิดรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
 
-        <div className="scroll-stable min-h-0 flex-1 overflow-auto max-md:hidden">
-          <table className="data-table cards-sm min-w-[1160px]">
+        {/* ไม่จองร่องแถบเลื่อน ตารางเต็มกล่อง ไม่มีแถบขาวด้านขวา (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+        <div className="min-h-0 flex-1 overflow-auto max-md:hidden">
+          <table className="data-table cards-sm">
             <thead>
               <tr>
-                <th>พนักงาน</th>
+                <th style={{ width: 160 }}>พนักงาน</th>
                 {day ? (
                   <>
                     <th className="r" style={{ width: 120 }}>
@@ -284,43 +305,31 @@ export function HrPayslipPage() {
                       <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(วัน)</span>
                     </th>
                   </>
-                ) : (
-                  <th style={{ width: 110 }}>ประเภท</th>
-                )}
+                ) : null /* ไม่มีคอลัมน์ประเภท — อยู่ในเมนูพนักงานอยู่แล้ว (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
                 <th className="r" style={{ width: 120 }}>
-                  {day ? "ค่าจ้าง" : "รวมรายได้"}
+                  รวมรายได้
                   <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
                 </th>
                 {/* รายการหักแยกสามช่อง ไม่รวมเป็นช่องเดียว (ผู้ใช้กำหนด 24 ก.ย. 2569)
                     สลิปคือเอกสารที่พนักงานใช้ตรวจว่าถูกหักอะไรไปบ้าง ยอดรวมช่องเดียวต้องไปถามฝ่ายบุคคลทุกครั้ง
                     ค่าใช้จ่ายคืนไม่ใช่รายการหัก จึงอยู่ช่องฝั่งบวกของตัวเอง
                     บวกลบตามได้ด้วยตาเปล่า — รวมรายได้ − ประกันสังคม − หักมาสาย ± ปรับปรุง + ค่าใช้จ่ายคืน = สุทธิ */}
-                <th className="r" style={{ width: 120 }}>
-                  ประกันสังคม
-                  <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
-                </th>
+                {!day && (
+                  <th className="r" style={{ width: 120 }}>
+                    ประกันสังคม
+                    <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
+                  </th>
+                )}
                 <th className="r" style={{ width: 110 }}>
                   หักมาสาย
                   <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
                 </th>
-                <th className="r" style={{ width: 126 }}>
-                  ปรับปรุงอื่น
-                  <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
-                </th>
-                <th className="r" style={{ width: 120 }}>
-                  ค่าใช้จ่ายคืน
-                  <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
-                </th>
+                {/* ไม่มีคอลัมน์ ปรับปรุงอื่น · ค่าใช้จ่ายคืน (ผู้ใช้สั่ง 6 ต.ค. 2569) — ยังรวมในยอดสุทธิและอยู่บนสลิป */}
                 <th className="r" style={{ width: 150 }}>
                   ยอดสุทธิ
                   <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
                 </th>
                 <th style={{ width: 140 }}>สถานะสลิป</th>
-                {!day && (
-                  <th className="c" style={{ width: 90 }}>
-                    จัดการ
-                  </th>
-                )}
               </tr>
             </thead>
             <tbody>
@@ -329,12 +338,12 @@ export function HrPayslipPage() {
                      คงหัวตารางไว้ตามต้นแบบ บอกว่าติดตรงไหนแล้วพาไปแก้ที่ต้นเหตุ */
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={6}
                     className="py-12 text-center text-[13.5px] text-muted-foreground"
                   >
                     รอบเงินเดือนของกลุ่มนี้ยังไม่ปิด จึงยังสร้างสลิปไม่ได้
                     <Link
-                      href={payHref("/hr/payroll", g.group, month)}
+                      href={payHref("/hr/payroll", g.group, month, day ? dayRange : null)}
                       className="mt-1 block font-semibold text-primary underline"
                     >
                       ไปปิดรอบที่หน้าคำนวณเงินเดือน
@@ -344,7 +353,7 @@ export function HrPayslipPage() {
               ) : rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={6}
                     className="py-12 text-center text-muted-foreground"
                   >
                     {day
@@ -380,25 +389,15 @@ export function HrPayslipPage() {
                           {days}
                         </td>
                       </>
-                    ) : (
-                      <td data-label="ประเภท" className="muted">
-                        {HR_EMPTYPE[e.type].label}
-                      </td>
-                    )}
+                    ) : null}
                     <td
-                      data-label={day ? "ค่าจ้าง" : "รวมรายได้"}
+                      data-label="รวมรายได้"
                       className="r num"
                     >
-                      {baht(day ? pay.base : earnOf(pay.gross, pay.adj))}
+                      {baht(earnOf(pay.gross, pay.adj))}
                     </td>
-                    <Cut label="ประกันสังคม" v={pay.ss} />
+                    {!day && <Cut label="ประกันสังคม" v={pay.ss} />}
                     <Cut label="หักมาสาย" v={pay.late} />
-                    {/* ปรับปรุงติดลบคือหักเพิ่ม บวกคือคืนกลับ — เครื่องหมายต้องอ่านออกจากช่องเลย */}
-                    <Cut label="ปรับปรุงอื่น" v={-pay.adj} />
-                    {/* ใบเบิกที่อนุมัติแล้วบวกเข้ายอดสุทธิ ไม่ใช่รายได้ และไม่คิดประกันสังคม */}
-                    <td data-label="ค่าใช้จ่ายคืน" className={`r ${pay.reimb ? "num" : "text-muted-foreground"}`}>
-                      {pay.reimb ? `+${baht(pay.reimb)}` : "—"}
-                    </td>
                     <td data-label="ยอดสุทธิ" className="r num font-semibold">
                       {baht(pay.net)}
                     </td>
@@ -408,27 +407,7 @@ export function HrPayslipPage() {
                         {STATE[state].label}
                       </span>
                     </td>
-                    {/* คอลัมน์จัดการมีเฉพาะตารางรายเดือน — แถวจ่ายรายวันไม่มีค่าตอบแทนที่ไม่มีสูตรให้แก้ (โครงใหม่) */}
-                    {!day && (
-                      <td data-label="จัดการ" className="c">
-                        <span className="flex justify-center gap-1.5">
-                          {/* เผยแพร่แล้วปุ่มแก้หายไปเลย ตัวเลขที่พนักงานเห็นแล้วไม่มีทางแก้ที่หน้านี้
-                              ก่อนเผยแพร่ยังเห็นปุ่มอยู่ แต่กดไม่ลงพร้อมเหตุผล เพราะรอบปิดไปแล้ว (HR-BR-03) */}
-                          {!locked && (
-                            <button
-                              type="button"
-                              disabled
-                              onClick={(ev) => ev.stopPropagation()}
-                              aria-label={`แก้ค่าตอบแทนของ ${e.name}`}
-                              title={LOCK_WHY}
-                              className="iconbtn glass-thin size-8 cursor-not-allowed opacity-45"
-                            >
-                              <PencilIcon className="size-4" strokeWidth={1.9} />
-                            </button>
-                          )}
-                        </span>
-                      </td>
-                    )}
+                    {/* ไม่มีคอลัมน์จัดการ — ปุ่มแก้ในหน้านี้กดไม่ได้อยู่แล้วเพราะรอบปิด (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
                   </tr>
                 ))
               )}
@@ -444,7 +423,7 @@ export function HrPayslipPage() {
               <>
                 รอบเงินเดือนของกลุ่มนี้ยังไม่ปิด จึงยังสร้างสลิปไม่ได้
                 <Link
-                  href={payHref("/hr/payroll", g.group, month)}
+                  href={payHref("/hr/payroll", g.group, month, day ? dayRange : null)}
                   className="mt-2 block font-semibold text-primary underline"
                 >
                   ไปปิดรอบที่หน้าคำนวณเงินเดือน
@@ -477,10 +456,10 @@ export function HrPayslipPage() {
                       { label: "วันที่มาทำงาน (วัน)", value: days },
                     ]
                   : []),
-                { label: day ? "ค่าจ้าง (บาท)" : "รวมรายได้ (บาท)", value: baht(day ? pay.base : earnOf(pay.gross, pay.adj)) },
+                { label: "รวมรายได้ (บาท)", value: baht(earnOf(pay.gross, pay.adj)) },
                 /* มือถือก็ต้องเห็นรายการหักครบสามช่อง ไม่ใช่ยอดรวมช่องเดียว
                    บวกลบตามได้ครบ: รายได้ − ประกันสังคม − หักมาสาย ± ปรับปรุง + ค่าใช้จ่ายคืน = สุทธิ */
-                cutRow("ประกันสังคม", pay.ss),
+                ...(day ? [] : [cutRow("ประกันสังคม", pay.ss)]),
                 cutRow("หักมาสาย", pay.late),
                 cutRow("ปรับปรุงอื่น", -pay.adj),
                 pay.reimb
@@ -505,13 +484,22 @@ export function HrPayslipPage() {
       {current && (
         <SlipView
           emp={current.e}
-          month={month}
+          label={roundLabel}
+          range={cycle}
+          fileKey={day ? `${dayRange.from}_${dayRange.to}` : month}
           pay={current.c}
           adjust={current.adjust}
           days={current.days}
           rate={current.rate}
           snapped={current.snapped}
-          slip={slip}
+          stats={
+            day
+              ? round && { views: round.views[current.e.id] ?? 0, downloads: round.downloads[current.e.id] ?? 0 }
+              : slip && { views: slip.views[current.e.id] ?? 0, downloads: slip.downloads[current.e.id] ?? 0 }
+          }
+          onDownloaded={() =>
+            day ? round && countDailyDownload(round.id, current.e.id) : countDownload(month, current.e.id)
+          }
           published={locked}
           onClose={() => setViewing(null)}
         />
@@ -530,13 +518,21 @@ export function HrPayslipPage() {
 
       {publishing && (
         <PublishDialog
-          month={month}
+          label={roundLabel}
+          range={cycle}
           group={tab}
           undo={locked}
           count={rows.length}
           madeAt={madeAt ?? ""}
-          pubAt={(day ? slip?.dayPublishedAt : slip?.publishedAt) ?? ""}
-          today={today}
+          pubAt={(day ? round?.publishedAt : slip?.publishedAt) ?? ""}
+          onConfirm={(undo, why) => {
+            if (day) {
+              if (!round) return;
+              if (undo) unpublishDailySlips(round.id, today, why);
+              else publishDailySlips(round.id, today);
+            } else if (undo) unpublishSlips(month, today, why, tab);
+            else publishSlips(month, today, tab);
+          }}
           onClose={() => setPublishing(false)}
         />
       )}
@@ -584,18 +580,25 @@ function cutRow(label: string, v: number): PayCardRow {
 
 function SlipView({
   emp,
-  month,
+  label,
+  range: c,
+  fileKey,
   pay,
   adjust,
   days,
   rate,
   snapped,
-  slip,
+  stats,
+  onDownloaded,
   published,
   onClose,
 }: {
   emp: Employee;
-  month: string;
+  /** ชื่อรอบ — รอบเดือน "กันยายน 2569" หรือรอบจ่ายรายวัน "6 – 8 ต.ค. 2569" (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  label: string;
+  range: Cycle;
+  /** ส่วนของชื่อไฟล์ที่ดาวน์โหลด */
+  fileKey: string;
   /** ยอดของคนนี้ — มาจาก snapshot ตอนปิดรอบถ้ามี ไม่ได้คำนวณใหม่ในนี้ */
   pay: PaySlipCalc;
   adjust: Adjust[];
@@ -603,14 +606,15 @@ function SlipView({
   rate: number;
   /** ตัวเลขชุดนี้มาจากยอดที่ปิดรอบไว้หรือเปล่า — snapshot ไม่ได้เก็บจำนวนนาทีที่สาย */
   snapped: boolean;
-  slip: Slip | undefined;
+  /** ครั้งที่เปิดดู/ดาวน์โหลดของคนนี้ — ไม่มี = ยังไม่มีบันทึกของรอบนี้ */
+  stats: { views: number; downloads: number } | undefined;
+  onDownloaded: () => void;
   published: boolean;
   onClose: () => void;
 }) {
-  const pr = prorate(emp, month);
-  const cap = ceilingOf(month);
+  const pr = prorateIn(emp, c);
+  const cap = ceilingOf(c.to);
   const p = hrPos(emp.pos);
-  const c = hrCycle(month);
 
   /* คนจ่ายรายวันคิดจากวันที่มาทำงานจริง บอกที่มาของค่าจ้างเป็นจำนวนวันคูณอัตราต่อวัน (ต้นแบบ slipHTML) */
   const income: [string, number][] = [
@@ -640,11 +644,17 @@ function SlipView({
    * สามบรรทัดนี้ขึ้นเสมอแม้เป็นศูนย์ พนักงานจะได้อ่านจบในใบเดียวว่าถูกหักอะไรไปบ้าง
    * ปรับปรุงลงเป็นยอดที่ถูกหักไป (-amt) ติดลบคือรายการที่คืนกลับเข้ายอด
    */
+  /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  const noSs = isDaily(emp);
   const deductions: [string, number][] = [
-    [
-      `ประกันสังคม ${settings().rates.socialSecurity}% (เพดาน ${baht(cap.ceiling)})`,
-      pay.ss,
-    ],
+    ...(noSs
+      ? []
+      : [
+          [
+            `ประกันสังคม ${settings().rates.socialSecurity}% (เพดาน ${baht(cap.ceiling)})`,
+            pay.ss,
+          ] as [string, number],
+        ]),
     [
       /* ยอดที่ปิดรอบไว้ไม่ได้เก็บจำนวนนาที จึงไม่พิมพ์ตัวเลขนาทีที่ไม่มีอยู่จริง */
       snapped || pay.late === 0 ? "หักมาสาย" : `หักมาสาย ${pay.lateChargedMin} นาที`,
@@ -659,7 +669,7 @@ function SlipView({
   function download() {
     const csv = toCsv([
       ["สลิปเงินเดือน MAZ"],
-      ["รอบ", thaiMonth(month), `${thaiDate(c.from)} – ${thaiDate(c.to)}`],
+      ["รอบ", label, `${thaiDate(c.from)} – ${thaiDate(c.to)}`],
       ["ชื่อพนักงาน", emp.name],
       ["รหัสพนักงาน", emp.id],
       ["ตำแหน่ง", p.label],
@@ -676,11 +686,11 @@ function SlipView({
       ...(pay.reimb > 0 ? [["ค่าใช้จ่ายคืน (ใบเบิกที่อนุมัติ)", pay.reimb] as [string, number], []] : []),
       ["ยอดสุทธิที่ได้รับ", pay.net],
       [],
-      ["บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก", pay.ss],
+      ...(noSs ? [] : [["บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก", pay.ss] as [string, number]]),
       ["เอกสารนี้ออกจากระบบ ERP MAZ ไม่ต้องลงลายมือชื่อ"],
     ]);
-    downloadCsv(`สลิปเงินเดือน-${month}-${emp.id}.csv`, csv);
-    countDownload(month, emp.id);
+    downloadCsv(`สลิปเงินเดือน-${fileKey}-${emp.id}.csv`, csv);
+    onDownloaded();
   }
 
   return (
@@ -691,11 +701,9 @@ function SlipView({
       footer={
         <>
           <span className="mr-auto text-[12.5px] text-muted-foreground">
-            {published && slip
-              ? `เปิดดู ${slip.views[emp.id] ?? 0} ครั้ง · ดาวน์โหลด ${
-                  slip.downloads[emp.id] ?? 0
-                } ครั้ง`
-              : "ยังไม่เผยแพร่ พนักงานยังเห็นไม่ได้"}
+            {published && stats
+              ? `เปิดดู ${stats.views} ครั้ง · ดาวน์โหลด ${stats.downloads} ครั้ง`
+              : "ยังไม่เผยแพร่"}
           </span>
           <button
             type="button"
@@ -726,7 +734,7 @@ function SlipView({
           <div className="text-right">
             <h4 className="text-[17px] font-bold">สลิปเงินเดือน</h4>
             <p className="num mt-1 text-xs text-muted-foreground">
-              รอบ {thaiMonth(month)} · {thaiDate(c.from)} – {thaiDate(c.to)}
+              รอบ {label} · {thaiDate(c.from)} – {thaiDate(c.to)}
             </p>
           </div>
         </header>
@@ -762,8 +770,12 @@ function SlipView({
         </div>
 
         <p className="mt-4 text-[11.5px] leading-[1.7] text-muted-foreground">
-          บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก {baht(pay.ss)} บาท
-          <br />
+          {!noSs && (
+            <>
+              บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก {baht(pay.ss)} บาท
+              <br />
+            </>
+          )}
           เอกสารนี้ออกจากระบบ ERP MAZ ไม่ต้องลงลายมือชื่อ
         </p>
       </article>
@@ -828,35 +840,38 @@ function SlipTable({
 // ─── เผยแพร่และยกเลิกการเผยแพร่ ───────────────────────────────────
 
 function PublishDialog({
-  month,
+  label,
+  range: c,
   group,
   undo,
   count,
   madeAt,
   pubAt,
-  today,
+  onConfirm,
   onClose,
 }: {
-  month: string;
+  /** ชื่อรอบ — รอบเดือนหรือช่วงวันของรอบจ่ายรายวัน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  label: string;
+  range: Cycle;
   group: PayGroup;
   undo: boolean;
   count: number;
   madeAt: string;
   /** เผยแพร่ไปแล้วเมื่อไร — กล่องยกเลิกต้องบอก ไม่งั้นคนกดไม่รู้ว่ากำลังถอนของเมื่อไร */
   pubAt: string;
-  today: string;
+  /** ส่ง / ยกเลิกการส่งพร้อมเหตุผล — หน้าที่เรียกเลือกว่าเป็นรอบเดือนหรือรอบรายวัน */
+  onConfirm: (undo: boolean, why: string) => void;
   onClose: () => void;
 }) {
   const [why, setWhy] = useState("");
   /** ยกเลิกการเผยแพร่โดยไม่ระบุเหตุผล — ขึ้นคำเตือนตาม mockup */
   const [warn, setWarn] = useState(false);
   const whyBox = useRef<HTMLDivElement>(null);
-  const c = hrCycle(month);
   const ready = !undo || why.trim() !== "";
 
   return (
     <Sheet
-      title={undo ? "ยกเลิกการเผยแพร่สลิปเงินเดือน" : "เผยแพร่สลิปเงินเดือน"}
+      title={undo ? "ยกเลิกการส่งสลิปเงินเดือน" : "ส่งสลิปเงินเดือน"}
       onClose={onClose}
       footer={
         <>
@@ -872,8 +887,7 @@ function PublishDialog({
                 whyBox.current?.querySelector("input")?.focus();
                 return;
               }
-              if (undo) unpublishSlips(month, today, why.trim(), group);
-              else publishSlips(month, today, group);
+              onConfirm(undo, why.trim());
               onClose();
             }}
           >
@@ -885,7 +899,7 @@ function PublishDialog({
       <div className="hp-dlg">
       {/* มือถือ: รอบ ช่วงวันที่ และกลุ่ม รวมเป็นกล่องชมพูบนสุด (ต้นแบบ p.rule) */}
       <p className="hp-rule hp-only-m">
-        <b>รอบ {thaiMonth(month)}</b>
+        <b>รอบ {label}</b>
         <span>
           {thaiDate(c.from)} – {thaiDate(c.to)}
         </span>
@@ -893,7 +907,7 @@ function PublishDialog({
       </p>
       {/* ป้าย-ค่าเรียงกัน อ่านทีเดียวจบว่ากำลังทำอะไรกับรอบไหนของกลุ่มไหน */}
       <dl className="hp-kv grid gap-x-4 gap-y-2 text-[13.5px] sm:grid-cols-[150px_minmax(0,1fr)]">
-        <Pair k="รอบการจ่าย" v={thaiMonth(month)} mHide />
+        <Pair k="รอบการจ่าย" v={label} mHide />
         <Pair k="ช่วงวันที่" v={`${thaiDate(c.from)} – ${thaiDate(c.to)}`} mHide />
         <Pair k="กลุ่มพนักงาน" v={GROUP_LABEL[group]} mHide />
         {undo ? (
@@ -934,14 +948,7 @@ function PublishDialog({
             )}
           </div>
         </>
-      ) : (
-        <p className="hp-warn mt-4 flex items-start gap-2.5 rounded-[11px] border border-[var(--info)]/20 bg-[var(--info-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed text-[var(--info)]">
-          <BellIcon className="mt-0.5 size-4 flex-none" strokeWidth={2} />
-          <span>
-            เผยแพร่แล้วพนักงานเรียกดูสลิปของตนเองได้ทันที และระบบแจ้งเตือนทุกคน
-          </span>
-        </p>
-      )}
+      ) : null}
       </div>
     </Sheet>
   );

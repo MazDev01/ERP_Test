@@ -74,13 +74,40 @@ export function rangeOf(key: RangeKey, today: Date, back = 0): Range {
   };
 }
 
+/** ช่วงย่อยของกราฟ — ดูรายเดือนแบ่งทีละ 7 วัน · ไตรมาส/ปีแบ่งรายเดือน (แยกออกมาให้แดชบอร์ดผู้บริหารใช้ร่วม · ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function bucketsOf(r: Range): { label: string; from: string; to: string }[] {
+  const buckets: { label: string; from: string; to: string }[] = [];
+  if (r.buckets === "week") {
+    const last = parseIsoDate(r.to).getDate();
+    for (let st = 1; st <= last; st += 7) {
+      const en = Math.min(st + 6, last);
+      buckets.push({
+        label: `${st}–${en} ${TH_MONTHS_SHORT[r.m]}`,
+        from: toIsoDate(new Date(r.y, r.m, st)),
+        to: toIsoDate(new Date(r.y, r.m, en)),
+      });
+    }
+  } else {
+    for (let i = 0; i < r.n; i++) {
+      const first = new Date(r.y, r.m + i, 1);
+      buckets.push({
+        label: TH_MONTHS_SHORT[first.getMonth()],
+        from: toIsoDate(first),
+        to: toIsoDate(new Date(first.getFullYear(), first.getMonth() + 1, 0)),
+      });
+    }
+  }
+  return buckets;
+}
+
 const inRange = (iso: string | undefined, from: string, to: string) =>
   Boolean(iso) && iso! >= from && iso! <= to;
 
 /** รหัสผู้สนใจเก็บปีและเดือนที่เปิดไว้ในตัวเลขชุดกลาง เช่น LEAD-6909-001 คือ ก.ย. 2026 (เปลี่ยนเป็น CUS- แล้วเลขเดิม) */
 function leadIso(code: string) {
   const m = /-(\d{2})(\d{2})-/.exec(code);
-  return m ? `20${m[1]}-${m[2]}-01` : "";
+  /* รหัสเก็บปี พ.ศ. 2 หลัก (LEAD-6910 = ต.ค. 2569) — แปลงเป็น ค.ศ. ก่อน ไม่งั้นได้ 2069 ไม่ตรงช่วงไหนเลย */
+  return m ? `${2500 + Number(m[1]) - 543}-${m[2]}-01` : "";
 }
 
 /** เปอร์เซ็นต์การเปลี่ยนแปลงเทียบช่วงก่อน — ช่วงก่อนเป็นศูนย์: มีของตอนนี้ = +100% ไม่มีเลย = 0% (ต้นแบบ delta) */
@@ -155,28 +182,7 @@ export function buildReport(crm: CrmState, key: RangeKey, today: Date) {
   const now = buildSet(crm, r);
   const before = buildSet(crm, rangeOf(key, today, 1));
 
-  /* ช่วงย่อยของกราฟ — ดูรายเดือนแบ่งทีละ 7 วัน · ไตรมาส/ปีแบ่งรายเดือน */
-  const buckets: { label: string; from: string; to: string }[] = [];
-  if (r.buckets === "week") {
-    const last = parseIsoDate(r.to).getDate();
-    for (let st = 1; st <= last; st += 7) {
-      const en = Math.min(st + 6, last);
-      buckets.push({
-        label: `${st}–${en} ${TH_MONTHS_SHORT[r.m]}`,
-        from: toIsoDate(new Date(r.y, r.m, st)),
-        to: toIsoDate(new Date(r.y, r.m, en)),
-      });
-    }
-  } else {
-    for (let i = 0; i < r.n; i++) {
-      const first = new Date(r.y, r.m + i, 1);
-      buckets.push({
-        label: TH_MONTHS_SHORT[first.getMonth()],
-        from: toIsoDate(first),
-        to: toIsoDate(new Date(first.getFullYear(), first.getMonth() + 1, 0)),
-      });
-    }
-  }
+  const buckets = bucketsOf(r);
   const series: [string, number][] = buckets.map((b) => [
     b.label,
     now.won.filter((d) => inRange(d.closedAt, b.from, b.to)).reduce((s, d) => s + d.total, 0),
@@ -217,6 +223,10 @@ export function buildReport(crm: CrmState, key: RangeKey, today: Date) {
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
+  /* อัตราปิดการขาย = ผู้สนใจที่เข้ามาในช่วงนี้และปิดงานแล้ว ÷ ผู้สนใจที่เข้ามาในช่วงนี้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const closedOf = (list: typeof now.leads) => list.filter((c) => c.status === "ปิดงาน" || Boolean(c.leadCode && !c.code.startsWith("LEAD"))).length;
+  const leadRate = now.leads.length ? (closedOf(now.leads) / now.leads.length) * 100 : 0;
+  const leadRatePrev = before.leads.length ? (closedOf(before.leads) / before.leads.length) * 100 : 0;
   const rate = now.issued.length ? (now.quoteWon / now.issued.length) * 100 : 0;
   const ratePrev = before.issued.length ? (before.quoteWon / before.issued.length) * 100 : 0;
 
@@ -239,6 +249,9 @@ export function buildReport(crm: CrmState, key: RangeKey, today: Date) {
     /** อัตราปิดเทียบช่วงก่อน เป็นจุดเปอร์เซ็นต์ (ต่างกันกี่ %) ไม่ใช่เปอร์เซ็นต์ของเปอร์เซ็นต์ */
     dRate: Math.round((rate - ratePrev) * 10) / 10,
     avgDays: now.avgDays,
+    leadRate: Math.round(leadRate * 10) / 10,
+    leadClosed: closedOf(now.leads),
+    dLeadRate: Math.round((leadRate - leadRatePrev) * 10) / 10,
     presalesHours: Math.round(now.hours * 10) / 10,
     series,
     compare,

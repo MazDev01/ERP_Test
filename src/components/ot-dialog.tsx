@@ -197,7 +197,7 @@ export function OtDialog({
     const outMin = lastOut ? minutesOfTime(new Date(lastOut.at)) : null;
 
     if (date <= today && dayPunches.length === 0)
-      out.push("วันนั้นยังไม่มีบันทึกตอกบัตร — ผู้อนุมัติจะเทียบกับเวลาตอกบัตรจริง");
+      out.push("วันนั้นยังไม่มีบันทึกตอกบัตร");
     else if (outMin != null && endMin > outMin)
       out.push(`ตอกบัตรออกจริง ${hhmm(outMin)} น. — ช่วงที่ขอเลยเวลาที่ตอกไว้`);
 
@@ -293,7 +293,6 @@ export function OtDialog({
             <div className="mb-[15px]">
               <p className="mb-1.5 text-[12.5px] font-semibold text-muted-foreground">
                 เวลาของแต่ละวัน
-                <span className="ml-1.5 font-normal">แก้เฉพาะวันที่ทำคนละเวลา</span>
               </p>
               <div className="space-y-2.5">
                 {days.map((d) => (
@@ -358,17 +357,6 @@ export function OtDialog({
               </span>
               <b className="num text-[15px] font-bold">{(multi ? totalHours : hours).toFixed(2)} ชั่วโมง</b>
             </div>
-            {multi && (
-              /* หลายวันเรตไม่เท่ากัน จึงบอกเรตของแต่ละวันไว้ก่อนกดส่ง */
-              <p className="mt-1 text-[11.5px] text-muted-foreground">
-                ระบบจะออกใบแยกวันละใบ รวม {days.length} ใบ
-              </p>
-            )}
-            {breakMin > 0 && (
-              <p className="mt-1 text-[11.5px] text-muted-foreground">
-                หักเวลาพักออกแล้ว {breakMin} นาที
-              </p>
-            )}
           </div>
 
           {problems.length === 0 && notes.length > 0 && (
@@ -485,9 +473,6 @@ function DateField({
               setOpen(false);
             }}
           />
-          <p className="mt-2 border-t border-border pt-2 text-[10.5px] text-muted-foreground">
-            วันสีแดง = วันหยุด คิดเรตโอทีวันหยุด ทำได้ทั้งวัน
-          </p>
         </div>
       )}
     </div>

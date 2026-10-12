@@ -22,7 +22,7 @@ import { PM_EVENT_KIND } from "@/lib/pm-schedule-data";
 import { BUILTIN_HR_DEPT, BUILTIN_HR_DOCS, BUILTIN_HR_POSITION, holdsPos } from "@/lib/hr-data";
 import { BUILTIN_WHT_TYPES } from "@/lib/acc-data";
 import { AdminHead, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
-import { GripIcon, PencilIcon, PlusIcon, TrashIcon } from "./icons";
+import { GripIcon, PencilIcon, PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
 import { thaiDate, todayIso } from "@/lib/format";
@@ -178,7 +178,14 @@ function describeCat(a: Catalog, b: Catalog) {
  *   ไม่ส่ง only = ข้อมูลหลักทั้งหน้า (แท็บตามบทบาท)
  *   ส่ง only    = การ์ดเดียวของหมวดนั้น ไม่มีแท็บและไม่มีตัวเลือกในดรอปดาวน์
  */
-export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
+export function AdminOptionsPage({
+  only,
+  topTabs,
+}: {
+  only?: CatKey;
+  /** แถบแท็บของหน้าที่ฝังหมวดนี้ไว้ (เช่น แผนกในตำแหน่งและสายอนุมัติ) — วางบนสุดของการ์ด */
+  topTabs?: React.ReactNode;
+} = {}) {
   const d = useSectionDraft("options", "ตัวเลือกในรายการ", describe);
   const cat = useSectionDraft("catalog", "ตัวเลือกในรายการ", describeCat);
   /* อัตราหัก ณ ที่จ่ายเก็บวันเริ่มใช้แยกจากตัวรายการ (Full Proposal · M5) */
@@ -196,7 +203,7 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
     return "";
   }
   /* หมวดที่กำลังดูอยู่ทางขวา — เริ่มที่หมวดแรกของฝั่งขาย */
-  const [sel, setSel] = useState<{ kind: "cat" | "opt"; key: string }>({ kind: "cat", key: "depts" });
+  const [sel, setSel] = useState<{ kind: "cat" | "opt"; key: string }>({ kind: "cat", key: "services" });
   /* กล่องเพิ่ม/แก้ — index -1 = เพิ่มใหม่ */
   const [editing, setEditing] = useState<{ key: OptionKey; index: number } | null>(null);
 
@@ -216,7 +223,8 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
   const tabs = only
     ? []
     : [
-        ...(["depts", "eventKinds"] as const).flatMap((k) => {
+        /* แผนกย้ายไปเป็นแท็บแรกของ ตำแหน่งและสายอนุมัติ · บริการย้ายมาจากเมนูย่อยเป็นแท็บแรก (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+        ...(["services", "eventKinds"] as const).flatMap((k) => {
           const c = CAT_SPECS.find((x) => x.key === k);
           return c ? [{ kind: "cat" as const, key: c.key as string, label: c.label, where: c.where, count: toItems(cat.draft, c.key).length }] : [];
         }),
@@ -341,6 +349,7 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
       </AdminHead>
 
       <section className="glass overflow-hidden rounded-[18px]">
+        {topTabs && <div className="border-b border-border px-3">{topTabs}</div>}
         {!only && (
           /* แท็บหมวดพร้อมจำนวนรายการ ตามต้นแบบ
              ขึ้นบรรทัดใหม่แทนการเลื่อนข้าง (กติกาเดียวกับมือถือ 25 ก.ย. 2569)
@@ -370,10 +379,6 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
         )}
 
         <div className="px-4 pt-3.5 pb-4 sm:px-5">
-          <p className="mb-3 text-[12.5px] text-muted-foreground">
-            ใช้ใน: {onlySpec ? onlySpec.where : (curTab?.where ?? "")}
-          </p>
-
           {/* หัวตาราง — จอแคบซ่อน เหลือแต่แถวรายการ */}
           <div
             className={`grid grid-cols-[26px_minmax(0,1fr)_58px_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground ${
@@ -392,7 +397,7 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
           </div>
 
           {rows.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-muted-foreground">ยังไม่มีรายการ กดเพิ่มรายการเพื่อเริ่มต้น</p>
+            <p className="py-8 text-center text-[13px] text-muted-foreground">ยังไม่มีรายการ</p>
           ) : (
             rows.map((r, i) => (
               <div
@@ -455,15 +460,7 @@ export function AdminOptionsPage({ only }: { only?: CatKey } = {}) {
                   <IconBtn label={`แก้ไข ${r.label}`} onClick={() => editRow(r.id)}>
                     <PencilIcon className="size-3.5" strokeWidth={1.9} />
                   </IconBtn>
-                  <IconBtn
-                    label={`ลบ ${r.label}`}
-                    danger
-                    disabled={Boolean(r.block)}
-                    title={r.block || undefined}
-                    onClick={() => removeRow(r.id)}
-                  >
-                    <TrashIcon className="size-3.5" strokeWidth={1.9} />
-                  </IconBtn>
+                  {/* ไม่มีปุ่มลบในตารางข้อมูลหลัก — เลิกใช้ให้ปิดสวิตช์เปิดใช้แทน (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
                 </span>
               </div>
             ))
@@ -641,11 +638,6 @@ function OptionDialog({
           className={inputCls}
         />
       </Input2>
-      <p className="mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {initial
-          ? "แก้ชื่อแล้ว ข้อมูลที่เคยเลือกตัวเลือกนี้ไว้ยังแสดงข้อความเดิม"
-          : `ขึ้นให้เลือกใน${group.where} ทันทีที่กดบันทึกที่แถบล่าง`}
-      </p>
     </Sheet>
   );
 }
@@ -747,7 +739,6 @@ function CatDialog({
             </Input2>
             <Input2
               label="เริ่มใช้อัตรานี้"
-              hint={at > todayIso() ? "ตั้งล่วงหน้า ระบบสลับให้เองเมื่อถึงวัน" : "มีผลกับเอกสารที่คิดยอดหลังจากนี้"}
             >
               <DateField
                 value={at}
@@ -786,15 +777,10 @@ function CatDialog({
         {spec.extra === "req" && (
           <label className="flex cursor-pointer items-center gap-2.5 text-[13.5px]">
             <input type="checkbox" checked={req} onChange={(e) => setReq(e.target.checked)} className="size-4 accent-[var(--primary)]" />
-            ต้องมี — ขาดแล้วขึ้นเตือนว่าเอกสารไม่ครบ
+            ต้องมี
           </label>
         )}
       </div>
-      <p className="mt-3.5 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {initial
-          ? "แก้ชื่อแล้ว ข้อมูลเก่าที่ใช้รายการนี้จะแสดงชื่อใหม่ด้วย (อ้างรหัสเดียวกัน)"
-          : `ขึ้นให้เลือกใน${spec.where} ทันทีที่กดบันทึกที่แถบล่าง`}
-      </p>
     </Sheet>
   );
 }

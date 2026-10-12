@@ -7,7 +7,7 @@ import { CalendarPanel } from "./thai-date-picker";
 import { todayIso } from "@/lib/format";
 import { lockScroll } from "@/lib/scroll-lock";
 import { isWorkday } from "@/lib/holidays";
-import { leaveTypes, type LeaveRecord, type LeaveType } from "@/lib/leave-data";
+import { leaveLabel, leaveTypes, type LeaveRecord, type LeaveType } from "@/lib/leave-data";
 import { addLeaveRequest, excessDays, leaveUsage } from "@/lib/leave-store";
 import { useOtRecords } from "@/lib/ot-store";
 import { hasNoApprover, useApprovalRoute, useRole } from "@/lib/role";
@@ -189,7 +189,7 @@ export function LeaveDialog({
   const over = excessDays(records, type, days, period);
   if (over > 0) {
     problems.push(
-      `เกินสิทธิ์คงเหลือ ${fmt(over)} วัน — ส่วนที่เกินถือเป็นลาไม่รับค่าจ้าง หักจากเงินเดือน`,
+      `เกินสิทธิ์คงเหลือ ${fmt(over)} วัน — ส่วนที่เกินหักจากเงินเดือน`,
     );
   }
   if (quota.pending > 0 && days > 0) {
@@ -271,7 +271,7 @@ export function LeaveDialog({
                 const q = leaveUsage(records, t, period);
                 return (
                   <option key={t} value={t}>
-                    {t}{" "}
+                    {leaveLabel(t)}{" "}
                     {q.entitled > 0
                       ? `(คงเหลือ ${fmt(q.remaining)} วัน${q.pending > 0 ? ` · รออนุมัติ ${fmt(q.pending)} วัน` : ""})`
                       : "(ไม่มีสิทธิ์)"}
@@ -310,7 +310,7 @@ export function LeaveDialog({
                     if (v !== "full" && from) setTo(from);
                   }}
                 >
-                  {v === "full" ? "เต็มวัน" : v === "half" ? "ครึ่งวัน" : "ลาด่วน (ชั่วโมง)"}
+                  {v === "full" ? "เต็มวัน" : v === "half" ? "ครึ่งวัน" : "กำหนดเอง"}
                 </button>
               ))}
             </div>
@@ -340,10 +340,8 @@ export function LeaveDialog({
               </Field>
               <p className="text-[12px] leading-relaxed text-muted-foreground sm:col-span-2">
                 รวม <b className="font-semibold text-foreground">{fmt(hours)} ชั่วโมง</b>
-                {netMinutes(urgentStart, urgentEnd) !== Math.max(0, urgentEnd - urgentStart) && " (หักพักเที่ยงแล้ว)"}
                 {" · "}หักสิทธิ์วันลา{" "}
-                <b className="font-semibold text-foreground">{fmt(hoursToDays(hours))} วัน</b>{" "}
-                (วันทำงาน {fmt(fullMin() / 60)} ชั่วโมง)
+                <b className="font-semibold text-foreground">{fmt(hoursToDays(hours))} วัน</b>
               </p>
             </div>
           )}
@@ -420,8 +418,8 @@ export function LeaveDialog({
           <div className="glass-thin flex items-center justify-between gap-3 rounded-[11px] px-[13px] py-[11px] text-[13px]">
             <span>
               {span === "hours"
-                ? "จำนวนวันลาที่หักจากสิทธิ์ (แปลงจากชั่วโมง)"
-                : "จำนวนวันลา (ไม่นับเสาร์-อาทิตย์และวันหยุดตามปฏิทิน)"}
+                ? "จำนวนวันลาที่หักจากสิทธิ์"
+                : "จำนวนวันลา"}
             </span>
             <b className="num text-[15px] font-bold">
               {span === "hours" && `${fmt(hours)} ชม. = `}
@@ -433,7 +431,6 @@ export function LeaveDialog({
           <p className="num mt-[9px] text-[12.5px] leading-relaxed text-muted-foreground">
             {type} คงเหลือ {fmt(quota.remaining)} จาก {fmt(quota.entitled)} วัน
             {quota.pending > 0 && ` · รออนุมัติอยู่ ${fmt(quota.pending)} วัน`}
-            {" · "}สิทธิ์จะถูกหักเมื่อผู้อนุมัติอนุมัติแล้วเท่านั้น
           </p>
 
           {problems.length === 0 && otClash.length > 0 && (

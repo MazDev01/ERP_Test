@@ -45,7 +45,12 @@ function isState(value: unknown): value is ScheduleState {
  * นัดรุ่นก่อน 5 ต.ค. 2569 ผูกโปรเจคด้วยเลขที่ดีล (ช่อง deal) — ย้ายไปช่อง pj
  * เลขดีลของชุดตั้งต้นแปลงเป็นเลข PJ · ที่ไม่รู้จักเก็บเลขเดิมไว้ หน้าจอหาโปรเจคจากเลขดีลได้ (isRef)
  */
-function migrateSchedule(v: ScheduleState): ScheduleState {
+function migrateSchedule(input: ScheduleState): ScheduleState {
+  /* นัดตัวอย่างที่เพิ่มเข้าชุดตั้งต้นทีหลัง (8 ต.ค. 2569) — เติมเฉพาะรหัสที่ยังไม่มี ไม่ทับนัดที่ผู้ใช้แก้หรือยกเลิกไว้
+     ระบบไม่มีการลบนัด (ยกเลิกแล้วยังเก็บไว้) รหัสที่หายไปจึงแปลว่ายังไม่เคยได้รับ */
+  const have = new Set(input.events.map((e) => e.id));
+  const missing = PM_EVENTS.filter((e) => !have.has(e.id));
+  const v = missing.length ? { ...input, events: [...input.events, ...missing] } : input;
   if (!v.events.some((e) => "deal" in e)) return v;
   return {
     ...v,

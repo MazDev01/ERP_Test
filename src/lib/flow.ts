@@ -45,7 +45,7 @@ import {
 import { isRef, planHref, projectHref, type InboxJob, type Phase, type Proposal, type Project, type TeamRole } from "./pm-data";
 import type { TaskStatus } from "./pm-data";
 import { firstLine } from "./rich-text";
-import { closePayrun } from "./hr-store";
+import { closeDailyPay, closePayrun } from "./hr-store";
 import type { CycleSum, PayGroup } from "./hr-data";
 import { markReimbursed } from "./expense-store";
 import type { Role } from "./role";
@@ -64,6 +64,17 @@ export function closePayrunFlow(
 ) {
   closePayrun(month, today, group, sum);
   markReimbursed(reimbursed, month);
+}
+
+/** แบบเดียวกันสำหรับรอบจ่ายรายวันของทดลองงาน — ใบเบิกบันทึกว่าจ่ายกับรอบนี้ (id = "จาก~ถึง") (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+export function closeDailyPayFlow(
+  id: string,
+  today: string,
+  sum: CycleSum,
+  reimbursed: { role: Role; month: string }[],
+) {
+  closeDailyPay(id, today, sum);
+  markReimbursed(reimbursed, id);
 }
 
 // ═══ ยกเลิกดีลหลังปิดการขาย ═══════════════════════════════════════

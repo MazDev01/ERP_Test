@@ -191,11 +191,6 @@ export function InstallPage() {
           </p>
         )}
 
-        <p className="mt-4 text-[12.5px] leading-[1.7] text-muted-foreground">
-          ติดตั้งแล้วเปิดหน้าที่เคยเปิดไว้ได้แม้ไม่มีเน็ต
-          แต่การบันทึกข้อมูลยังต้องต่อเน็ตทุกครั้ง
-        </p>
-
         <Link
           href="/login"
           className="mt-6 inline-flex items-center gap-[7px] text-[13.5px] text-muted-foreground hover:text-primary"

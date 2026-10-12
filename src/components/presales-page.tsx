@@ -117,7 +117,7 @@ export function PresalesPage() {
         open={closing !== null}
         title="ปิดคำขอก่อนการขาย"
         description={`ปิดคำขอ ${closing ?? ""} แล้วจะไม่อยู่ในคิวของทีมก่อนการขายอีก`}
-        detail="ใช้เมื่อสร้างใบเสนอราคาแล้ว หรือลูกค้าไม่ไปต่อ · ปิดแล้วเปิดใหม่ไม่ได้"
+        detail="ปิดแล้วเปิดใหม่ไม่ได้"
         confirmLabel="ปิดคำขอ"
         tone="destructive"
         onConfirm={() => {

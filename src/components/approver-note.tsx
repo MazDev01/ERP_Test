@@ -28,9 +28,6 @@ export function ApproverNote({ kind }: { kind: RequestKind }) {
       ยื่นถึง {boss.name} · {boss.title}
       {/* ผู้อนุมัติบางตำแหน่งยังไม่มีบทบาทให้ล็อกอิน ใบจะค้างรอไว้ก่อน
           บอกไว้ตรง ๆ ดีกว่าปล่อยให้ผู้ยื่นสงสัยว่าทำไมไม่มีใครกด */}
-      {boss.role === null && (
-        <span className="text-muted-foreground"> · ยังไม่เปิดใช้บทบาทนี้ในระบบ ใบจะค้างรอไว้ก่อน</span>
-      )}
     </p>
   );
 }

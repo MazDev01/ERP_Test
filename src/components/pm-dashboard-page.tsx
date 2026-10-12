@@ -24,10 +24,13 @@ import {
   type Project,
   type ProjectTask,
   projectHref,
+  pctColor,
 } from "@/lib/pm-data";
 import { colorOf, eventKind, eventsOn, isPsEvent, isSalesEvent } from "@/lib/pm-schedule-data";
 import { useSchedule } from "@/lib/pm-schedule-store";
+import { isHoliday } from "@/lib/holidays";
 import { memberName, usePm } from "@/lib/pm-store";
+import { serviceLabel } from "@/lib/pm-data";
 import { ClockIcon, InboxIcon, ProjectIcon, TasksIcon } from "./icons";
 
 /** งานย่อยหนึ่งใบพร้อมโปรเจคต้นทางและจำนวนวันที่เหลือ — ใช้ซ้ำหลายบล็อก จึงคิดครั้งเดียว */
@@ -38,7 +41,7 @@ const SOON_DAYS = 7;
 /** งานเข้าใหม่แสดงกี่รายการในการ์ด มากกว่านี้บอกว่าเหลืออีกกี่รายการ */
 const INBOX_CAP = 4;
 /** โปรเจคในการ์ดความคืบหน้า — เกินนี้ขึ้นลิงก์ "ดูโปรเจค อีก N รายการ" ตามต้นแบบ */
-const PROJ_CAP = 4;
+const PROJ_CAP = 3;
 /** ตารางงานที่ต้องติดตามแสดงกี่งาน — เกินนี้ขึ้นแถว "และอีก N งาน" ตามต้นแบบ */
 const DUE_CAP = 5;
 /** นัดของวันที่เลือกแสดงกี่รายการ — เกินนี้ขึ้นลิงก์ "ดูตารางงาน อีก N รายการ" ตามต้นแบบ */
@@ -90,66 +93,118 @@ export function PmDashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="bar">
-        <div>
-          <h1>แดชบอร์ด</h1>
-          <p>ภาพรวมงานที่ต้องดูแล</p>
-        </div>
-      </div>
+      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <h1 className="sr-only">แดชบอร์ด</h1>
 
       {/* มือถือ: การ์ดใบที่ห้าเหลือเดี่ยวอยู่แถวสุดท้าย ให้กินเต็มแถวแทนการเว้นช่องว่าง */}
       <div className="grid grid-cols-2 gap-3.5 max-sm:gap-2.5 max-sm:[&>*:last-child]:col-span-2 xl:grid-cols-5">
-        <Kpi label="งานเข้ารอรับ" value={waiting} sub={waiting ? "รอ PM รับเข้าโปรเจค" : "รับครบแล้ว"} tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
-        <Kpi
-          label="งานย่อยรอตรวจ"
-          tone="job"
-          icon={<TasksIcon className="size-[15px]" strokeWidth={1.9} />}
-          value={review}
-          sub={
-            review
-              ? reviewLate
-                ? `ทีมส่งมาแล้ว รอผลตรวจ · เลยกำหนดแล้ว ${reviewLate} งาน`
-                : "ทีมส่งมาแล้ว รอผลตรวจ"
-              : "ไม่มีงานรอตรวจ"
-          }
-          warn={reviewLate > 0}
-        />
-        <Kpi
-          label="โปรเจคที่กำลังทำ"
-          tone="won"
-          icon={<ProjectIcon className="size-[15px]" strokeWidth={1.9} />}
-          value={running}
-          sub={
-            doneWithOpen
-              ? `จากทั้งหมด ${totalProjects} โปรเจค · ส่งมอบแล้วแต่มีงานค้าง ${doneWithOpen} โปรเจค`
-              : `จากทั้งหมด ${totalProjects} โปรเจค`
-          }
-          warn={doneWithOpen > 0}
-        />
-        <Kpi label="งานย่อยใกล้ครบกำหนด" value={soon} sub={`ภายใน ${SOON_DAYS} วัน`} tone="warn" icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
-        <Kpi
-          label="งานย่อยล่าช้า"
-          tone="late"
-          icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />}
-          value={overdue}
-          sub={overdue ? "เลยกำหนดส่ง และยังอยู่ที่ทีม" : "ไม่มีงานย่อยเลยกำหนดที่ทีม"}
-          warn={overdue > 0}
-        />
+        {/* ใต้ตัวเลขเป็นแค่ลักษณนาม หัวการ์ดบอกความหมายอยู่แล้ว (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+        <Kpi label="งานเข้ารอรับ" value={waiting} sub="งาน" tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานย่อยรอตรวจ" value={review} sub="งาน" tone="job" icon={<TasksIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="โปรเจคที่กำลังทำ" value={running} sub="โปรเจค" tone="won" icon={<ProjectIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานย่อยใกล้ครบกำหนด" value={soon} sub="งาน" tone="warn" icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานย่อยล่าช้า" value={overdue} sub="งาน" tone="late" warn={overdue > 0} icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Card title="ความคืบหน้าโปรเจค">
+      {/* ความคืบหน้า · งานเข้าใหม่ · ประเภทงานที่รับมากที่สุด — งานเข้าใหม่กับโดนัทกว้างเท่ากัน (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        {/* ปุ่มดูเพิ่มเติมอยู่มุมขวาบนของกล่อง (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+        <Card
+          title="ความคืบหน้าโปรเจค"
+          right={(() => {
+            const extra = projects.filter((p) => p.status === "running").length - PROJ_CAP;
+            return extra > 0 ? (
+              <Link href="/pm/projects" className="lnk flex-none text-[12.5px]">
+                ดูเพิ่มเติม ({extra})
+              </Link>
+            ) : null;
+          })()}
+        >
           <ProjectProgress projects={projects} today={today} />
         </Card>
 
         <NewJobs inbox={pm.inbox} />
+
+        <TopServices
+          services={[
+            ...projects.map((p) => p.service),
+            ...pm.inbox.filter((j) => j.stage === "plan" && !projects.some((p) => p.pj === j.pj)).map((j) => j.service),
+          ]}
+        />
       </div>
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      {/* ตารางสูงเท่าข้อมูล ไม่ยืดตามปฏิทินจนเหลือที่ว่าง (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <DueTable open={open} />
         <MiniCalendar events={sc.events.filter((e) => !isPsEvent(e) && !isSalesEvent(e))} today={today} />
       </div>
     </div>
+  );
+}
+
+/** ประเภทงานที่ PM รับมากที่สุด 5 อันดับ — นับจากโปรเจคที่รับแล้วทั้งหมด (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+/* โทนแดงอ่อน ไล่จากเข้ม (รับมากสุด) ไปจาง (รับน้อยสุด) (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+const TOP_COLORS = ["#DE4A57", "#E87580", "#F09DA5", "#F6C1C6", "#FADDE0"];
+function TopServices({ services }: { services: string[] }) {
+  const counts = new Map<string, number>();
+  for (const k of services) if (k) counts.set(k, (counts.get(k) ?? 0) + 1);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const all = top.reduce((n, [, c]) => n + c, 0) || 1;
+  const R = 60;
+  const C = 2 * Math.PI * R;
+  let start = 0;
+  const slices = top.map(([k, n], i) => {
+    const len = (C * n) / all;
+    const x = { k, n, len, start, color: TOP_COLORS[i] };
+    start += len;
+    return x;
+  });
+  return (
+    <Card title="ประเภทงานที่รับมากที่สุด">
+      {top.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">ยังไม่มีโปรเจค</p>
+      ) : (
+        <div className="flex flex-col items-center gap-4">
+          <span className="relative block size-[140px] flex-none">
+            <svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="ประเภทงานที่รับมากที่สุด">
+              <circle cx="70" cy="70" r={R} fill="none" stroke="var(--muted)" strokeWidth="14" />
+              {slices.map((x) => (
+                <circle
+                  key={x.k}
+                  cx="70"
+                  cy="70"
+                  r={R}
+                  fill="none"
+                  stroke={x.color}
+                  strokeWidth="14"
+                  strokeDasharray={`${x.len.toFixed(2)} ${(C - x.len).toFixed(2)}`}
+                  strokeDashoffset={(-x.start).toFixed(2)}
+                  transform="rotate(-90 70 70)"
+                >
+                  <title>{`${serviceLabel(x.k)} ${x.n} โปรเจค`}</title>
+                </circle>
+              ))}
+            </svg>
+            <span className="absolute inset-0 flex flex-col items-center justify-center">
+              <b className="num text-[22px] leading-none font-extrabold">{all}</b>
+              <em className="text-[11.5px] text-muted-foreground not-italic">โปรเจค</em>
+            </span>
+          </span>
+          <ul className="w-full space-y-2">
+            {slices.map((x) => (
+              <li key={x.k} className="flex items-center gap-2.5 text-[13px]">
+                <i className="size-2.5 flex-none rounded-full" style={{ background: x.color }} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate font-semibold">{serviceLabel(x.k)}</span>
+                <b className="num font-bold">{x.n}</b>
+                <em className="num w-10 text-right text-[12px] text-muted-foreground not-italic">
+                  {Math.round((x.n * 100) / all)}%
+                </em>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -162,19 +217,24 @@ function NewJobs({ inbox }: { inbox: ReturnType<typeof usePm>["inbox"] }) {
 
   return (
     <Card title="งานเข้าใหม่">
-      <p className="num text-[34px] leading-none font-extrabold">{rows.length}</p>
-      <p className="mt-1 text-[12.5px] text-muted-foreground">รายการรอรับ</p>
-      <ul className="mt-3.5 space-y-1.5 text-[13px]">
+      {/* แต่ละงานเป็นแถวของตัวเอง มีเลขลำดับ ชื่องาน และลูกค้า อ่านแยกกันออก (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <ul className="text-[13px]">
         {rows.length === 0 ? (
           <li className="text-muted-foreground">ไม่มีงานรอรับ</li>
         ) : (
           <>
-            {rows.slice(0, INBOX_CAP).map((j) => (
-              <li key={j.pj} className="truncate">
-                {j.scope}
+            {rows.slice(0, INBOX_CAP).map((j, i) => (
+              <li key={j.pj} className="flex items-start gap-2.5 border-t border-border py-2 first:border-t-0">
+                <span className="num grid size-5 flex-none place-items-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate text-[13px] font-semibold">{j.scope}</b>
+                  <em className="block truncate text-[11.5px] text-muted-foreground not-italic">{j.cus}</em>
+                </span>
               </li>
             ))}
-            {extra > 0 && <li className="text-muted-foreground">และอีก {extra} รายการ</li>}
+            {extra > 0 && <li className="border-t border-border pt-2 text-muted-foreground">และอีก {extra} รายการ</li>}
           </>
         )}
       </ul>
@@ -194,13 +254,11 @@ function MiniCalendar({
   today: string;
 }) {
   const [cursor, setCursor] = useState(() => today.slice(0, 7));
-  const [picked, setPicked] = useState(today);
 
   const [y, m] = cursor.split("-").map(Number);
   const first = new Date(y, m - 1, 1);
   const lead = first.getDay();
   const last = new Date(y, m, 0).getDate();
-  const rows = eventsOn(events, picked);
 
   const move = (step: number) => {
     const d = new Date(y, m - 1 + step, 1);
@@ -243,70 +301,28 @@ function MiniCalendar({
         {Array.from({ length: last }, (_, i) => {
           const iso = toIsoDate(new Date(y, m - 1, i + 1));
           const n = eventsOn(events, iso).length;
-          const on = iso === picked;
+          /* ปฏิทินเล็กบอกแค่วันกับจุดว่ามีนัด ไม่แสดงรายละเอียดนัด ซ้ำกับหน้าตารางงาน (ผู้ใช้สั่ง 8 ต.ค. 2569)
+             วันหยุดบริษัทเลขสีแดง · เสาร์-อาทิตย์สีเทาอ่อน */
+          const dow = new Date(y, m - 1, i + 1).getDay();
+          const tone = isHoliday(iso)
+            ? "text-destructive"
+            : dow === 0 || dow === 6
+              ? "text-muted-foreground/50"
+              : "";
           return (
-            <button
+            <span
               key={iso}
-              type="button"
-              onClick={() => setPicked(iso)}
-              aria-pressed={on}
-              aria-label={`${i + 1} ${n ? `มีนัด ${n} รายการ` : "ไม่มีนัด"}`}
-              className={`num flex aspect-square flex-col items-center justify-center gap-[3px] rounded-[9px] text-[12.5px] ${
-                on
-                  ? "bg-primary font-semibold text-white"
-                  : iso === today
-                    ? "font-bold text-primary ring-1 ring-primary ring-inset"
-                    : "hover:bg-muted"
+              title={n ? `มีนัด ${n} รายการ` : undefined}
+              className={`num flex aspect-square flex-col items-center justify-center gap-[3px] rounded-[9px] text-[12.5px] ${tone} ${
+                iso === today ? "font-bold ring-1 ring-primary ring-inset" : ""
               }`}
             >
               {i + 1}
-              <i
-                className={`block size-[5px] rounded-full ${
-                  n ? (on ? "bg-white/90" : "bg-primary") : "bg-transparent"
-                }`}
-              />
-            </button>
+              <i className={`block size-[5px] rounded-full ${n ? "bg-primary" : "bg-transparent"}`} />
+            </span>
           );
         })}
       </div>
-
-      <p className="mt-3 border-t border-border pt-2.5 text-[12.5px] font-semibold text-muted-foreground">
-        {/* ตามต้นแบบ: แสดงวันที่อย่างเดียว ไม่ต่อท้ายจำนวนรายการ */}
-        {thaiDate(picked)}
-      </p>
-      <ul className="mt-1">
-        {rows.length === 0 ? (
-          <li className="py-2 text-[12.5px] text-muted-foreground">ไม่มีนัดหมายในวันนี้</li>
-        ) : (
-          <>
-            {rows.slice(0, CAL_CAP).map((e) => {
-              const col = e.col ? colorOf(e.col).fg : eventKind(e.kind).dot;
-              /* ตามต้นแบบ: ชื่อนัด · เวลาเริ่ม – จบ · สถานที่ (มีเมื่อกรอกไว้เท่านั้น) */
-              return (
-                <li key={e.id} className="flex gap-2.5 border-t border-border py-2 first:border-t-0">
-                  <span className="min-w-0 flex-1">
-                    <b className="block truncate text-[12.5px] font-semibold">{e.title}</b>
-                    <em className="num block text-[11px] text-muted-foreground not-italic">
-                      {e.from} – {e.to}
-                    </em>
-                    {e.place && (
-                      <em className="block truncate text-[11px] text-muted-foreground not-italic">{e.place}</em>
-                    )}
-                  </span>
-                  <i className="mt-1 size-2 flex-none rounded-full" style={{ background: col }} />
-                </li>
-              );
-            })}
-            {rows.length > CAL_CAP && (
-              <li className="border-t border-border pt-2.5">
-                <Link href="/pm/schedule" className="lnk text-[12.5px]">
-                  ดูตารางงาน อีก {rows.length - CAL_CAP} รายการ
-                </Link>
-              </li>
-            )}
-          </>
-        )}
-      </ul>
     </Card>
   );
 }
@@ -388,14 +404,15 @@ function Card({
 // ─── ความคืบหน้าแต่ละโปรเจค ────────────────────────────────────────
 
 function ProjectProgress({ projects, today }: { projects: Project[]; today: string }) {
-  const all = [...projects].filter((p) => p.status === "running").sort((a, b) => a.due.localeCompare(b.due));
+  /* สามโปรเจคที่รับมาล่าสุด — กล่องสูงคงที่เท่าสามแถวเสมอ ไม่หดหรือยืดตามจำนวน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+  const all = [...projects].filter((p) => p.status === "running").sort((a, b) => b.start.localeCompare(a.start));
   const rows = all.slice(0, PROJ_CAP);
   const extra = all.length - rows.length;
-  if (rows.length === 0) {
-    return <p className="py-9 text-center text-[13px] text-muted-foreground">ยังไม่มีโปรเจคที่กำลังดำเนินการ</p>;
-  }
   return (
-    <div className="flex flex-col gap-[11px]">
+    <div className="flex h-[300px] flex-col gap-[11px]">
+      {rows.length === 0 && (
+        <p className="grid flex-1 place-items-center text-[13px] text-muted-foreground">ยังไม่มีโปรเจคที่กำลังดำเนินการ</p>
+      )}
       {rows.map((p) => {
         const pr = projectProgress(p);
         const left = daysBetween(today, p.due);
@@ -413,31 +430,18 @@ function ProjectProgress({ projects, today }: { projects: Project[]; today: stri
           >
             <span className="min-w-0 flex-1">
               <b className="block truncate text-[13.5px] font-bold">{projName(p)}</b>
-              <em className="block truncate text-[11.5px] text-muted-foreground not-italic">
-                {p.cus}
-                {/* จอแคบซ่อนคอลัมน์กำหนดส่ง ย้ายมาต่อท้ายชื่อลูกค้าแทน ชื่องานจะได้ไม่ถูกบีบ */}
-                <span className="num sm:hidden"> · ส่ง {thaiDate(p.due)}</span>
-              </em>
-              <span className="mt-2 block h-1.5 w-full max-w-[220px] overflow-hidden rounded-md bg-muted">
-                <i className="block h-full rounded-md bg-primary" style={{ width: `${pr.pct}%` }} />
-              </span>
+              <em className="block truncate text-[11.5px] text-muted-foreground not-italic">{p.cus}</em>
             </span>
-            <span className="hidden w-[120px] flex-none sm:block">
-              <em className="block text-[10.5px] text-muted-foreground not-italic">กำหนดส่ง</em>
-              <span className="num text-[12.5px]">{thaiDate(p.due)}</span>
+            {/* ไม่มีกำหนดส่ง · แถบความคืบหน้าอยู่ติดเลขเปอร์เซ็นต์ (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+            <span className="block h-1.5 w-[90px] flex-none overflow-hidden rounded-md bg-muted sm:w-[180px]">
+              <i className="block h-full rounded-md" style={{ width: `${pr.pct}%`, background: pctColor(pr.pct) }} />
             </span>
             <span className="min-w-[76px] flex-none text-right">
               <b className="num block text-[16px] font-extrabold">{pr.pct}%</b>
-              <em className={`block text-[11px] font-semibold not-italic ${st.cls}`}>{st.text}</em>
             </span>
           </Link>
         );
       })}
-      {extra > 0 && (
-        <Link href="/pm/projects" className="lnk self-start text-[12.5px]">
-          ดูโปรเจค อีก {extra} รายการ
-        </Link>
-      )}
     </div>
   );
 }
@@ -495,7 +499,7 @@ function DueTable({ open }: { open: TaskRow[] }) {
         )}
         {extra > 0 && <li className="py-3 text-[12.5px] text-muted-foreground">และอีก {extra} งาน</li>}
       </ul>
-      <div className="relative min-h-0 flex-1 overflow-hidden max-sm:hidden">
+      <div className="relative min-h-0 w-full flex-1 self-stretch overflow-hidden max-sm:hidden">
         {/* ตารางกว้างเท่ากรอบเสมอ ข้อความยาวตัดด้วย … ไม่ให้ล้นขอบหรือต้องเลื่อนข้าง */}
         <table className="data-table cards-sm w-full table-fixed">
           <thead>
@@ -504,8 +508,7 @@ function DueTable({ open }: { open: TaskRow[] }) {
               <th style={{ width: "34%" }}>งาน</th>
               <th>โปรเจค</th>
               <th>ผู้รับผิดชอบ</th>
-              <th style={{ width: 118 }}>กำหนดส่ง</th>
-              <th className="c" style={{ width: 116 }}>
+              <th className="c" style={{ width: 170 }}>
                 สถานะ
               </th>
             </tr>
@@ -513,7 +516,7 @@ function DueTable({ open }: { open: TaskRow[] }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-9 text-center text-muted-foreground">
+                <td colSpan={4} className="py-9 text-center text-muted-foreground">
                   ไม่มีงานที่ต้องติดตาม
                 </td>
               </tr>
@@ -535,9 +538,6 @@ function DueTable({ open }: { open: TaskRow[] }) {
                     <td data-label="ผู้รับผิดชอบ" className="muted truncate" title={names || undefined}>
                       {first || <span className="text-[12px] font-medium text-muted-foreground">ยังไม่มอบหมาย</span>}
                     </td>
-                    <td data-label="กำหนดส่ง" className="num muted whitespace-nowrap">
-                      {thaiDate(t.due)}
-                    </td>
                     <td data-label="สถานะ" className="c">
                       <span className={`tag whitespace-nowrap ${tag.cls}`}>
                         <i />
@@ -550,7 +550,7 @@ function DueTable({ open }: { open: TaskRow[] }) {
             )}
             {extra > 0 && (
               <tr>
-                <td colSpan={5} className="text-[12.5px] text-muted-foreground">
+                <td colSpan={4} className="text-[12.5px] text-muted-foreground">
                   และอีก {extra} งาน
                 </td>
               </tr>

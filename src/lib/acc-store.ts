@@ -93,7 +93,14 @@ function isAccState(value: unknown): value is AccState {
  * โปรเจคผูกกับใบแจ้งหนี้งวดแรก เครื่องที่เก็บข้อมูลบัญชีไว้ก่อนจึงต้องมีใบพวกนี้ด้วย
  * กติกา "เติมของที่หาย ไม่ทับของที่มี" — ดีลที่มีอยู่แล้ว หรือเลขที่เอกสารที่ถูกใช้ไปแล้วในเครื่อง ข้ามทั้งชุด
  */
+/** ข้อมูลตัวอย่างชุด ต.ค. 2569 = เอกสารที่ลงวันที่ตั้งแต่ 20 ก.ย. 2569 — ชุดตั้งต้นเดิมลงวันที่ก่อนหน้านั้นทั้งหมด */
+const SAMPLE_FROM = "2026-09-20";
+
 function migrateAcc(v: AccState): AccState {
+  return addSampleDocs(addSeedDeals(v));
+}
+
+function addSeedDeals(v: AccState): AccState {
   const haveDeal = new Set(v.deals.map((d) => d.no));
   const usedInv = new Set(v.invoices.map((x) => x.no));
   const usedRcp = new Set(v.receipts.map((x) => x.no));
@@ -113,6 +120,50 @@ function migrateAcc(v: AccState): AccState {
     receipts: [...v.receipts, ...ACC_RECEIPTS.filter((x) => nos.has(x.deal))],
     payments: [...v.payments, ...ACC_PAYMENTS.filter((x) => invNos.has(x.inv))],
   };
+}
+
+/*
+ * ข้อมูลตัวอย่างเดือน ต.ค. 2569 (เจ้าของระบบสั่ง 8 ต.ค. 2569) — งวดถัดไปของดีลที่มีอยู่แล้ว + รายการภาษีหัก ณ ที่จ่าย
+ * กติกาเดียวกัน "เติมของที่หาย ไม่ทับของที่มี":
+ *   ใบแจ้งหนี้เติมเมื่อ เลขที่ยังไม่ถูกใช้ · ดีลยังอยู่และไม่ถูกยกเลิก · งวดนั้นยังไม่มีใบในเครื่อง
+ *   ยอดงวดในเครื่องยังเท่าเดิม · งวดก่อนหน้าชำระครบแล้ว · และเลขที่ใบเสร็จของใบนั้นยังไม่ถูกใช้
+ *   (ไม่ผ่านข้อใดข้อหนึ่ง ข้ามทั้งใบพร้อมใบเสร็จ ไม่งั้นได้ใบที่ชำระแล้วแต่ไม่มีใบเสร็จ)
+ *   ภาษีหัก ณ ที่จ่ายเติมเมื่อรหัสยังไม่มีและเลขที่หนังสือรับรองยังไม่ถูกใช้
+ */
+function addSampleDocs(v: AccState): AccState {
+  let s = v;
+  const seeds = [...ACC_INVOICES]
+    .filter((x) => x.issue >= SAMPLE_FROM && !v.invoices.some((y) => y.no === x.no))
+    .sort((a, b) => a.seq - b.seq);
+  for (const inv of seeds) {
+    const deal = s.deals.find((d) => d.no === inv.deal);
+    const item = deal?.plan.find((p) => p.seq === inv.seq);
+    if (!deal || deal.cancelled || !item || item.amount !== inv.total) continue;
+    if (s.invoices.some((x) => x.deal === inv.deal && x.seq === inv.seq && x.status !== "cancelled")) continue;
+    if (!deal.plan.filter((p) => p.seq < inv.seq).every((p) => seqStatus(s, deal.no, p.seq) === "paid")) continue;
+    const rcps = ACC_RECEIPTS.filter((r) => r.inv === inv.no);
+    if (rcps.some((r) => s.receipts.some((x) => x.no === r.no))) continue;
+    s = {
+      ...s,
+      deals: s.deals.map((d) =>
+        d.no === deal.no
+          ? { ...d, plan: d.plan.map((p) => (p.seq === inv.seq && !p.due ? { ...p, due: inv.due } : p)) }
+          : d,
+      ),
+      invoices: [...s.invoices, inv],
+      receipts: [...s.receipts, ...rcps],
+      payments: [
+        ...s.payments.filter((p) => p.inv !== inv.no),
+        ...ACC_PAYMENTS.filter((p) => p.inv === inv.no),
+      ],
+    };
+  }
+  /* เติมครั้งเดียวทั้งชุด — ถ้ามีรายการในชุดนี้อยู่แล้วสักรายการแปลว่าเคยเติมไปแล้ว
+     รายการที่ผู้ใช้ลบทิ้งทีหลังจะได้ไม่โผล่กลับมาทุกครั้งที่เปิดหน้า (migrate ทำงานทุกครั้งที่โหลด) */
+  const sampleWht = ACC_WHT.filter((w) => w.date >= SAMPLE_FROM);
+  if (sampleWht.some((w) => s.wht.some((x) => x.id === w.id))) return s;
+  const wht = sampleWht.filter((w) => !(w.no && s.wht.some((x) => x.no === w.no)));
+  return wht.length ? { ...s, wht: [...s.wht, ...wht] } : s;
 }
 
 const store = createPersistedStore<AccState>("maz-erp.acc.v9", INITIAL, isAccState, migrateAcc);
@@ -1021,6 +1072,38 @@ export function removeWht(id: string) {
     ...s,
     wht: s.wht.filter((w) => !(w.id === id && !w.no.trim())),
   }));
+}
+
+/**
+ * เลขที่หนังสือรับรองถัดไป MAZ-WHT-<ปี พ.ศ.>-#### (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * เดินหน้าอย่างเดียว นับจากเลขมากสุดของปีนั้นที่มีอยู่แล้ว — เลขที่ออกแล้วลบไม่ได้ (removeWht) จึงไม่ซ้ำ
+ */
+export function nextWhtNo(existing: string[], be: number) {
+  const head = `MAZ-WHT-${be}-`;
+  const max = existing
+    .filter((n) => n.startsWith(head))
+    .reduce((m, n) => Math.max(m, Number(n.slice(head.length)) || 0), 0);
+  return head + String(max + 1).padStart(4, "0");
+}
+
+/**
+ * บันทึกหนังสือรับรอง 50 ทวิ — รายการที่ยังไม่มีเลขได้เลขใหม่และวันที่ออกเป็นวันนี้
+ * รายการที่มีเลขแล้วแก้ข้อมูลได้แต่เลขเดิมคงไว้ · คืนเลขที่ของรายการ
+ */
+export function issueWht(row: WhtRow) {
+  let no = row.no;
+  store.update((s) => {
+    const issued = row.issued || toIsoDate(bkkNow());
+    if (!no) no = nextWhtNo(s.wht.map((w) => w.no), Number(issued.slice(0, 4)) + 543);
+    const next = { ...row, no, issued };
+    return {
+      ...s,
+      wht: s.wht.some((w) => w.id === row.id)
+        ? s.wht.map((w) => (w.id === row.id ? next : w))
+        : [...s.wht, next],
+    };
+  });
+  return no;
 }
 
 export function newWhtId() {

@@ -413,12 +413,12 @@ export function OtPage() {
   );
 }
 
-function Row({ row, hit }: { row: OtRecord; hit?: boolean }) {
-  const adjusted =
-    row.status === "อนุมัติแล้ว" &&
-    row.approvedHours != null &&
-    row.approvedHours !== row.hours;
+/* ชั่วโมงช่องเดียว — อนุมัติแล้วใช้ชั่วโมงที่อนุมัติ ไม่มีบรรทัด "อนุมัติ x" ซ้อนใต้อีก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function shownHours(row: OtRecord) {
+  return row.status === "อนุมัติแล้ว" && row.approvedHours != null ? row.approvedHours : row.hours;
+}
 
+function Row({ row, hit }: { row: OtRecord; hit?: boolean }) {
   return (
     <tr className={hit ? "ring-2 ring-primary ring-inset" : undefined}>
       <td>
@@ -429,23 +429,19 @@ function Row({ row, hit }: { row: OtRecord; hit?: boolean }) {
         >
           {thaiDate(row.date)}
         </Link>
-        {/* เลขที่ใบ — ผู้อนุมัติอ้างเลขนี้ พนักงานจึงต้องเห็นเลขเดียวกันที่ใบของตัวเอง */}
+        {/* ไม่แสดงรหัสใบโอที (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
         <span className="why">
-          {row.id} · โอที{OT_KIND[otKindOf(row.date)].label}
+          โอที{OT_KIND[otKindOf(row.date)].label}
         </span>
       </td>
       <td className="num whitespace-nowrap">
         {hhmm(row.startMin)}–{hhmm(row.endMin)}
       </td>
       <td className="c num">
-        <b className="font-semibold">{row.hours.toFixed(2)}</b>
-        {adjusted && (
-          <span className="adj">อนุมัติ {row.approvedHours?.toFixed(2)}</span>
-        )}
+        <b className="font-semibold">{shownHours(row).toFixed(2)}</b>
       </td>
       <td>
         <span className="clip">{row.reason}</span>
-        {row.comment && <span className="why">หัวหน้า: {row.comment}</span>}
       </td>
       <td>
         <span className={`tag ${STATUS_CLASS[row.status]}`}>
@@ -468,11 +464,6 @@ function Row({ row, hit }: { row: OtRecord; hit?: boolean }) {
 
 /** การ์ดคำขอบนมือถือ — กริดตามต้นแบบ (#ot-rows > tr บนจอแคบ) เลขที่ใบซ่อน เหลือเวลายื่นแทน */
 function MobileCard({ row, hit }: { row: OtRecord; hit?: boolean }) {
-  const adjusted =
-    row.status === "อนุมัติแล้ว" &&
-    row.approvedHours != null &&
-    row.approvedHours !== row.hours;
-
   return (
     <li className={`m-ot-card ${hit ? "hit" : ""}`}>
       <i className="ico">
@@ -483,13 +474,11 @@ function MobileCard({ row, hit }: { row: OtRecord; hit?: boolean }) {
         {thaiDate(row.date)}
       </Link>
       <span className="hr num">
-        {row.hours.toFixed(2)} ชม.
-        {adjusted && <span className="adj">อนุมัติ {row.approvedHours?.toFixed(2)} ชม.</span>}
+        {shownHours(row).toFixed(2)} ชม.
       </span>
       {/* ชื่อคลาส rsn ไม่ใช่ wk — .wk ใน globals.css เป็นกริดปฏิทิน 7 ช่อง ทับกันแล้วข้อความแตกเป็นคำ ๆ (แก้ 5 ต.ค. 2569) */}
       <p className="rsn">
         {row.reason}
-        {row.comment && <span className="cm">หัวหน้า: {row.comment}</span>}
       </p>
       <hr className="line" />
       <span className="tm num">

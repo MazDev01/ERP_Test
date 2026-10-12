@@ -1,7 +1,6 @@
-import { AccReceiptsPage } from "@/components/acc-receipts-page";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "ใบเสร็จ / ใบกำกับภาษี — ERP MAZ" };
-
+/* ใบเสร็จรวมเข้าหน้าวางบิลแล้ว — ที่อยู่เดิมพาไปแท็บใบเสร็จ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 export default function Page() {
-  return <AccReceiptsPage />;
+  redirect("/acc/billing?tab=rc");
 }

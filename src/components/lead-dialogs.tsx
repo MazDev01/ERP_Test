@@ -57,7 +57,7 @@ export function Sheet({
 
   return createPortal(
     <div
-      className="ui-sheet fixed inset-0 z-80 flex items-end justify-center bg-black/50 md:items-start md:p-6 md:pt-[max(24px,7vh)]"
+      className="ui-sheet fixed inset-0 z-80 flex items-end justify-center bg-black/50 md:items-center md:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -266,7 +266,7 @@ export function ActivityDialog({
         />
       </Field>
 
-      <Field label="วันนัดติดตามครั้งถัดไป" hint="ใส่ไว้เพื่อให้ขึ้นเตือนบนไทม์ไลน์">
+      <Field label="วันนัดติดตามครั้งถัดไป">
         <DateField
           value={followUp}
           onChange={(iso) => setFollowUp(iso)}
@@ -410,7 +410,7 @@ export function TakeOverDialog({
       <p className="mb-4 text-[13px] leading-relaxed text-muted-foreground">
         {customerName} · ตอนนี้อยู่ในความดูแลของ{" "}
         <b className="font-medium text-foreground">{currentOwner}</b> — รับช่วงแล้วรายการนี้จะ
-        มาอยู่กับคุณ และบันทึกลงประวัติการเปลี่ยนแปลง
+        มาอยู่กับคุณ
       </p>
 
       <Field

@@ -30,10 +30,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { decideEmpRequest, empFuelKm, useEmpRequests, type EmpRequest } from "@/lib/emp-requests";
 import { claimTotal, fuelRate, type ExpenseClaim } from "@/lib/expense-data";
-import { hrPos } from "@/lib/hr-data";
-import { useHr } from "@/lib/hr-store";
+import { HR_LEAVE_LABEL, hrPos, type InternLeave } from "@/lib/hr-data";
+import { decideInternLeave, useHr } from "@/lib/hr-store";
 import { approveClaim, rejectClaim, useAllClaims } from "@/lib/expense-store";
-import { baht, daysBetween, thaiDate, thaiMonth, thaiStamp, todayIso } from "@/lib/format";
+import { baht, bkkStamp, daysBetween, thaiDate, thaiMonth, thaiStamp, todayIso } from "@/lib/format";
 import { type LeaveRecord } from "@/lib/leave-data";
 import {
   approveLeave,
@@ -66,8 +66,9 @@ export type ApprovalRequest = Request;
 /** คำขอหนึ่งใบ — รวมสามประเภทให้อยู่ในรูปเดียวกัน */
 type Request = {
   kind: Kind;
-  /** role = ใบของบทบาทที่ล็อกอินได้ (leave/ot/expense-store) · emp = คำขอของทีมงานตามรหัสพนักงาน */
-  src: "role" | "emp";
+  /** role = ใบของบทบาทที่ล็อกอินได้ (leave/ot/expense-store) · emp = คำขอของทีมงานตามรหัสพนักงาน
+   *  intern = ใบลานักศึกษาฝึกงานในสโตร์ฝ่ายบุคคล (hr.internLeave) — ชุดเดียวกับการ์ดบนแดชบอร์ดฝ่ายบุคคล */
+  src: "role" | "emp" | "intern";
   /** บทบาทผู้ยื่น — เฉพาะ src = role */
   role?: Role;
   /** ใบนี้มาถึงเราในฐานะบทบาทไหน — คนหนึ่งควบหลายบทบาทได้ ต้องรู้ว่ากำลังตัดสินในฐานะอะไร */
@@ -131,6 +132,8 @@ export const TABS: Tab[] = [
 const ROLE_TABS: Partial<Record<Role, Kind[]>> = {
   gm: ["leave", "ot", "expense"], /* รับคิวโอทีและใบเบิกของ PM เดิมมาด้วย (22 ก.ย. 2569) */
   pm: ["ot", "expense"],
+  /* ฝ่ายบุคคลรับแค่ใบลาของเด็กฝึกงาน — เด็กฝึกงานไม่มีเมนูโอทีและเบิกค่าใช้จ่าย (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  hr: ["leave"],
 };
 
 const STATUS_OPTS: { value: Status | ""; label: string }[] = [
@@ -198,7 +201,8 @@ export function ApprovalsPage() {
       if (kind === "ot")
         for (const v of ots[from]) if (v.status !== "ยกเลิก") out.push(fromOt(from, v, as));
       if (kind === "expense")
-        for (const v of claims[from]) if (v.status !== "ร่าง") out.push(fromClaim(from, v, as));
+        /* ใบที่ผู้ยื่นยกเลิกเองไม่เข้าคิวอนุมัติ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+        for (const v of claims[from]) if (v.status !== "ร่าง" && v.status !== "ยกเลิก") out.push(fromClaim(from, v, as));
     }
     /* คิวของ PM / GM — คำขอของทีมงานตามรหัสพนักงาน (ต้นแบบ PM_APPROVALS · gm-approvals) */
     for (const as of myRoles) {
@@ -209,8 +213,16 @@ export function ApprovalsPage() {
         out.push(fromEmp(r, e?.name ?? r.emp, e ? hrPos(e.pos).label : "", as, spans));
       }
     }
+    /* ฝ่ายบุคคล — ใบลานักศึกษาฝึกงานที่อยู่ในสโตร์ฝ่ายบุคคล (ชุดเดียวกับการ์ดบนแดชบอร์ด · ผู้ใช้สั่ง 8 ต.ค. 2569)
+       ตัดสินที่นี่หรือที่การ์ดก็ลงฟังก์ชันเดียวกัน (decideInternLeave) ผลจึงตรงกันทั้งสองที่ */
+    if (myRoles.includes("hr"))
+      for (const r of hr.internLeave) {
+        const e = hr.emp.find((x) => x.id === r.emp);
+        /* ใบที่มาถึงฝ่ายบุคคลมีแต่ของนักศึกษาฝึกงาน — ใต้ชื่อขึ้นว่าฝึกงานเหมือนกันทุกใบ ไม่ใช่ตำแหน่งงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+        out.push(fromIntern(r, e?.name ?? r.emp, "นักศึกษาฝึกงาน"));
+      }
     return out.sort((a, b) => a.at.localeCompare(b.at));
-  }, [duties, leaves, ots, claims, extra, hr.emp, myRoles]);
+  }, [duties, leaves, ots, claims, extra, hr.emp, hr.internLeave, myRoles]);
 
   if (duties.length === 0 && all.length === 0) {
     return (
@@ -230,8 +242,15 @@ export function ApprovalsPage() {
   const tabs = TABS.filter((t) => {
     if (t.key === "all") return true;
     const k = t.key;
-    return myRoles.some((r) => !ROLE_TABS[r] || ROLE_TABS[r]!.includes(k)) || all.some((r) => r.kind === k);
-  });
+    /* บทบาทที่ไม่มีแท็บตามต้นแบบ เห็นเฉพาะประเภทที่สายอนุมัติส่งมาถึงจริง
+       เช่น ฝ่ายบุคคลรับแค่ใบลาของเด็กฝึกงาน จึงไม่มีแท็บโอทีและค่าใช้จ่าย (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+    return (
+      myRoles.some((r) =>
+        ROLE_TABS[r] ? ROLE_TABS[r]!.includes(k) : duties.some((d) => d.as === r && d.kind === k),
+      ) || all.some((r) => r.kind === k)
+    );
+  }).filter((t, _i, list) => t.key !== "all" || list.length > 2);
+  /* มีประเภทเดียว (เช่น ฝ่ายบุคคลมีแค่ลา) ไม่ต้องมีแท็บ "ทั้งหมด" ซ้ำกับแท็บนั้น (ผู้ใช้สั่ง 8 ต.ค. 2569) */
 
   return (
     <div className="space-y-4">
@@ -290,7 +309,7 @@ export function ApprovalsBoard({
   }, [openId, all]);
 
   /* ?kind= ชี้ไปแท็บที่บทบาทนี้ไม่มี — กลับไปแท็บทั้งหมด */
-  const cur = tabs.some((t) => t.key === tab) ? tab : "all";
+  const cur = tabs.some((t) => t.key === tab) ? tab : (tabs[0]?.key ?? "all");
   const byStatus = all.filter((r) => !status || r.status === status);
   const count = (k: "all" | Kind) => byStatus.filter((r) => k === "all" || r.kind === k).length;
   const term = q.trim().toLowerCase();
@@ -773,6 +792,7 @@ function NumBold({ text }: { text: string }) {
 function applyDecision(item: Request, approve: boolean, why: string, hours?: number) {
   if (item.src === "emp")
     return decideEmpRequest(item.key, approve, why, item.kind === "ot" ? hours : undefined);
+  if (item.src === "intern") return decideInternLeave(item.key, approve, bkkStamp());
   if (!item.role) return;
   if (approve) {
     if (item.kind === "leave") approveLeave(item.role, item.key);
@@ -858,6 +878,29 @@ function fromEmp(r: EmpRequest, name: string, sub: string, as: Role, spans: Away
   const km = empFuelKm(r);
   const lines = [`ค่าน้ำมัน ${thaiMonth(r.month ?? "")}`, `รวม ${km.toFixed(2)} กม.`, `เป็นเงิน ${baht(km * fuelRate())} บาท`];
   return { ...base, kind: "expense", topic: "ค่าน้ำมัน", line: `${r.id} ${lines.join(" ")}`, lines };
+}
+
+/** ใบลานักศึกษาฝึกงานในสโตร์ฝ่ายบุคคล — รูปเดียวกับใบลาอื่น ผู้อนุมัติคือฝ่ายบุคคล */
+function fromIntern(r: InternLeave, name: string, sub: string): Request {
+  const type = HR_LEAVE_LABEL[r.lt];
+  const range = r.from === r.to ? thaiDate(r.from) : `${thaiDate(r.from)} – ${thaiDate(r.to)}`;
+  const lines = [`${type} ${range}`, `รวม ${r.days.toFixed(2)} วัน`];
+  return {
+    kind: "leave",
+    src: "intern",
+    as: "hr",
+    name,
+    sub,
+    key: r.id,
+    no: r.id,
+    status: r.status,
+    at: r.at,
+    topic: type,
+    line: `${lines.join(" ")} ${r.note}`,
+    lines,
+    note: r.note,
+    why: "",
+  };
 }
 
 /*

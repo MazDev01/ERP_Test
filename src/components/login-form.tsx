@@ -9,7 +9,7 @@ import "@/styles/login.css";
 import { homeOf, navItems } from "@/lib/nav";
 import { accountOf, markLogin } from "@/lib/accounts";
 import { useHr } from "@/lib/hr-store";
-import { accountRoles } from "@/lib/hr-data";
+import { ROLE_EMPLOYEE, accountRoles } from "@/lib/hr-data";
 import { bkkStamp } from "@/lib/format";
 import { ROLES, setRole, useRole, type Role } from "@/lib/role";
 
@@ -115,8 +115,12 @@ export function LoginForm() {
     /* ไม่กรอกอะไรเลย = เข้าด้วยบทบาทที่เลือกทันที ไม่ต้องใช้รหัส (ผู้ใช้สั่ง 22 ก.ย. 2569 · ยังไม่มีหลังบ้าน)
        กรอกชื่อผู้ใช้เมื่อไร ตรวจรหัสผ่านและนับครั้งที่ผิดตามต้นแบบ login.html */
     if (!user && !password) {
-      const account = accountOf(role);
-      if (account.suspended) return setLocked("admin");
+      /* สถานะบัญชียึดตามทะเบียนพนักงานที่ฝ่ายบุคคลเห็น (/hr/accounts) เหมือนการเข้าด้วยชื่อผู้ใช้
+         ค่าระงับรายบทบาทใช้เฉพาะบทบาทที่ไม่มีพนักงานผูกไว้ — กันสองที่เก็บไม่ตรงกัน (ผู้ใช้แจ้ง 9 ต.ค. 2569) */
+      const empId = ROLE_EMPLOYEE[role];
+      const emp = empId ? hr.emp.find((x) => x.id === empId) : undefined;
+      const blockedNow = emp?.account ? emp.account.status === "suspended" : accountOf(role).suspended;
+      if (blockedNow) return setLocked("admin");
       setRole(role);
       keepDevice("");
       markLogin(role, bkkStamp());
@@ -223,9 +227,8 @@ export function LoginForm() {
               <polyline points="1215,170 1565,170 1215,470 1565,470" />
             </g>
           </svg>
-          <p className="mt-2.5 mb-9 text-center text-[13.5px] text-muted-foreground">
-            เข้าสู่ระบบเพื่อใช้งาน ERP MAZ
-          </p>
+          {/* ไม่มีข้อความใต้โลโก้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+          <div className="mb-9" />
 
           {/* ช่องกรอกและปุ่มตามไฟล์ตัวอย่างทุกค่า (ผู้ใช้สั่ง 2 ต.ค. 2569) — เส้นใต้อย่างเดียว ไม่มีกรอบ ไม่มีไอคอน · styles/login.css */}
           <form onSubmit={submit} noValidate className="lg-form">

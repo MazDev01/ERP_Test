@@ -39,8 +39,25 @@ function migrateAds(v: AdsState): AdsState {
     const { deal, ...rest } = x as T & { deal?: string };
     return { ...(rest as T), pj: legacyPj(deal) };
   };
-  if (![...v.runs, ...v.contents].some((x) => !x.pj)) return v;
-  return { runs: v.runs.map(fix), contents: v.contents.map(fix) };
+  const fixed = [...v.runs, ...v.contents].some((x) => !x.pj)
+    ? { runs: v.runs.map(fix), contents: v.contents.map(fix) }
+    : v;
+  return addMissingSeeds(fixed);
+}
+
+/*
+ * ใบสั่งรันและชิ้นงานตัวอย่างที่เพิ่มเข้าชุดตั้งต้นทีหลัง (8 ต.ค. 2569) — เติมเฉพาะที่ยังไม่มี ไม่ทับผลที่ผู้ใช้กรอกไว้
+ * ไม่มีรหัสของตัวเอง จึงเทียบด้วยคีย์เดียวกับ markRun / saveMetric · ระบบไม่มีการลบ ของที่หายไปจึงแปลว่ายังไม่เคยได้รับ
+ */
+function addMissingSeeds(v: AdsState): AdsState {
+  const runKey = (r: AdRun) => `${r.pj}|${r.round}|${r.channel}|${r.tool}`;
+  const contentKey = (c: AdContent) => `${c.pj}|${c.round}|${c.name}`;
+  const haveRun = new Set(v.runs.map(runKey));
+  const haveContent = new Set(v.contents.map(contentKey));
+  const runs = AD_RUNS.filter((r) => !haveRun.has(runKey(r)));
+  const contents = AD_CONTENTS.filter((c) => !haveContent.has(contentKey(c)));
+  if (!runs.length && !contents.length) return v;
+  return { ...v, runs: [...v.runs, ...runs], contents: [...v.contents, ...contents] };
 }
 
 const store = createPersistedStore<AdsState>("maz-erp.ads.v2", INITIAL, isAdsState, migrateAds);

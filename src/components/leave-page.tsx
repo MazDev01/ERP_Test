@@ -10,6 +10,7 @@ import {
   leaveYearOf,
   periodRange,
   leaveTypes,
+  leaveLabel,
   type LeaveRecord,
   type LeaveStatus,
 } from "@/lib/leave-data";
@@ -110,7 +111,10 @@ export function LeavePage() {
 
   const scoped = useMemo(() => {
     const list = tab === "all" ? inPeriod : inPeriod.filter((r) => r.status === tab);
-    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+    /* เรียงตามลำดับที่ยื่น — ไม่แสดงเลขที่คำขอ ใช้ลำดับที่ 1 2 3… แทน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+    const sub = (r: LeaveRecord) => r.submittedAt || r.date;
+    /* ใบที่ยื่นล่าสุดอยู่บนสุด เป็นลำดับที่ 1 (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+    return [...list].sort((a, b) => sub(b).localeCompare(sub(a)) || b.id.localeCompare(a.id));
   }, [inPeriod, tab]);
 
   const maxPage = Math.max(1, Math.ceil(scoped.length / PER_PAGE));
@@ -218,7 +222,6 @@ export function LeavePage() {
           const q = leaveUsage(records, t, period);
           const total = q.entitled;
           const left = q.remaining;
-          const pct = total ? Math.min(100, Math.round((q.approved / total) * 100)) : 0;
           return (
             <div key={t} className="glass flex h-full flex-col rounded-2xl px-3.5 py-3 sm:px-[17px] sm:py-[15px]">
               {/* หัวการ์ดอยู่บรรทัดเดียวเสมอ — ชื่อยาวให้ตัดท้าย ไม่ดันให้การ์ดสูงไม่เท่ากัน */}
@@ -227,7 +230,7 @@ export function LeavePage() {
                   <i className={`grid size-[26px] flex-none place-items-center rounded-[9px] ${QUOTA_TONE[n % QUOTA_TONE.length]}`}>
                     <LeaveIcon className="size-3.5" strokeWidth={2.2} />
                   </i>
-                  <b className="min-w-0 text-[13.5px] leading-tight font-semibold">{t}</b>
+                  <b className="min-w-0 text-[13.5px] leading-tight font-semibold">{leaveLabel(t)}</b>
                 </span>
                 {/* จอแคบไม่ต้องมีป้ายสิทธิ์ต่อปี — บรรทัด "ใช้ไปแล้ว x จาก y วัน" บอกอยู่แล้ว
                     เอาออกแล้วชื่อประเภทการลาได้ความกว้างเต็ม ไม่ถูกตัดท้าย */}
@@ -235,32 +238,15 @@ export function LeavePage() {
                   {base} วัน/ปี
                 </em>
               </div>
-              <p className="num mt-2 text-[24px] leading-tight font-bold sm:text-[27px]">
-                {round1(left)}
-                <span className="ml-1.5 text-[12px] font-semibold text-muted-foreground sm:text-[13px]">
-                  วันคงเหลือ
-                </span>
-              </p>
-              <p className="num mt-0.5 text-xs text-muted-foreground">
-                ใช้ไปแล้ว {round1(q.approved)} จาก {round1(total)} วัน
-                {carried > 0 && ` (ยกมาจากปีก่อน ${round1(carried)} วัน)`}
-              </p>
-              <span className="grow" aria-hidden="true" />
-              {/* ยื่นแล้วแต่ยังไม่อนุมัติ — ยังไม่หักสิทธิ์ แต่ต้องเห็นว่าค้างอยู่เท่าไร */}
-              {q.pending > 0 && (
-                <p className="num mt-0.5 text-xs font-medium text-[var(--warning)]">
-                  รออนุมัติ {round1(q.pending)} วัน · อนุมัติครบจะเหลือ {round1(q.afterPending)} วัน
-                </p>
-              )}
+              {/* ตัวเลขวันคงเหลือ ใต้ตัวเลขเป็นแค่ลักษณนาม แบบแดชบอร์ด PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+              <p className="num mt-2 text-[24px] leading-tight font-bold sm:text-[27px]">{round1(left)}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">วัน</p>
               {/* ลาเกินสิทธิ์ไปแล้ว — ส่วนที่เกินเป็นลาไม่รับค่าจ้าง พูดให้ตรงกับกล่องยื่นใบลา */}
               {q.over > 0 && (
                 <p className="num mt-0.5 text-xs font-medium text-destructive">
                   ลาเกินสิทธิ์ {round1(q.over)} วัน — ส่วนที่เกินถูกหักจากเงินเดือน
                 </p>
               )}
-              <span className="mt-auto block h-[5px] translate-y-0 overflow-hidden rounded bg-black/10">
-                <i className="block h-full rounded bg-primary" style={{ width: `${pct}%` }} />
-              </span>
             </div>
           );
         })}
@@ -304,7 +290,7 @@ export function LeavePage() {
           <table className="data-table min-w-[900px]">
             <thead>
               <tr>
-                <th style={{ width: 158 }}>เลขที่คำขอ</th>
+                <th className="c" style={{ width: 70 }}>ลำดับ</th>
                 <th style={{ width: 118 }}>ประเภท</th>
                 <th style={{ width: 196 }}>ช่วงวันลา</th>
                 <th className="c" style={{ width: 104 }}>จำนวนวัน</th>
@@ -321,8 +307,8 @@ export function LeavePage() {
                   </td>
                 </tr>
               ) : (
-                list.map((r) => (
-                  <LeaveRow key={r.id} row={r} hit={r.id === findId} onCancel={() => setCancelling(r)} />
+                list.map((r, i) => (
+                  <LeaveRow key={r.id} no={from + i + 1} row={r} hit={r.id === findId} onCancel={() => setCancelling(r)} />
                 ))
               )}
             </tbody>
@@ -395,7 +381,7 @@ export function LeavePage() {
   );
 }
 
-function LeaveRow({ row, hit, onCancel }: { row: LeaveRecord; hit?: boolean; onCancel: () => void }) {
+function LeaveRow({ no, row, hit, onCancel }: { no: number; row: LeaveRecord; hit?: boolean; onCancel: () => void }) {
   const canCancel = row.status === "รอการอนุมัติ";
   const partial =
     row.startMin != null && row.endMin != null
@@ -407,12 +393,8 @@ function LeaveRow({ row, hit, onCancel }: { row: LeaveRecord; hit?: boolean; onC
 
   return (
     <tr className={hit ? "ring-2 ring-primary ring-inset" : undefined}>
-      <td className="day">
-        <b>{shortId(row.id)}</b>
-        {/* วันที่ยื่นจริง — ใบเก่าที่ไม่ได้เก็บเวลายื่นไว้ ใช้วันแรกของช่วงลาแทน */}
-        <span>ยื่น {thaiDate(row.submittedAt ? row.submittedAt.slice(0, 10) : row.date)}</span>
-      </td>
-      <td>{row.type}</td>
+      <td className="c num">{no}</td>
+      <td>{leaveLabel(row.type)}</td>
       <td>
         {/* กดช่วงวันลาเพื่อไปดูเวลาทำงานของเดือนนั้น ว่าวันที่ลาถูกบันทึกไว้อย่างไร */}
         <Link
@@ -532,7 +514,7 @@ function MobileLeave({
                 {round1(leaveUsage(records, t, period).remaining)}
                 <small>วัน</small>
               </b>
-              <span>{t}คงเหลือ</span>
+              <span>{leaveLabel(t)}คงเหลือ</span>
             </div>
           ))}
       </div>
@@ -599,7 +581,7 @@ function MobileLeaveCard({ row, hit, onCancel }: { row: LeaveRecord; hit?: boole
       <i className="ico" aria-hidden="true">
         <CalendarIcon strokeWidth={2} />
       </i>
-      <b className="ty">{row.type}</b>
+      <b className="ty">{leaveLabel(row.type)}</b>
       <span className="dy num">{round1(row.days)} วัน</span>
       <div className="rs">
         {row.comment || "—"}
@@ -624,7 +606,6 @@ function MobileLeaveCard({ row, hit, onCancel }: { row: LeaveRecord; hit?: boole
         <i />
         {row.status}
       </span>
-      <span className="no num">{shortId(row.id)}</span>
       {canCancel && (
         <button type="button" className="ac lnk" onClick={onCancel}>
           ยกเลิก
@@ -670,9 +651,9 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
     >
       <div className="m-lv-cancel">
       <p className="text-[13.5px] leading-[1.7] text-muted-foreground">
-        {row.type} {thaiRange(row.date, row.toDate)} รวม {round1(row.days)} วัน
+        {leaveLabel(row.type)} {thaiRange(row.date, row.toDate)} รวม {round1(row.days)} วัน
         <span className="mt-1 block">
-          ใบลานี้จะไม่ถูกลบ แต่เปลี่ยนเป็นสถานะ “ยกเลิก” และเลขที่ {shortId(row.id)} จะไม่ถูกนำไปใช้ซ้ำ
+          ใบลานี้จะไม่ถูกลบ แต่เปลี่ยนเป็นสถานะ “ยกเลิก”
         </span>
       </p>
       <label htmlFor="leave-cancel-why" className="mt-3.5 mb-1.5 block text-[12.5px] font-semibold text-muted-foreground">
@@ -691,7 +672,7 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
       />
       {warn && (
         <p className="mt-[9px] rounded-[11px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-[13px] py-2.5 text-[12.5px] leading-[1.55] text-destructive">
-          ยกเลิกใบลาต้องระบุเหตุผล เพราะใบลายังเก็บไว้เป็นประวัติ
+          ยกเลิกใบลาต้องระบุเหตุผล
         </p>
       )}
       </div>

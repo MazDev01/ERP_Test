@@ -55,7 +55,7 @@ export function LeadStatusMenu({
         description={`${name} (${code}) · ${status} → ${pick ?? ""}`}
         detail={
           pick === "ปิดงาน"
-            ? "ปกติระบบเปลี่ยนให้เองเมื่อลูกค้าตอบรับใบเสนอราคา ใช้เมื่อปิดการขายนอกระบบ"
+            ? undefined
             : "กลับมาอยู่ในรายการที่ต้องติดตาม"
         }
         confirmLabel="เปลี่ยนสถานะ"

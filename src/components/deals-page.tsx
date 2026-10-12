@@ -3,29 +3,34 @@
 /*
  * ดีล (ต้นแบบ dose-erp-maz/ceo-deals.html) — ใช้ทั้งฝ่ายขาย (/deals) และ CEO ดูอย่างเดียว (/ceo/deals)
  *
- * ใบงานย้ายไปเป็นโปรเจคในระบบ PM แล้ว หน้านี้จึงเหลือเฉพาะเหตุผลตอนยกเลิกดีล และสัญญาที่แนบไว้
- * กดแถวที่ยกเลิกหรือมีสัญญา = กางรายละเอียดใต้แถว · กดเลขใบเสนอราคา = เปิดเอกสาร
- * ปุ่มท้ายแถว: แนบสัญญา (ฝ่ายขายแนบ แนบเพิ่มได้ตลอด ลบไม่ได้) · ยกเลิกดีล (เฉพาะก่อนลูกค้าจ่ายเงิน)
- * มุมมอง CEO ซ่อนเฉพาะปุ่มยกเลิกดีลด้วย data-ceo-hide — ปุ่มแนบสัญญายังอยู่ตามต้นแบบ ceo-deals.html
- * (ซ่อนแค่ data-cxl) และเลขใบเสนอราคาพาไปหน้าเอกสารของ CEO เอง
+ * ใบงานย้ายไปเป็นโปรเจคในระบบ PM แล้ว หน้านี้จึงเหลือเหตุผลตอนยกเลิกดีล และเอกสารของดีล
+ * กดแถว = กางเอกสารใต้แถว: ใบเสนอราคาทุกฉบับ + ข้อเสนอจากทีมก่อนการขาย (ดูอย่างเดียว)
+ * ไม่แสดง/ไม่แนบสัญญาที่หน้านี้แล้ว ข้อมูลสัญญาเดิมยังอยู่ในสโตร์ (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * ปุ่มท้ายแถว: ยกเลิกดีล (เฉพาะก่อนลูกค้าจ่ายเงิน) · มุมมอง CEO ซ่อนด้วย data-ceo-hide
+ * และเลขใบเสนอราคาพาไปหน้าเอกสารของ CEO เอง
  */
 
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { useFindParam } from "@/lib/deep-link";
-import { DEAL_STATUS, type Deal, type DealStatus } from "@/lib/crm-data";
-import { attachContract, useCrm } from "@/lib/crm-store";
+import {
+  DEAL_STATUS,
+  quotationTotals,
+  type Deal,
+  type DealStatus,
+  type PresalesRequest,
+  type PresalesRound,
+  type Quotation,
+} from "@/lib/crm-data";
+import { useCrm } from "@/lib/crm-store";
 import { dealPaid, useAcc } from "@/lib/acc-store";
 import { billingOf, dealTrack } from "@/lib/flow";
 import { usePm } from "@/lib/pm-store";
-import { baht, initials, thaiDate, todayIso } from "@/lib/format";
-import { USERS } from "@/lib/mock-data";
-import { useRole } from "@/lib/role";
-import { BanIcon, CalendarIcon, PaperclipIcon } from "./icons";
+import { baht, initials, thaiDate } from "@/lib/format";
+import { BanIcon, CalendarIcon, EyeIcon, FileIcon, LinkIcon } from "./icons";
 import { CancelDealDialog } from "./cancel-deal-dialog";
-import { Sheet } from "./lead-dialogs";
+import { ProposalDialog, isCanva } from "./proposal-doc";
 import { Pager, SearchBox, TabStrip, Who, usePaged } from "./sales-ui";
-import { ThaiDatePicker } from "./thai-date-picker";
 import "@/styles/mobile/deals.css";
 
 const PER_PAGE = 7;
@@ -47,7 +52,6 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
   const [query, setQuery] = useState(find);
   const [open, setOpen] = useState<Record<string, boolean>>(() => (find ? { [find]: true } : {}));
   const [cancelling, setCancelling] = useState<string | null>(null);
-  const [attaching, setAttaching] = useState<string | null>(null);
 
   const nameOf = useMemo(() => new Map(crm.customers.map((c) => [c.code, c.name])), [crm.customers]);
 
@@ -71,13 +75,12 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
 
   /* ยกเลิกได้ที่หน้านี้เฉพาะดีลที่ยังไม่รับเงิน — รับเงินแล้วต้องให้ฝ่ายบัญชียกเลิกที่หน้าวางบิล */
   const canCancel = (d: Deal) => d.status === "ปิดการขาย" && !dealPaid(acc, d.no);
-  /* กางได้เฉพาะแถวที่มีอะไรให้ดู — ยกเลิก/ไม่ตกลง (เหตุผล) หรือมีสัญญา */
-  const canOpen = (d: Deal) => d.status !== "ปิดการขาย" || (d.contracts?.length ?? 0) > 0;
+  /* กางได้เมื่อมีอะไรให้ดู — เหตุผลยกเลิก หรือเอกสารของดีล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const canOpen = (d: Deal) => d.status !== "ปิดการขาย" || Boolean(d.quotationNo);
   const quoHref = (no: string) =>
     ceo ? `/ceo/sales/quotations/${encodeURIComponent(no)}` : `/quotations/${encodeURIComponent(no)}`;
 
   const cancelRow = cancelling ? crm.deals.find((d) => d.no === cancelling) : undefined;
-  const attachRow = attaching ? crm.deals.find((d) => d.no === attaching) : undefined;
 
   return (
     <div className="deals-m space-y-4">
@@ -93,7 +96,7 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
               setQuery(v);
               paged.setPage(1);
             }}
-            placeholder="ค้นหาเลขที่ดีล ใบเสนอราคา หรือลูกค้า"
+            placeholder="ค้นหาใบเสนอราคา หรือลูกค้า"
           />
         </div>
       </div>
@@ -119,8 +122,8 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
           canOpen={canOpen}
           canCancel={canCancel}
           quoHref={quoHref}
+          ceo={ceo}
           onToggle={(no) => setOpen((o) => ({ ...o, [no]: !o[no] }))}
-          onAttach={setAttaching}
           onCancel={setCancelling}
         />
 
@@ -128,7 +131,8 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
           <table className="data-table cards-sm min-w-[900px]">
             <thead>
               <tr>
-                <th style={{ width: 140 }}>เลขที่ดีล</th>
+                {/* แทนเลขที่ดีลด้วยลำดับ นับต่อเนื่องข้ามหน้า (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                <th style={{ width: 64, textAlign: "center" }}>ลำดับ</th>
                 <th style={{ width: "27%" }}>ลูกค้า</th>
                 <th style={{ width: 138 }}>อ้างอิงใบเสนอราคา</th>
                 <th style={{ width: "17%" }}>ส่งมอบ</th>
@@ -148,8 +152,7 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
                   </td>
                 </tr>
               ) : (
-                paged.list.map((d) => {
-                  const cons = d.contracts ?? [];
+                paged.list.map((d, i) => {
                   const isOpen = Boolean(open[d.no]) && canOpen(d);
                   return (
                     <Fragment key={d.id}>
@@ -158,13 +161,8 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
                         style={{ cursor: canOpen(d) ? "pointer" : undefined }}
                         onClick={() => canOpen(d) && setOpen((o) => ({ ...o, [d.no]: !o[d.no] }))}
                       >
-                        <td data-label="เลขที่ดีล" className="num muted whitespace-nowrap">
-                          {d.no}
-                          {cons.length > 0 && (
-                            <span className="mt-[3px] block text-[11.5px] text-muted-foreground">
-                              มีสัญญา {cons.length} ฉบับ
-                            </span>
-                          )}
+                        <td data-label="ลำดับ" className="num muted whitespace-nowrap" style={{ textAlign: "center" }}>
+                          {paged.from + i + 1}
                         </td>
                         <td data-label="ลูกค้า">
                           <Who name={nameOf.get(d.customerCode) ?? d.customerCode} sub={d.customerCode} />
@@ -193,20 +191,11 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
                             <i />
                             {d.status}
                           </span>
-                          <WorkProgress deal={d} />
+                          {/* ฝ่ายขายไม่ต้องเห็นงวดเงิน/ความคืบหน้างาน — เหลือเฉพาะ CEO (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                          {ceo && <WorkProgress deal={d} />}
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
                           <span className="flex justify-end gap-1.5">
-                            {/* ตามต้นแบบ deals.html — แนบสัญญาได้ทุกแถว รวมดีลที่ยกเลิกแล้ว (เก็บเป็นหลักฐาน) */}
-                            <button
-                              type="button"
-                              className="iconbtn glass-thin"
-                              onClick={() => setAttaching(d.no)}
-                              aria-label={`แนบสัญญา ${d.no}`}
-                              title="แนบสัญญา"
-                            >
-                              <PaperclipIcon className="size-3.5" strokeWidth={2} />
-                            </button>
                             {canCancel(d) && (
                               <button
                                 type="button"
@@ -225,7 +214,7 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
                       {isOpen && (
                         <tr className="sub">
                           <td colSpan={7}>
-                            <SubRow deal={d} />
+                            <SubRow deal={d} cus={nameOf.get(d.customerCode) ?? d.customerCode} quoHref={quoHref} />
                           </td>
                         </tr>
                       )}
@@ -261,17 +250,6 @@ export function DealsPage({ ceo = false }: { ceo?: boolean }) {
           }}
         />
       )}
-      {attachRow && (
-        <ContractDialog
-          deal={attachRow}
-          cus={nameOf.get(attachRow.customerCode) ?? attachRow.customerCode}
-          onClose={() => setAttaching(null)}
-          onDone={() => {
-            setOpen((o) => ({ ...o, [attachRow.no]: true }));
-            setAttaching(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -302,8 +280,8 @@ function WorkProgress({ deal, className = "" }: { deal: Deal; className?: string
 
 /**
  * รายการดีลบนมือถือ (ต้นแบบ deals.html จอ ≤760px) — การ์ดมนแยกใบ: วงกลมตัวย่อ · ชื่อลูกค้ากับมูลค่า
- * · เลขที่ดีลกับสถานะ · ปุ่มใบเสนอราคา · เส้นประ · วันส่งมอบกับปุ่มไอคอน
- * กดการ์ดที่ยกเลิกหรือมีสัญญา = กางรายละเอียดใต้การ์ด (เหมือนกดแถวในตาราง)
+ * · สถานะ · ปุ่มใบเสนอราคา · เส้นประ · วันส่งมอบกับปุ่มไอคอน
+ * กดการ์ด = กางเหตุผลยกเลิกและเอกสารของดีลใต้การ์ด (เหมือนกดแถวในตาราง)
  * หน้าตาอยู่ใน styles/mobile/deals.css
  */
 function DealCards({
@@ -313,8 +291,8 @@ function DealCards({
   canOpen,
   canCancel,
   quoHref,
+  ceo,
   onToggle,
-  onAttach,
   onCancel,
 }: {
   list: Deal[];
@@ -323,8 +301,8 @@ function DealCards({
   canOpen: (d: Deal) => boolean;
   canCancel: (d: Deal) => boolean;
   quoHref: (no: string) => string;
+  ceo: boolean;
   onToggle: (no: string) => void;
-  onAttach: (no: string) => void;
   onCancel: (no: string) => void;
 }) {
   if (!list.length) {
@@ -333,7 +311,6 @@ function DealCards({
   return (
     <ul className="dl-rows md:hidden">
       {list.map((d) => {
-        const cons = d.contracts ?? [];
         const can = canOpen(d);
         const isOpen = Boolean(open[d.no]) && can;
         const name = nameOf.get(d.customerCode) ?? d.customerCode;
@@ -350,17 +327,17 @@ function DealCards({
             </span>
             <b className="dl-cus">{name}</b>
             <span className="dl-amt num">{baht(d.total)} ฿</span>
-            <span className="dl-no num">
-              {d.no}
-              {cons.length > 0 && <span className="dl-has">มีสัญญา {cons.length} ฉบับ</span>}
-            </span>
+            {/* ไม่แสดงเลขที่ดีลบนการ์ด (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
             <span className={`dl-st tag ${DEAL_STATUS[d.status]}`}>
               <i />
               {d.status}
             </span>
-            <span className="dl-pg">
-              <WorkProgress deal={d} />
-            </span>
+            {/* ฝ่ายขายไม่ต้องเห็นงวดเงิน/ความคืบหน้างาน — เหลือเฉพาะ CEO (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+            {ceo && (
+              <span className="dl-pg">
+                <WorkProgress deal={d} />
+              </span>
+            )}
             <span className="dl-quo">
               {d.quotationNo ? (
                 <Link href={quoHref(d.quotationNo)} className="num" onClick={(e) => e.stopPropagation()}>
@@ -375,16 +352,6 @@ function DealCards({
               ส่งมอบ {d.delivery ? thaiDate(d.delivery) : "—"}
             </span>
             <span className="dl-act" onClick={(e) => e.stopPropagation()}>
-              {/* แนบสัญญาได้ทุกดีล รวมดีลที่ยกเลิกแล้ว (เก็บเป็นหลักฐาน) */}
-              <button
-                type="button"
-                className="iconbtn glass-thin"
-                onClick={() => onAttach(d.no)}
-                aria-label={`แนบสัญญา ${d.no}`}
-                title="แนบสัญญา"
-              >
-                <PaperclipIcon className="size-4" strokeWidth={2} />
-              </button>
               {canCancel(d) && (
                 <button
                   type="button"
@@ -400,7 +367,7 @@ function DealCards({
             </span>
             {isOpen && (
               <div className="dl-sub" onClick={(e) => e.stopPropagation()}>
-                <SubCard deal={d} />
+                <SubCard deal={d} cus={name} quoHref={quoHref} />
               </div>
             )}
           </li>
@@ -410,88 +377,157 @@ function DealCards({
   );
 }
 
+/*
+ * เอกสารของดีล (ผู้ใช้สั่ง 9 ต.ค. 2569) — ดูอย่างเดียว
+ * ใบเสนอราคาทุกฉบับในสายเดียวกัน (ใบที่ปิดดีล + ฉบับก่อนหน้าที่ถูกแทนที่ ตาม replaces)
+ * และข้อเสนอจากทีมก่อนการขายของคำขอที่ใบเหล่านั้นอ้างถึง (ps) · ไม่แสดงสัญญาแล้ว
+ */
+type DealDocs = {
+  /** ใหม่สุดก่อน · ver = ฉบับที่ */
+  quos: { q: Quotation; ver: number }[];
+  rounds: { req: PresalesRequest; r: PresalesRound }[];
+};
+
+function useDealDocs(d: Deal): DealDocs {
+  const crm = useCrm();
+  return useMemo(() => {
+    const byNo = new Map(crm.quotations.map((q) => [q.no, q]));
+    const chain: Quotation[] = [];
+    let cur = d.quotationNo ? byNo.get(d.quotationNo) : undefined;
+    while (cur && chain.length < 20) {
+      chain.unshift(cur);
+      cur = cur.replaces ? byNo.get(cur.replaces) : undefined;
+    }
+    const quos = chain.map((q, i) => ({ q, ver: i + 1 })).reverse();
+    const psNos = [...new Set(chain.map((q) => q.ps).filter((x): x is string => Boolean(x)))];
+    const rounds = psNos.flatMap((no) => {
+      const req = crm.presales.find((r) => r.no === no);
+      if (!req) return [];
+      return crm.presalesRounds
+        .filter((r) => r.requestNo === no)
+        .sort((a, b) => b.round - a.round)
+        .map((r) => ({ req, r }));
+    });
+    return { quos, rounds };
+  }, [crm.quotations, crm.presales, crm.presalesRounds, d.quotationNo]);
+}
+
+/** ปุ่มเปิดข้อเสนอ — PDF เปิดกล่องเอกสาร · Canva เปิดลิงก์ในแท็บใหม่ */
+function ProposalOpen({ r, onOpen }: { r: PresalesRound; onOpen: () => void }) {
+  const cls = "inline-flex max-w-full items-center gap-1.5 font-semibold text-primary hover:underline";
+  if (isCanva(r)) {
+    return (
+      <a href={r.url} target="_blank" rel="noopener noreferrer" className={cls}>
+        <LinkIcon className="size-3.5 shrink-0" strokeWidth={2} />
+        <span className="truncate">{r.file}</span>
+      </a>
+    );
+  }
+  return (
+    <button type="button" className={cls} onClick={onOpen}>
+      <FileIcon className="size-3.5 shrink-0" strokeWidth={2} />
+      <span className="truncate">{r.file}</span>
+    </button>
+  );
+}
+
+/** เหตุผลที่ยกเลิก/ไม่ตกลง — ใช้ทั้งแถวในตารางและการ์ดมือถือ */
+function CancelInfo({ deal: d, card = false }: { deal: Deal; card?: boolean }) {
+  if (d.status === "ปิดการขาย") return null;
+  return (
+    <dl className={card ? "grid grid-cols-2 gap-x-4 gap-y-2.5" : "mt-1.5 mb-1 flex flex-wrap gap-x-7 gap-y-2.5"}>
+      {d.status === "ยกเลิก" && (
+        <>
+          <Cx k="ยกเลิกเมื่อ" v={d.cancelled ? thaiDate(d.cancelled.at.slice(0, 10)) : "—"} />
+          <Cx k="ยกเลิกโดย" v={d.cancelled?.by || "—"} />
+        </>
+      )}
+      <div className={card ? "col-span-2" : ""}>
+        <Cx k="เหตุผล" v={d.cancelled?.why || d.lostReason || "—"} />
+      </div>
+    </dl>
+  );
+}
+
 /** รายละเอียดที่กางในการ์ดมือถือ — ข้อมูลเดียวกับ SubRow แต่เรียงลงเป็นแถว ไม่ต้องเลื่อนตารางด้านข้าง */
-function SubCard({ deal: d }: { deal: Deal }) {
-  const cons = d.contracts ?? [];
+function SubCard({ deal: d, cus, quoHref }: { deal: Deal; cus: string; quoHref: (no: string) => string }) {
+  const { quos, rounds } = useDealDocs(d);
+  const [doc, setDoc] = useState<{ req: PresalesRequest; r: PresalesRound } | null>(null);
   return (
     <div className="mt-2 space-y-3 rounded-[10px] border border-border px-3.5 py-3">
-      {d.status !== "ปิดการขาย" && (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-          {d.status === "ยกเลิก" && (
-            <>
-              <Cx k="ยกเลิกเมื่อ" v={d.cancelled ? thaiDate(d.cancelled.at.slice(0, 10)) : "—"} />
-              <Cx k="ยกเลิกโดย" v={d.cancelled?.by || "—"} />
-            </>
-          )}
-          <div className="col-span-2">
-            <Cx k="เหตุผล" v={d.cancelled?.why || d.lostReason || "—"} />
-          </div>
-        </dl>
-      )}
-      {cons.length > 0 && (
+      <CancelInfo deal={d} card />
+      {quos.length > 0 && (
         <div>
-          <p className="text-[11.5px] font-semibold text-muted-foreground">สัญญา</p>
+          <p className="text-[11.5px] font-semibold text-muted-foreground">ใบเสนอราคา</p>
           <ul className="mt-1.5 divide-y divide-border">
-            {cons.map((c, i) => (
-              <li key={i} className="py-2 text-[12.5px]">
+            {quos.map(({ q, ver }) => (
+              <li key={q.id} className="py-2 text-[12.5px]">
                 <div className="flex items-start justify-between gap-2">
-                  <b className="min-w-0 font-semibold break-all">{c.name}</b>
-                  <span className="inline-flex h-[22px] shrink-0 items-center rounded-full bg-[#f1f2f5] px-[9px] text-[11.5px] font-semibold text-[#6b7280]">
-                    {c.kind === "link" ? "ลิงก์" : "ไฟล์ PDF"}
-                  </span>
+                  <Link href={quoHref(q.no)} className="num font-semibold text-primary hover:underline">
+                    {q.no}
+                  </Link>
+                  <span className="num shrink-0 font-semibold">{baht(quotationTotals(q).grand)} ฿</span>
                 </div>
                 <p className="mt-0.5 text-muted-foreground">
-                  {c.no || "ไม่ได้ระบุเลขที่"} · เซ็น {c.signed ? thaiDate(c.signed) : "—"}
-                </p>
-                <p className="text-muted-foreground">
-                  แนบโดย {c.by} {thaiDate(c.at)}
+                  ฉบับที่ {ver} · ออก {q.issued ? thaiDate(q.issued) : "—"}
                 </p>
               </li>
             ))}
           </ul>
         </div>
       )}
+      {rounds.length > 0 && (
+        <div>
+          <p className="text-[11.5px] font-semibold text-muted-foreground">ข้อเสนอ</p>
+          <ul className="mt-1.5 divide-y divide-border">
+            {rounds.map(({ req, r }) => (
+              <li key={r.id} className="py-2 text-[12.5px]">
+                <ProposalOpen r={r} onOpen={() => setDoc({ req, r })} />
+                <p className="mt-0.5 text-muted-foreground">
+                  {req.no} รอบ {r.round} · {thaiDate(r.at)} · {r.by}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {doc && <ProposalDialog request={doc.req} round={doc.r} customerName={cus} onClose={() => setDoc(null)} />}
     </div>
   );
 }
 
-/** รายละเอียดใต้แถว — เหตุผลที่ยกเลิก/ไม่ตกลง แล้วตามด้วยสัญญาที่แนบไว้ */
-function SubRow({ deal: d }: { deal: Deal }) {
-  const cons = d.contracts ?? [];
+/** รายละเอียดใต้แถว — เหตุผลที่ยกเลิก/ไม่ตกลง แล้วตามด้วยใบเสนอราคาทุกฉบับและข้อเสนอ */
+function SubRow({ deal: d, cus, quoHref }: { deal: Deal; cus: string; quoHref: (no: string) => string }) {
+  const { quos, rounds } = useDealDocs(d);
+  const [doc, setDoc] = useState<{ req: PresalesRequest; r: PresalesRound } | null>(null);
   return (
     <div className="subwrap">
-      {d.status !== "ปิดการขาย" && (
-        <dl className="mt-1.5 mb-1 flex flex-wrap gap-x-7 gap-y-2.5">
-          {d.status === "ยกเลิก" && (
-            <>
-              <Cx k="ยกเลิกเมื่อ" v={d.cancelled ? thaiDate(d.cancelled.at.slice(0, 10)) : "—"} />
-              <Cx k="ยกเลิกโดย" v={d.cancelled?.by || "—"} />
-            </>
-          )}
-          <Cx k="เหตุผล" v={d.cancelled?.why || d.lostReason || "—"} />
-        </dl>
-      )}
-      {cons.length > 0 && (
+      <CancelInfo deal={d} />
+      {quos.length > 0 && (
         <>
-          <p className="subttl">สัญญา</p>
+          <p className="subttl">ใบเสนอราคา</p>
           <table className="inner">
+            <thead>
+              <tr>
+                <th>เลขที่</th>
+                <th>ฉบับที่</th>
+                <th>วันที่ออก</th>
+                <th className="r">ยอดรวม (บาท)</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
-              {cons.map((c, i) => (
-                <tr key={i}>
-                  <td>
-                    <b className="block font-semibold">{c.name}</b>
-                    <span className="block text-[11.5px] text-muted-foreground">
-                      {c.no || "ไม่ได้ระบุเลขที่"}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap">เซ็น {c.signed ? thaiDate(c.signed) : "—"}</td>
-                  <td className="whitespace-nowrap">
-                    แนบโดย {c.by} {thaiDate(c.at)}
-                  </td>
-                  <td className="c">
-                    <span className="inline-flex h-[22px] items-center rounded-full bg-[#f1f2f5] px-[9px] text-[11.5px] font-semibold text-[#6b7280]">
-                      {c.kind === "link" ? "ลิงก์" : "ไฟล์ PDF"}
-                    </span>
+              {quos.map(({ q, ver }) => (
+                <tr key={q.id}>
+                  <td className="num font-semibold">{q.no}</td>
+                  <td className="num">{ver}</td>
+                  <td className="num whitespace-nowrap">{q.issued ? thaiDate(q.issued) : "—"}</td>
+                  <td className="r money">{baht(quotationTotals(q).grand)}</td>
+                  <td className="r">
+                    <Link href={quoHref(q.no)} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+                      <EyeIcon className="size-3.5" strokeWidth={2} />
+                      ดู
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -499,6 +535,36 @@ function SubRow({ deal: d }: { deal: Deal }) {
           </table>
         </>
       )}
+      {rounds.length > 0 && (
+        <>
+          <p className="subttl">ข้อเสนอ</p>
+          <table className="inner">
+            <thead>
+              <tr>
+                <th>ไฟล์</th>
+                <th>คำขอ</th>
+                <th>รอบ</th>
+                <th>วันที่</th>
+                <th>ผู้จัดทำ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rounds.map(({ req, r }) => (
+                <tr key={r.id}>
+                  <td>
+                    <ProposalOpen r={r} onOpen={() => setDoc({ req, r })} />
+                  </td>
+                  <td className="num whitespace-nowrap">{req.no}</td>
+                  <td className="num">{r.round}</td>
+                  <td className="num whitespace-nowrap">{thaiDate(r.at)}</td>
+                  <td className="whitespace-nowrap">{r.by}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {doc && <ProposalDialog request={doc.req} round={doc.r} customerName={cus} onClose={() => setDoc(null)} />}
     </div>
   );
 }
@@ -509,121 +575,5 @@ function Cx({ k, v }: { k: string; v: string }) {
       <dt className="text-[11.5px] font-semibold text-muted-foreground">{k}</dt>
       <dd className="mt-0.5 text-[13.5px]">{v}</dd>
     </div>
-  );
-}
-
-/** แนบสัญญา — ต้องมีชื่อไฟล์หรือลิงก์อย่างใดอย่างหนึ่ง เลขที่และวันที่เซ็นไม่บังคับ */
-function ContractDialog({
-  deal,
-  cus,
-  onClose,
-  onDone,
-}: {
-  deal: Deal;
-  cus: string;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const role = useRole();
-  const [no, setNo] = useState("");
-  const [signed, setSigned] = useState("");
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [pick, setPick] = useState(false);
-  const [warn, setWarn] = useState(false);
-  const today = todayIso();
-
-  function save() {
-    const n = name.trim();
-    const u = url.trim();
-    if (!n && !u) return setWarn(true);
-    attachContract(deal.no, {
-      no: no.trim(),
-      signed,
-      kind: u ? "link" : "pdf",
-      name: u || n,
-      url: u,
-      by: USERS[role].name,
-      at: today,
-    });
-    onDone();
-  }
-
-  const input = "field-control h-[38px] w-full rounded-[10px] px-3 text-[13.5px]";
-  const lb = "mt-3.5 mb-1.5 block text-[12.5px] font-semibold text-muted-foreground";
-
-  return (
-    <Sheet
-      title="แนบสัญญา"
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" className="btn glass-thin" onClick={onClose}>
-            ปิด
-          </button>
-          <button type="button" className="btn solid btn-solid" onClick={save}>
-            แนบสัญญา
-          </button>
-        </>
-      }
-    >
-      <dl className="grid gap-2 text-[13.5px] sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-x-4">
-        <dt className="text-[12.5px] font-semibold text-muted-foreground">ลูกค้า</dt>
-        <dd className="font-semibold">{cus}</dd>
-        <dt className="text-[12.5px] font-semibold text-muted-foreground">ใบเสนอราคา</dt>
-        <dd className="num font-semibold">{deal.quotationNo || "—"}</dd>
-      </dl>
-      <label className={lb} htmlFor="con-no">
-        เลขที่สัญญาของคู่สัญญา
-      </label>
-      <input
-        id="con-no"
-        className={input}
-        value={no}
-        onChange={(e) => setNo(e.target.value)}
-        placeholder="เช่น CT-2569-0014"
-      />
-      <span className={lb}>วันที่เซ็น</span>
-      <ThaiDatePicker
-        value={signed}
-        max={today}
-        open={pick}
-        label="วันที่เซ็น"
-        clearable
-        onToggle={() => setPick((v) => !v)}
-        onPick={(iso) => {
-          setSigned(iso);
-          setPick(false);
-        }}
-      />
-      <label className={lb} htmlFor="con-name">
-        ชื่อไฟล์สัญญา
-      </label>
-      <input
-        id="con-name"
-        className={input}
-        value={name}
-        onChange={(e) => {
-          setName(e.target.value);
-          setWarn(false);
-        }}
-        placeholder="เช่น contract-siamplastic.pdf"
-      />
-      <label className={lb} htmlFor="con-url">
-        หรือลิงก์สัญญา
-      </label>
-      <input
-        id="con-url"
-        type="url"
-        className={input}
-        value={url}
-        onChange={(e) => {
-          setUrl(e.target.value);
-          setWarn(false);
-        }}
-        placeholder="https://"
-      />
-      {warn && <p className="mt-1.5 text-[12.5px] text-destructive">ใส่ชื่อไฟล์หรือลิงก์อย่างใดอย่างหนึ่ง</p>}
-    </Sheet>
   );
 }

@@ -178,7 +178,7 @@ export function AdminCompanyPage() {
         <div className="space-y-4">
           <Card
             title={`ผู้ออกเอกสาร ${c.code}`}
-            note={used ? `ออกใบเสนอราคาไปแล้ว ${used} ใบ — ลบไม่ได้ และเปลี่ยนรหัสไม่ได้` : isNew ? "รายใหม่ — ยังไม่ได้บันทึก" : "ยังไม่เคยออกใบเสนอราคา"}
+            note={used ? `ออกใบเสนอราคาไปแล้ว ${used} ใบ` : isNew ? "รายใหม่ — ยังไม่ได้บันทึก" : "ยังไม่เคยออกใบเสนอราคา"}
             aside={
               <button
                 type="button"
@@ -193,7 +193,7 @@ export function AdminCompanyPage() {
             }
           >
             <div className="grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)]">
-              <Input2 label="รหัส" hint={isNew ? "อังกฤษตัวใหญ่/ตัวเลข" : "ตั้งได้ตอนเพิ่มเท่านั้น"}>
+              <Input2 label="รหัส" hint={isNew ? "อังกฤษตัวใหญ่/ตัวเลข" : undefined}>
                 <input
                   value={c.code}
                   disabled={!isNew}
@@ -205,7 +205,7 @@ export function AdminCompanyPage() {
                   className={`${inputCls} num disabled:cursor-not-allowed disabled:opacity-60`}
                 />
               </Input2>
-              <Input2 label={LABEL.label} hint="ขึ้นในดรอปดาวน์ตอนสร้างใบเสนอราคา">
+              <Input2 label={LABEL.label}>
                 <input value={c.label} onChange={set("label")} placeholder="เช่น บริษัทในเครือ 2 (B2)" className={inputCls} />
               </Input2>
               <Input2 label={LABEL.name} className="sm:col-span-2">
@@ -222,10 +222,10 @@ export function AdminCompanyPage() {
               <Input2 label={LABEL.email}>
                 <input value={c.email} onChange={set("email")} type="email" className={inputCls} />
               </Input2>
-              <Input2 label={LABEL.callCenter} hint="เว้นว่าง = ไม่พิมพ์บรรทัด Call Center บนเอกสาร">
+              <Input2 label={LABEL.callCenter}>
                 <input value={c.callCenter ?? ""} onChange={set("callCenter")} className={inputCls} />
               </Input2>
-              <Input2 label="ภาษีมูลค่าเพิ่ม" hint="ไม่จด VAT = ใบเสนอราคาในนามนี้ไม่คิด VAT">
+              <Input2 label="ภาษีมูลค่าเพิ่ม">
                 <label className="flex h-10 cursor-pointer items-center gap-2.5 text-[13.5px]">
                   <input
                     type="checkbox"
@@ -236,7 +236,7 @@ export function AdminCompanyPage() {
                   จดทะเบียนภาษีมูลค่าเพิ่ม
                 </label>
               </Input2>
-              <Input2 label={LABEL.address} hint="ขึ้นบรรทัดใหม่ได้ บนเอกสารจะแสดงตามบรรทัดที่พิมพ์" className="sm:col-span-2">
+              <Input2 label={LABEL.address} className="sm:col-span-2">
                 <textarea value={c.address} onChange={set("address")} rows={3} className="field-control w-full py-2 text-[14px] leading-relaxed" />
               </Input2>
             </div>
@@ -269,7 +269,7 @@ export function AdminCompanyPage() {
           */}
           <Card
             title="เอกสารแนบใบเสนอราคา"
-            note={`${(c.docs ?? []).length} / ${ATT_MAX} ไฟล์ · PDF รูปภาพ Word หรือ Excel · ยังไม่มีที่เก็บไฟล์จริง ระบบจำแค่ชื่อไฟล์ไว้ก่อน`}
+            note={`${(c.docs ?? []).length} / ${ATT_MAX} ไฟล์ · PDF รูปภาพ Word หรือ Excel`}
             aside={
               <button
                 type="button"
@@ -296,7 +296,7 @@ export function AdminCompanyPage() {
 
             {(c.docs ?? []).length === 0 ? (
               <p className="py-6 text-center text-[13px] text-muted-foreground">
-                ยังไม่มีเอกสารแนบ กดเพิ่มไฟล์ เช่น หนังสือรับรองบริษัท หรือใบประกอบการ
+                ยังไม่มีเอกสารแนบ
               </p>
             ) : (
               <ul className="divide-y divide-border rounded-[14px] border border-border bg-card">
@@ -315,8 +315,7 @@ export function AdminCompanyPage() {
                           {[ATT_CATS.find((x) => x.k === f.cat)?.label, f.name, fileSize(f.size)].filter(Boolean).join(" · ")}
                         </small>
                         <small className="block text-[11.5px] text-muted-foreground">
-                          {f.addedAt ? `เพิ่มเมื่อ ${thaiDate(f.addedAt)}` : "เพิ่มไว้ก่อนมีช่องวันที่"}
-                          {f.expires && (dead ? ` · หมดอายุ ${thaiDate(f.expires)}` : ` · หมดอายุ ${thaiDate(f.expires)}`)}
+                          {[f.addedAt && `เพิ่มเมื่อ ${thaiDate(f.addedAt)}`, f.expires && `หมดอายุ ${thaiDate(f.expires)}`].filter(Boolean).join(" · ")}
                         </small>
                       </span>
                       <span className="text-center max-sm:hidden">
@@ -495,7 +494,7 @@ function AttSheet({
         <Input2 label="ชื่อเอกสารที่ลูกค้าจะเห็น" error={bad || undefined}>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
         </Input2>
-        <Input2 label="วันหมดอายุของเอกสาร (ถ้ามี)" hint="หมดอายุแล้วระบบหยุดแนบให้เอง">
+        <Input2 label="วันหมดอายุของเอกสาร (ถ้ามี)">
           <DateField
             value={expires}
             onChange={setExpires}

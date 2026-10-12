@@ -6,6 +6,12 @@ import { rejectQuotation, useCrm } from "@/lib/crm-store";
 import { acceptQuotationFlow } from "@/lib/flow";
 import { baht, todayIso } from "@/lib/format";
 import { Sheet } from "./lead-dialogs";
+import { useRole } from "@/lib/role";
+
+/** ฝ่ายขายเรียก "ผู้สนใจ" · ฝ่ายบัญชีเรียก "ลูกค้า" ห้ามปนกัน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function useWho() {
+  return useRole() === "acc" ? "ลูกค้า" : "ผู้สนใจ";
+}
 
 /*
  * กล่องยืนยันของหน้าใบเสนอราคา ตามต้นแบบ quotations.html / quotation-view.html (.sxd-*)
@@ -87,11 +93,12 @@ export function IssueNumberDialog({
   onGo: () => void;
   onClose: () => void;
 }) {
+  const who = useWho();
   return (
     <KvSheet
       title="ออกเลขที่เอกสาร"
       rows={[
-        ["ผู้สนใจ", customerName],
+        [who, customerName],
         ["ออกในนาม", issuer],
         ["ยอดรวม", `${baht(total)} บาท`],
       ]}
@@ -101,9 +108,6 @@ export function IssueNumberDialog({
     >
       <p className="mt-4 rounded-[11px] bg-[var(--destructive-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed font-semibold text-destructive">
         ออกเลขที่แล้วย้อนกลับไม่ได้ ใบนี้จะแก้ไขหรือลบไม่ได้อีก ถ้าต้องแก้ต้องออกใบใหม่เป็นเลขใหม่
-        <span className="mt-1 block font-normal">
-          ยังไม่พร้อมก็กดปิดเพื่อกลับไปแก้ในฟอร์มต่อ ใบนี้ยังไม่ถูกบันทึก
-        </span>
       </p>
     </KvSheet>
   );
@@ -124,12 +128,13 @@ export function RejectQuotationDialog({
 }) {
   const [why, setWhy] = useState("");
   const [err, setErr] = useState(false);
+  const who = useWho();
   return (
     <KvSheet
-      title="บันทึกว่าลูกค้าปฏิเสธ"
+      title={`บันทึกว่า${who}ปฏิเสธ`}
       rows={[
         ["ใบเสนอราคา", quotation.no],
-        ["ผู้สนใจ", customerName],
+        [who, customerName],
       ]}
       go="บันทึก"
       onGo={() => {
@@ -140,7 +145,7 @@ export function RejectQuotationDialog({
       onClose={onClose}
     >
       <label htmlFor="qr-why" className="mt-4 mb-1.5 block text-[12.5px] font-semibold text-muted-foreground">
-        เหตุผลที่ลูกค้าไม่เอา
+        เหตุผลที่{who}ไม่เอา
       </label>
       <textarea
         id="qr-why"
@@ -185,21 +190,22 @@ export function BillQuotationDialog({
       x.id !== quotation.id &&
       canBillQuotation(x, crm.deals.some((d) => d.quotationNo === x.no), today),
   );
+  const who = useWho();
   const rows: [string, React.ReactNode][] =
     variant === "view"
       ? [
           ["ใบเสนอราคา", quotation.no],
-          ["ลูกค้า", customerName],
+          [who, customerName],
           ["มูลค่า", total],
         ]
       : [
           ["ใบเสนอราคา", quotation.no],
-          ["ผู้สนใจ", customerName],
+          [who, customerName],
           ["ยอดรวม", total],
         ];
   if (variant === "list" && others.length)
     rows.push([
-      "ใบอื่นของลูกค้ารายนี้ที่ยังไม่ได้ส่ง",
+      `ใบอื่นของ${who}รายนี้ที่ยังไม่ได้ส่ง`,
       <>
         {others.map((x) => (
           <span key={x.id} className="block">

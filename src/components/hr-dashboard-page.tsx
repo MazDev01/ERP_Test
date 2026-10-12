@@ -99,7 +99,7 @@ export function HrDashboardPage() {
         <Kpi
           icon={<UsersIcon className="size-[17px]" />}
           skin="info"
-          title="พนักงานที่ยังอยู่วันนี้"
+          title="พนักงานปัจจุบัน"
           value={`${active.length} คน`}
           note={`ในทะเบียนทั้งหมด ${hr.emp.length} คน · พ้นสภาพแล้ว ${hr.emp.length - active.length} คน`}
         />
@@ -262,7 +262,7 @@ function rangeSpan(today: string, range: Range) {
 /** สัดส่วนพนักงานตามประเภท — ส่วนย่อยของก้อนเดียว จึงใช้โดนัทตามต้นแบบ */
 function PeopleDonut({ active }: { active: Employee[] }) {
   const all = active.length || 1;
-  const R = 54;
+  const R = 60;
   const C = 2 * Math.PI * R;
   /* คิดความยาวส่วนโค้งและจุดเริ่มของแต่ละชั้นไว้ก่อนวาด จะได้ไม่ต้องสะสมค่าระหว่างวาด */
   const slices = TYPE_ROWS.reduce<
@@ -301,10 +301,11 @@ function PeopleDonut({ active }: { active: Employee[] }) {
     <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
       {/* จอแคบ: วงกลมอยู่บน รายการอยู่ล่าง — ปล่อยให้ flex-wrap ตัดเองไม่ได้ผล
           เพราะความกว้างขั้นต่ำของรายการดันให้แผงทั้งใบกว้างเกินจอ */}
-      <div className="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+      {/* วงโดนัทอยู่กึ่งกลางคอลัมน์ รายการประเภทอยู่ใต้วง (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <div className="flex min-w-0 flex-col items-center gap-5">
       <span className="relative block size-[140px] flex-none">
         <svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="สัดส่วนพนักงานตามประเภท">
-          <circle cx="70" cy="70" r={R} fill="none" stroke="var(--muted)" strokeWidth="22" />
+          <circle cx="70" cy="70" r={R} fill="none" stroke="var(--muted)" strokeWidth="12" />
           {slices.map(({ key, alpha, n, len, start }) => (
             <circle
               key={key}
@@ -314,7 +315,7 @@ function PeopleDonut({ active }: { active: Employee[] }) {
               fill="none"
               stroke="var(--primary)"
               strokeOpacity={alpha}
-              strokeWidth="22"
+              strokeWidth="12"
               strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`}
               strokeDashoffset={(-start).toFixed(2)}
               transform="rotate(-90 70 70)"
@@ -362,7 +363,7 @@ function PeopleDonut({ active }: { active: Employee[] }) {
             className="grid grid-cols-[110px_minmax(0,1fr)_30px] items-center gap-3 py-[7px] sm:grid-cols-[150px_minmax(0,1fr)_34px]"
           >
             <span className="truncate text-[13px]">{d.label}</span>
-            <span className="flex h-3.5 overflow-hidden rounded-[4px] bg-muted">
+            <span className="flex h-2 overflow-hidden rounded-full bg-muted">
               {d.parts.map((x) =>
                 x.n ? (
                   <i
@@ -385,7 +386,7 @@ function PeopleDonut({ active }: { active: Employee[] }) {
             className="grid grid-cols-[110px_minmax(0,1fr)_30px] items-center gap-3 py-[7px] sm:grid-cols-[150px_minmax(0,1fr)_34px]"
           >
             <span className="truncate text-[13px]">{g.label}</span>
-            <span className="flex h-3.5 overflow-hidden rounded-[4px] bg-muted">
+            <span className="flex h-2 overflow-hidden rounded-full bg-muted">
               {g.n > 0 && (
                 <i className="block h-full bg-primary" style={{ width: `${(g.n / mostSex) * 100}%`, opacity: 0.85 }} />
               )}
@@ -469,7 +470,7 @@ function InternLeaveCard({ hr }: { hr: ReturnType<typeof useHr> }) {
                 {thaiDate(r.from)}
                 {r.from !== r.to && ` – ${thaiDate(r.to)}`} รวม {r.days} วัน
               </span>
-              {r.note && <span className="text-[12.5px] text-muted-foreground/70">{r.note}</span>}
+              {/* การ์ดแดชบอร์ดแสดงแค่ชื่อ ประเภท และวันที่ขอ (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
             </div>
             {/* ฝ่ายบุคคลเป็นผู้อนุมัติ — มุมมอง CEO (ceo-hr.html) ก็เห็นปุ่มเหมือนกัน ตามต้นแบบ */}
             <div className="flex gap-2">

@@ -85,7 +85,8 @@ export function MenuAccessPane() {
       {/* จอแคบวางสองช่องต่อแถว เห็นบทบาททั้งหมดโดยไม่ต้องเลื่อนซ้ายขวา (เจ้าของสั่ง 25 ก.ย. 2569)
           เดิมเป็นแถวเดียวเลื่อนได้ บทบาทท้าย ๆ จึงอยู่นอกจอและไม่มีอะไรบอกว่ามีต่อ */}
       <ul className="grid grid-cols-2 gap-2 border-b border-border p-3 md:flex md:flex-col md:border-r md:border-b-0">
-        {EDITABLE.map((r) => {
+        {/* ฝึกงานกับแม่บ้านมีแต่เมนู "ของฉัน" ซึ่งขึ้นตามประเภทพนักงาน ไม่มีอะไรให้ตั้งที่นี่ */}
+        {EDITABLE.filter((r) => configurableItems(r.key).length > 0).map((r) => {
           const n = configurableItems(r.key).length;
           const off = (access[r.key] ?? []).length;
           const on = r.key === role;
@@ -114,7 +115,7 @@ export function MenuAccessPane() {
           <div>
             <h2 className="text-[15px] font-bold">{roleLabel(role)}</h2>
             <p className="num mt-0.5 text-[12.5px] text-muted-foreground">
-              เปิดใช้ {openCount} จาก {items.length} เมนู · ต้องเปิดไว้อย่างน้อย 1 เมนู
+              เปิดใช้ {openCount} จาก {items.length} เมนู
             </p>
           </div>
           <button
@@ -149,12 +150,11 @@ export function MenuAccessPane() {
           </div>
         ))}
 
-        <p className="mt-4 rounded-[12px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-          {approves
-            ? "มีเมนู \"รายการรออนุมัติ\" ด้วย เพราะบทบาทนี้เป็นผู้อนุมัติตามสายอนุมัติ — เปลี่ยนได้ที่แท็บสายอนุมัติ"
-            : "ไม่มีเมนู \"รายการรออนุมัติ\" เพราะบทบาทนี้ไม่ได้เป็นผู้อนุมัติของใคร"}
-          {hidden.has("/") && " · ปิดเวลาทำงานไว้ บทบาทนี้จะตอกบัตรเข้า-ออกไม่ได้"}
-        </p>
+        {hidden.has("/") && (
+          <p className="mt-4 rounded-[12px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+            ปิดเวลาทำงานไว้ บทบาทนี้จะตอกบัตรเข้า-ออกไม่ได้
+          </p>
+        )}
       </div>
 
       <ConfirmDialog
@@ -252,12 +252,8 @@ export function RoutePane() {
 
   return (
     <div className="px-4 py-4 sm:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-[640px] text-[12.5px] leading-relaxed text-muted-foreground">
-          {/* สองชั้น: ตารางนี้คือค่าตั้งต้นรายบทบาท · ตำแหน่งที่ตั้งผู้อนุมัติเองในแท็บตำแหน่งใช้ค่านั้นก่อน (role.ts routeKeyOf · ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-          สายอนุมัติตั้งต้นของแต่ละบทบาท · ตำแหน่งที่เลือกผู้อนุมัติไว้เองในแท็บตำแหน่งจะใช้ค่านั้นก่อน ·
-          เลือกผู้อนุมัติคนใหม่แล้วต้องยืนยันก่อน · คำขอที่ยังรออนุมัติอยู่จะย้ายไปหาผู้อนุมัติใหม่ทันทีที่ยืนยัน · อนุมัติคำขอของบทบาทตัวเองไม่ได้
-        </p>
+      {/* สองชั้น: ตารางนี้คือค่าตั้งต้นรายบทบาท · ตำแหน่งที่ตั้งผู้อนุมัติเองในแท็บตำแหน่งใช้ค่านั้นก่อน (role.ts routeKeyOf · ผู้ใช้สั่ง 5 ต.ค. 2569) */}
+      <div className="flex flex-wrap items-start justify-end gap-3">
         <button
           type="button"
           className="btn glass-thin btn-mini max-sm:!h-10 max-sm:!px-3.5 max-sm:!text-[13px]"
@@ -549,7 +545,7 @@ export function DualRolePane() {
     <ul className="space-y-2.5 p-3 sm:hidden">
       {rows.length === 0 ? (
         <li className="py-10 text-center text-[13px] text-muted-foreground">
-          ยังไม่มีบัญชีผู้ใช้ · ฝ่ายบุคคลสร้างบัญชีให้พนักงานที่หน้าจัดการบัญชีผู้ใช้
+          ยังไม่มีบัญชีผู้ใช้
         </li>
       ) : (
         rows.map((e) => {
@@ -618,7 +614,7 @@ export function DualRolePane() {
           {rows.length === 0 ? (
             <tr>
               <td colSpan={3} className="py-12 text-center text-muted-foreground">
-                ยังไม่มีบัญชีผู้ใช้ · ฝ่ายบุคคลสร้างบัญชีให้พนักงานที่หน้าจัดการบัญชีผู้ใช้
+                ยังไม่มีบัญชีผู้ใช้
               </td>
             </tr>
           ) : (
@@ -721,9 +717,6 @@ function ApproverNameDialog({ who, onClose }: { who: ApproverKey; onClose: () =>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="field-control" />
         </label>
       </div>
-      <p className="mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        ชื่อนี้ขึ้นให้พนักงานเห็นว่ายื่นคำขอถึงใคร (ใบลา โอที ใบเบิก) และในข้อความแจ้งเตือน
-      </p>
     </Sheet>
   );
 }

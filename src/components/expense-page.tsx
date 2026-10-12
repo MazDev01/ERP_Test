@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CLAIM_STATUS,
   checkClaim,
+  claimTotal,
   fuelRate,
   fuelAmount,
   fuelRowMiss,
@@ -24,6 +25,7 @@ import { useAddOption } from "./add-option";
 import {
   addFuelRow,
   addOtherRow,
+  cancelClaim,
   removeOtherRow,
   updateOtherRow,
   claimOf,
@@ -37,18 +39,21 @@ import {
 } from "@/lib/expense-store";
 import { TH_MONTHS_FULL, baht, bkkNow, pad2, thaiMonth as thaiMonthName, thaiStamp } from "@/lib/format";
 import { useProfile } from "@/lib/profile-data";
-import { hasNoApprover, useApprovalRoute, useRole } from "@/lib/role";
+import { approverOf, hasNoApprover, useApprovalRoute, useRole } from "@/lib/role";
 import {
   CheckIcon,
   ChevronLeftIcon,
   ClockIcon,
   ChevronRightIcon,
+  EyeIcon,
   PlusIcon,
   PrintIcon,
   RotateIcon,
   TrashIcon,
 } from "./icons";
 import { ApproverNote } from "./approver-note";
+import { Sheet } from "./lead-dialogs";
+import { hrCommission } from "@/lib/hr-data";
 
 import { DateField } from "./thai-date-picker";
 import { createPortal } from "react-dom";
@@ -59,17 +64,449 @@ import "@/styles/mobile/expense.css";
  * ค่าคอมมิชชั่นคิดในเงินเดือนที่ฝ่ายบุคคลคำนวณจากดีลจริงแล้ว (payroll_line) ไม่ได้เบิกผ่านใบนี้ — กันได้ซ้ำสองทาง
  */
 
+/* หน้าแรกเป็นรายการใบเบิกที่ยื่นแล้ว กดดูรายละเอียดทีละใบ ฟอร์มเปิดจากปุ่มขอเบิก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+type Screen =
+  | { kind: "list" }
+  | { kind: "view"; month: string }
+  | { kind: "form"; month: string; pick?: Pick };
+
+/* ประเภทที่เลือกก่อนเปิดฟอร์ม → ฟอร์มเดิม (ค่าน้ำมัน / ค่าใช้จ่ายอื่นพร้อมประเภท) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+type Pick = { key: "travel" | "fuel" | "commission" | "other"; label: string; t: MType; kind: string };
+const PICKS: Pick[] = [
+  { key: "travel", label: "ค่าเดินทาง", t: "other", kind: "ค่าเดินทาง" },
+  { key: "fuel", label: "ค่าน้ำมันรถ", t: "fuel", kind: "" },
+  { key: "commission", label: "ค่าคอมมิชชั่น", t: "other", kind: "ค่าคอมมิชชั่น" },
+  /* ประเภทมาจากที่เลือกตอนกด + แล้ว ฟอร์มไม่มีช่องเลือกประเภทซ้ำ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  /* อื่นๆ — ผู้ขอพิมพ์หัวข้อเอง เช่น ค่าบัญชี Google (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  { key: "other", label: "อื่นๆ", t: "other", kind: "" },
+];
+
+/** ค่าคอมมิชชั่นขึ้นเฉพาะตำแหน่งที่มีอัตราค่าคอม (hrCommission) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function usePicks() {
+  const role = useRole();
+  return PICKS.filter((p) => p.key !== "commission" || role in hrCommission());
+}
+
+/* กล่องเลือกประเภทการเบิก จอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function PickDialog({ onPick, onClose }: { onPick: (p: Pick) => void; onClose: () => void }) {
+  const picks = usePicks();
+  return (
+    <Sheet
+      title="เลือกประเภทการเบิก"
+      narrow
+      onClose={onClose}
+      footer={
+        <button type="button" className="btn glass-thin" onClick={onClose}>
+          ยกเลิก
+        </button>
+      }
+    >
+      <div className="grid gap-2">
+        {picks.map((p) => {
+          const ty = M_TYPES[p.t];
+          return (
+            <button
+              key={p.key}
+              type="button"
+              className="flex items-center gap-3 rounded-[12px] border border-border bg-card px-3.5 py-3 text-left font-semibold hover:border-primary"
+              onClick={() => onPick(p)}
+            >
+              <span
+                className="flex shrink-0 items-center justify-center rounded-full"
+                style={{ width: 38, height: 38, background: ty.bg, color: ty.fg }}
+              >
+                <MSvg size={19}>{ty.ico}</MSvg>
+              </span>
+              <span className="flex-1">{p.label}</span>
+              <ChevronRightIcon className="size-4 text-muted-foreground" strokeWidth={2.2} />
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
+const PER_PAGE = 10;
+
+const TABS: { key: "all" | ClaimStatus; label: string }[] = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "รออนุมัติ", label: "รออนุมัติ" },
+  { key: "อนุมัติแล้ว", label: "อนุมัติแล้ว" },
+  { key: "ไม่อนุมัติ", label: "ไม่อนุมัติ" },
+  { key: "ยกเลิก", label: "ยกเลิก" },
+];
+
+/** ใบที่ยื่นแล้วอย่างน้อยหนึ่งครั้ง = หนึ่งรอบในรายการ · ใบร่างยังไม่นับ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function roundsOf(claims: ExpenseClaim[]) {
+  const at = (c: ExpenseClaim) => c.submittedAt || c.month;
+  /* ยื่นล่าสุดอยู่บนสุด เป็นลำดับที่ 1 */
+  return claims
+    .filter((c) => c.status !== "ร่าง")
+    .sort((a, b) => at(b).localeCompare(at(a)) || b.month.localeCompare(a.month));
+}
+
+/** ประเภทในใบ เช่น "ค่าน้ำมันรถ · ค่าใช้จ่ายอื่น" */
+function typesOf(c: ExpenseClaim) {
+  return [c.fuel.length ? "ค่าน้ำมันรถ" : "", c.other?.length ? "ค่าใช้จ่ายอื่น" : ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function ExpensePage() {
+  const [screen, setScreen] = useState<Screen>({ kind: "list" });
+  const [flash, setFlash] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screen]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const id = setTimeout(() => setFlash(null), 6000);
+    return () => clearTimeout(id);
+  }, [flash]);
+
+  const back = () => setScreen({ kind: "list" });
+
+  return (
+    <>
+    {/* มือถือ (ต่ำกว่า md) ใช้ ExpenseMobile แทนทั้งหน้า */}
+    <div className="max-md:hidden">
+      {screen.kind === "list" && (
+        <ClaimList
+          flash={flash}
+          onOpen={(month) => setScreen({ kind: "view", month })}
+          onNew={(pick) => setScreen({ kind: "form", month: monthKey(bkkNow()), pick })}
+        />
+      )}
+      {screen.kind === "view" && (
+        <ClaimView
+          month={screen.month}
+          onBack={back}
+          onEdit={() => setScreen({ kind: "form", month: screen.month })}
+        />
+      )}
+      {screen.kind === "form" && (
+        <ClaimForm
+          key={screen.month}
+          initMonth={screen.month}
+          pick={screen.pick}
+          onBack={back}
+          onSent={(month) => {
+            setFlash(`ส่งขออนุมัติใบเบิกเดือน${mMonthName(month)}แล้ว`);
+            back();
+          }}
+        />
+      )}
+    </div>
+    <ExpenseMobile />
+    </>
+  );
+}
+
+/* ── รายการใบเบิก (ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
+function ClaimList({
+  flash,
+  onOpen,
+  onNew,
+}: {
+  flash: string | null;
+  onOpen: (month: string) => void;
+  onNew: (pick: Pick) => void;
+}) {
   const claims = useExpenseClaims();
-  const me = useProfile();
+  /* กดขอเบิก → เลือกประเภทก่อน แล้วค่อยไปหน้าฟอร์ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const [choose, setChoose] = useState(false);
+  const boss = approverOf(useRole(), "expense", useApprovalRoute());
+  const [tab, setTab] = useState<"all" | ClaimStatus>("all");
+  const [page, setPage] = useState(1);
+
+  const rounds = useMemo(() => roundsOf(claims), [claims]);
+  const scoped = tab === "all" ? rounds : rounds.filter((c) => c.status === tab);
+  const maxPage = Math.max(1, Math.ceil(scoped.length / PER_PAGE));
+  const safePage = Math.min(page, maxPage);
+  const from = (safePage - 1) * PER_PAGE;
+  const list = scoped.slice(from, from + PER_PAGE);
+  const approvedSum = rounds
+    .filter((c) => c.status === "อนุมัติแล้ว")
+    .reduce((sum, c) => sum + claimTotal(c), 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="bar">
+        <div>
+          <h1>เบิกค่าใช้จ่าย</h1>
+          <ApproverNote kind="expense" />
+        </div>
+        <div className="tools w-full flex-wrap sm:w-auto">
+          <button type="button" className="btn solid btn-solid btn-block-mobile shrink-0" onClick={() => setChoose(true)}>
+            <PlusIcon className="size-[15px]" strokeWidth={2.2} />
+            ขอเบิกค่าใช้จ่าย
+          </button>
+        </div>
+      </div>
+
+      {choose && (
+        <PickDialog
+          onClose={() => setChoose(false)}
+          onPick={(p) => {
+            setChoose(false);
+            onNew(p);
+          }}
+        />
+      )}
+
+      {flash && (
+        <p className="flex items-center gap-2.5 rounded-xl border border-[var(--success)]/20 bg-[var(--success-soft)] px-4 py-3 text-sm font-medium text-[var(--success)]">
+          <CheckIcon className="size-4 shrink-0" strokeWidth={2.4} />
+          {flash}
+        </p>
+      )}
+
+      <section className="panel glass flex flex-col">
+        <div className="strip">
+          <div className="tabs">
+            {TABS.map((t) => {
+              const count = t.key === "all" ? rounds.length : rounds.filter((c) => c.status === t.key).length;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={tab === t.key ? "on" : ""}
+                  onClick={() => {
+                    setTab(t.key);
+                    setPage(1);
+                  }}
+                >
+                  {t.label} <b>{count}</b>
+                </button>
+              );
+            })}
+          </div>
+          <div className="legend hidden sm:flex">
+            <span><i style={{ background: "var(--warning)" }} />รออนุมัติ</span>
+            <span><i style={{ background: "var(--success)" }} />อนุมัติแล้ว</span>
+            <span><i style={{ background: "var(--destructive)" }} />ไม่อนุมัติ</span>
+            <span><i style={{ background: "var(--neutral)" }} />ยกเลิก</span>
+          </div>
+        </div>
+
+        <div className="scroll-stable min-h-0 flex-1 overflow-auto">
+          <table className="data-table min-w-[940px]">
+            <thead>
+              <tr>
+                <th className="c" style={{ width: 70 }}>ลำดับ</th>
+                <th style={{ width: 150 }}>ประจำเดือน</th>
+                <th>ประเภท</th>
+                <th className="r" style={{ width: 130 }}>ยอดเบิก (บาท)</th>
+                <th style={{ width: 160 }}>วันที่ยื่น</th>
+                <th style={{ width: 132 }}>สถานะ</th>
+                <th style={{ width: 170 }}>ผู้อนุมัติ</th>
+                <th className="c" style={{ width: 110 }}>จัดการ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-[50px] text-center text-muted-foreground">
+                    ไม่มีรายการในหมวดนี้
+                  </td>
+                </tr>
+              ) : (
+                list.map((c, i) => {
+                  const n = c.fuel.length + (c.other?.length ?? 0);
+                  return (
+                    <tr key={c.month} className="cursor-pointer" onClick={() => onOpen(c.month)}>
+                      <td className="c num">{from + i + 1}</td>
+                      <td className="whitespace-nowrap">{mMonthName(c.month)}</td>
+                      <td>
+                        <span className="clip">{typesOf(c) || "—"}</span>
+                        <span className="why">{n} รายการ</span>
+                      </td>
+                      <td className="r num">
+                        <b className="font-semibold">{baht(claimTotal(c))}</b>
+                      </td>
+                      <td className="num whitespace-nowrap">{thaiStamp(c.submittedAt)}</td>
+                      <td>
+                        <span className={`tag ${CLAIM_STATUS[c.status]}`}>
+                          <i />
+                          {c.status}
+                        </span>
+                        {c.status === "อนุมัติแล้ว" && c.paidIn && (
+                          <span className="why">จ่ายคืนรอบ {thaiMonthName(c.paidIn)}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="clip">{boss.name}</span>
+                      </td>
+                      <td className="c" onClick={(e) => e.stopPropagation()}>
+                        <span className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn glass-thin btn-mini"
+                            aria-label={`ดูใบเบิกเดือน${mMonthName(c.month)}`}
+                            onClick={() => onOpen(c.month)}
+                          >
+                            <EyeIcon className="size-4" strokeWidth={2} />
+                          </button>
+                          {c.status === "รออนุมัติ" && (
+                            <button type="button" className="lnk" onClick={() => cancelClaim(c.month)}>
+                              ยกเลิก
+                            </button>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
+          <span>
+            {scoped.length === 0
+              ? "แสดง 0 รายการ"
+              : `แสดง ${from + 1}–${from + list.length} จาก ${scoped.length} รายการ`}
+          </span>
+          <span className="sum">
+            ยอดที่อนุมัติแล้วรวม<b>{baht(approvedSum)}</b> บาท
+          </span>
+          <div className="pages justify-center sm:justify-start">
+            <button
+              type="button"
+              className="glass-thin"
+              disabled={safePage === 1}
+              onClick={() => setPage(safePage - 1)}
+              aria-label="ก่อนหน้า"
+            >
+              ‹
+            </button>
+            {Array.from({ length: maxPage }, (_, i) => i + 1).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`glass-thin ${n === safePage ? "on" : ""}`}
+                onClick={() => setPage(n)}
+              >
+                {n}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="glass-thin"
+              disabled={safePage === maxPage}
+              onClick={() => setPage(safePage + 1)}
+              aria-label="ถัดไป"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ── รายละเอียดใบเบิกหนึ่งรอบ อ่านอย่างเดียว พิมพ์ได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
+function ClaimView({ month, onBack, onEdit }: { month: string; onBack: () => void; onEdit: () => void }) {
+  const claims = useExpenseClaims();
+  const claim = useMemo(() => claimOf(claims, month), [claims, month]);
+
+  return (
+    <div className="space-y-4">
+      {/* ปุ่มย้อนกลับมุมซ้ายบน ตำแหน่งเดียวกับหน้าอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <div className="no-print hidden md:block">
+        <button type="button" onClick={onBack} className="btn glass-thin gap-1.5">
+          <ChevronLeftIcon className="size-4" strokeWidth={2.4} />
+          ย้อนกลับ
+        </button>
+      </div>
+      <div className="bar no-print">
+        <div>
+          <h1>ใบเบิก{mMonthName(month)}</h1>
+        </div>
+        <div className="tools w-full flex-wrap sm:w-auto">
+          <button type="button" className="btn glass-thin" onClick={() => window.print()}>
+            <PrintIcon className="size-[15px]" strokeWidth={1.9} />
+            พิมพ์ใบเบิก
+          </button>
+          {claim.status === "รออนุมัติ" && (
+            <>
+              <button type="button" className="btn glass-thin" onClick={() => cancelClaim(month)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn glass-thin"
+                onClick={() => {
+                  withdrawClaim(month);
+                  onEdit();
+                }}
+              >
+                <RotateIcon className="size-[15px]" strokeWidth={2.2} />
+                ขอแก้ไข
+              </button>
+            </>
+          )}
+          {(claim.status === "ไม่อนุมัติ" || claim.status === "ยกเลิก" || claim.status === "ร่าง") && (
+            <button type="button" className="btn solid btn-solid shrink-0" onClick={onEdit}>
+              <RotateIcon className="size-[15px]" strokeWidth={2.2} />
+              แก้ไขและยื่นใหม่
+            </button>
+          )}
+        </div>
+      </div>
+
+      {claim.status === "ไม่อนุมัติ" && claim.comment && (
+        <p className="no-print rounded-xl border border-destructive/20 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
+          ผู้อนุมัติตีกลับ: {claim.comment}
+        </p>
+      )}
+
+      <ClaimSheet claim={claim} month={month} locked tried={false} />
+    </div>
+  );
+}
+
+/* ── ฟอร์มขอเบิก (ฟอร์มเดิม ย้ายมาเปิดจากปุ่มขอเบิกค่าใช้จ่าย · ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
+function ClaimForm({
+  initMonth,
+  pick,
+  onBack: back0,
+  onSent,
+}: {
+  initMonth: string;
+  pick?: Pick;
+  onBack: () => void;
+  onSent: (month: string) => void;
+}) {
+  const claims = useExpenseClaims();
   const today = bkkNow();
-  const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [view, setView] = useState(() => {
+    const [y, m] = initMonth.split("-").map(Number);
+    return new Date(y, m - 1, 1);
+  });
   /** โชว์ที่กรอกไม่ครบหลังกดยื่นครั้งแรก ไม่ขึ้นเตือนตั้งแต่ยังไม่ได้กรอก */
   const [tried, setTried] = useState(false);
 
   const month = monthKey(view);
   const claim = useMemo(() => claimOf(claims, month), [claims, month]);
   const locked = isLocked(claim.status);
+  /* ออกจากฟอร์มโดยไม่ยื่น — แถวที่ยังไม่ได้กรอกไม่เก็บ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const onBack = () => {
+    dropBlankRows(claim);
+    back0();
+  };
+  /* เลือกค่าใช้จ่ายอื่นมา — เติมแถวแรกพร้อมประเภทให้เลย (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !pick || pick.t !== "other" || locked) return;
+    seeded.current = true;
+    if (!(claim.other ?? []).some((r) => !otherFilled(r))) addOtherRow(month, { kind: pick.kind });
+  }, [pick, locked, claim.other, month]);
   const monthLabel = `${TH_MONTHS_FULL[view.getMonth()]} ${view.getFullYear() + 543}`;
 
   /** เดือนหน้ายังมาไม่ถึง ไม่ให้เบิกล่วงหน้า */
@@ -83,8 +520,6 @@ export function ExpensePage() {
   const reasons = noApprover
     ? [...check.reasons, "ใบนี้ยังไม่มีผู้อนุมัติ — ให้ผู้ดูแลระบบแก้สายอนุมัติก่อน"]
     : check.reasons;
-  const fuelSum = fuelTotal(claim.fuel);
-  const otherSum = otherTotal(claim.other);
   /* กล่องบอกเหตุผล — กดยื่นแล้วต้องเห็นทันที ถึงจะกำลังมองตารางอยู่ก็ตาม
      (เคยขึ้นข้อความไว้เหนือตารางเฉย ๆ คนกดเลยคิดว่ากดแล้วไม่มีอะไรเกิดขึ้น) */
   const alertRef = useRef<HTMLDivElement>(null);
@@ -103,8 +538,11 @@ export function ExpensePage() {
       });
       return;
     }
-    submitClaim(month);
+    dropBlankRows(claim);
+    if (!submitClaim(month)) return;
     setTried(false);
+    /* ส่งแล้วกลับไปหน้ารายการ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+    onSent(month);
   }
 
   function switchMonth(step: number) {
@@ -113,15 +551,21 @@ export function ExpensePage() {
   }
 
   return (
-    <>
-    {/* มือถือ (ต่ำกว่า md) ใช้ ExpenseMobile แทนทั้งหน้า — จอใหญ่เหมือนเดิมทุกอย่าง */}
-    <div className="space-y-4 max-md:hidden">
+    <div className="space-y-4">
+      {/* ปุ่มย้อนกลับมุมซ้ายบน ตำแหน่งเดียวกับหน้าอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <div className="no-print hidden md:block">
+        <button type="button" onClick={onBack} className="btn glass-thin gap-1.5">
+          <ChevronLeftIcon className="size-4" strokeWidth={2.4} />
+          ย้อนกลับ
+        </button>
+      </div>
       <div className="bar no-print">
         <div>
-          <h1>เบิกค่าใช้จ่าย</h1>
+          <h1>{pick ? `ขอเบิก${pick.label}` : "ขอเบิกค่าใช้จ่าย"}</h1>
           <ApproverNote kind="expense" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
+
           <div className="mo glass-thin w-full justify-center sm:w-auto">
             <button type="button" onClick={() => switchMonth(-1)} aria-label="เดือนก่อนหน้า">
               <ChevronLeftIcon className="size-[15px]" strokeWidth={2.4} />
@@ -137,11 +581,7 @@ export function ExpensePage() {
             </button>
           </div>
 
-          {/* วันที่ในใบเบิกเป็นวันที่ออกไปทำงานจริง เทียบกับบันทึกเวลาเดือนเดียวกันได้ */}
-          <Link href={`/records?month=${month}`} className="btn glass-thin">
-            <ClockIcon className="size-[15px]" strokeWidth={1.9} />
-            เวลาทำงานเดือนนี้
-          </Link>
+          {/* ไม่มีปุ่มเวลาทำงานเดือนนี้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
 
           <button type="button" className="btn glass-thin" onClick={() => window.print()}>
             <PrintIcon className="size-[15px]" strokeWidth={1.9} />
@@ -180,8 +620,7 @@ export function ExpensePage() {
 
       {claim.status === "รออนุมัติ" && (
         <p className="no-print rounded-xl border border-[var(--warning)]/20 bg-[var(--warning-soft)] px-4 py-3 text-sm text-[var(--warning)]">
-          ยื่นแล้วเมื่อ {thaiStamp(claim.submittedAt)} · แก้ไม่ได้จนกว่าจะกด “ขอแก้ไข”
-          เพื่อดึงกลับมาเป็นร่าง
+          ยื่นแล้วเมื่อ {thaiStamp(claim.submittedAt)}
         </p>
       )}
 
@@ -200,6 +639,35 @@ export function ExpensePage() {
         </div>
       )}
 
+      <ClaimSheet claim={claim} month={month} locked={locked} tried={tried} only={pick?.t} kind={pick?.kind} />
+    </div>
+  );
+}
+
+/** ตัวใบเบิก (ค่าน้ำมัน + ค่าใช้จ่ายอื่น) ใช้ร่วมกันทั้งฟอร์มและหน้ารายละเอียด (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function ClaimSheet({
+  claim,
+  month,
+  locked,
+  tried,
+  only,
+  kind = "",
+}: {
+  claim: ExpenseClaim;
+  month: string;
+  locked: boolean;
+  tried: boolean;
+  /** ฟอร์มที่เปิดจากการเลือกประเภท — แสดงเฉพาะส่วนนั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  only?: MType;
+  kind?: string;
+}) {
+  const me = useProfile();
+  const fuelSum = fuelTotal(claim.fuel);
+  const otherSum = otherTotal(claim.other);
+
+  return (
+    <>
+      {only !== "other" && (
       <section className="panel glass flex flex-col">
         <div className="strip no-print">
           <div className="tabs">
@@ -227,7 +695,7 @@ export function ExpensePage() {
             <p className="ftitle">แบบฟอร์มขออนุมัติเบิกค่าน้ำมันรถ</p>
             <p className="fsub">
               {/* สถานะอยู่ที่ป้ายบนแถบแล้ว (ต้นแบบ) เหลือเดือนกับเลขที่ใบเบิก */}
-              ประจำเดือน {monthLabel}
+              ประจำเดือน {mMonthName(month)}
               {claim.no && ` · เลขที่ ${claim.no}`}
             </p>
 
@@ -302,12 +770,12 @@ export function ExpensePage() {
           </span>
         </div>
       </section>
+      )}
 
       {/* ค่าใช้จ่ายอื่นนอกจากค่าน้ำมัน (Full Proposal · M6) — ประเภทมาจากข้อมูลหลัก */}
-      <OtherCard rows={claim.other ?? []} month={month} locked={locked} tried={tried} total={otherSum} />
-
-    </div>
-    <ExpenseMobile />
+      {only !== "fuel" && (
+        <OtherCard rows={claim.other ?? []} month={month} locked={locked} tried={tried} total={otherSum} kind0={kind} />
+      )}
     </>
   );
 }
@@ -318,12 +786,15 @@ function OtherCard({
   locked,
   tried,
   total,
+  kind0 = "",
 }: {
   rows: OtherRow[];
   month: string;
   locked: boolean;
   tried: boolean;
   total: number;
+  /** ประเภทที่เลือกมาก่อนเปิดฟอร์ม — แถวใหม่ตั้งประเภทนี้ให้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  kind0?: string;
 }) {
   const kinds = optionsOf("expenseKind");
   /* เพิ่มประเภทค่าใช้จ่ายใหม่ได้จากใบเบิกเลย — เพิ่มแล้วเลือกให้แถวที่กำลังกรอก */
@@ -337,7 +808,6 @@ function OtherCard({
     <section className="panel glass mt-4 px-4 py-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-[15px] font-bold">ค่าใช้จ่ายอื่น</h2>
-        <p className="text-[12.5px] text-muted-foreground">นอกจากค่าน้ำมัน — เลือกประเภท กรอกวันที่ จำนวนเงิน และแนบหลักฐาน</p>
       </div>
 
       {rows.length === 0 ? (
@@ -349,31 +819,23 @@ function OtherCard({
             return (
               <li
                 key={r.id}
-                className={`grid gap-2 rounded-[12px] border bg-card p-2.5 sm:grid-cols-[minmax(0,1fr)_150px_120px_36px] ${
-                  tried && why ? "border-destructive" : "border-border"
-                }`}
+                className={`grid gap-2 rounded-[12px] border bg-card p-2.5 ${
+                  kind0 ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_36px]" : "sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_36px]"
+                } ${tried && why ? "border-destructive" : "border-border"}`}
               >
-                <label className="grid gap-1 text-[12px] text-muted-foreground">
-                  ประเภท
-                  <select
-                    value={r.kind}
-                    disabled={locked}
-                    aria-label={`ประเภทค่าใช้จ่ายลำดับ ${i + 1}`}
-                    onChange={(e) => {
-                      setAdding(r.id);
-                      if (!addKind.pick(e.target.value)) updateOtherRow(month, r.id, { kind: e.target.value });
-                    }}
-                    className="field-control"
-                  >
-                    <option value="">เลือกประเภท</option>
-                    {kinds.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                    {addKind.option}
-                  </select>
-                </label>
+                {/* อื่นๆ — หัวข้อค่าใช้จ่ายพิมพ์เอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                {!kind0 && (
+                  <label className="grid gap-1 text-[12px] text-muted-foreground">
+                    หัวข้อ
+                    <input
+                      value={r.kind}
+                      disabled={locked}
+                      placeholder="เช่น ค่าบัญชี Google, ค่าซื้อคอมพิวเตอร์"
+                      onChange={(e) => updateOtherRow(month, r.id, { kind: e.target.value })}
+                      className="field-control"
+                    />
+                  </label>
+                )}
                 <label className="grid gap-1 text-[12px] text-muted-foreground">
                   วันที่
                   <DateField
@@ -444,7 +906,7 @@ function OtherCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {!locked && (
-          <button type="button" className="btn glass-thin" onClick={() => addOtherRow(month)}>
+          <button type="button" className="btn glass-thin" onClick={() => addOtherRow(month, { kind: kind0 })}>
             <PlusIcon className="size-[15px]" strokeWidth={2.2} />
             เพิ่มค่าใช้จ่าย
           </button>
@@ -703,6 +1165,7 @@ const M_STATUS: Record<ClaimStatus, string> = {
   รออนุมัติ: "pending",
   อนุมัติแล้ว: "approved",
   ไม่อนุมัติ: "rejected",
+  ยกเลิก: "cancelled",
 };
 
 const M_TYPES: Record<MType, { name: string; desc: string; bg: string; fg: string; ico: React.ReactNode }> = {
@@ -743,8 +1206,8 @@ const mNum = (v: string) => Number(String(v ?? "").replace(/,/g, "")) || 0;
 /** แถวที่เริ่มกรอกแล้ว — แถวว่างล้วนไม่นับเป็นรายการ (ตัดทิ้งตอนปิดฟอร์ม/ยื่น) */
 const fuelFilled = (r: FuelRow) =>
   !!(r.date || r.place.trim() || mNum(r.km) || r.work.trim() || r.note.trim());
-const otherFilled = (r: OtherRow) =>
-  !!(r.kind || r.date || mNum(r.amount) || r.note.trim() || r.file);
+/* ประเภทเติมให้จากที่เลือกก่อนเปิดฟอร์ม จึงไม่นับว่าเริ่มกรอก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+const otherFilled = (r: OtherRow) => !!(r.date || mNum(r.amount) || r.note.trim() || r.file);
 
 function MSvg({ size = 20, children }: { size?: number; children: React.ReactNode }) {
   return (
@@ -769,7 +1232,8 @@ function dropBlankRows(claim: ExpenseClaim) {
 function ExpenseMobile() {
   const claims = useExpenseClaims();
   const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState<{ month: string; t: MType } | null>(null);
+  const [form, setForm] = useState<{ month: string; t: MType; kind?: string; label?: string } | null>(null);
+  const picks = usePicks();
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -791,42 +1255,48 @@ function ExpenseMobile() {
     };
   }, [sheet]);
 
-  const groups = [...claims]
-    .sort((a, b) => b.month.localeCompare(a.month))
-    .map((c) => ({
-      c,
-      cards: (["fuel", "other"] as MType[]).flatMap((t) => {
-        const rows = t === "fuel" ? c.fuel.filter(fuelFilled) : (c.other ?? []).filter(otherFilled);
-        const total = t === "fuel" ? fuelTotal(c.fuel.filter(fuelFilled)) : otherTotal((c.other ?? []).filter(otherFilled));
-        return rows.length ? [{ t, n: rows.length, total }] : [];
-      }),
-    }))
-    .filter((g) => g.cards.length);
+  /* รายการรอบที่ยื่นแล้ว + แถบกรองสถานะ เหมือนจอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const [tab, setTab] = useState<"all" | ClaimStatus>("all");
+  const rounds = roundsOf(claims);
+  const shown = tab === "all" ? rounds : rounds.filter((c) => c.status === tab);
 
   return (
     <div className="exm md:hidden">
-      {groups.length === 0 ? (
-        <p className="exm-empty">ยังไม่มีใบเบิก</p>
+      <div className="exm-filter" role="tablist">
+        {TABS.map((x) => (
+          <button
+            key={x.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === x.key}
+            className={tab === x.key ? "on" : ""}
+            onClick={() => setTab(x.key)}
+          >
+            {x.label}
+            <b>{x.key === "all" ? rounds.length : rounds.filter((c) => c.status === x.key).length}</b>
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 ? (
+        <p className="exm-empty">ไม่มีรายการ</p>
       ) : (
-        groups.map(({ c, cards }) => (
-          <section key={c.month} aria-label={mMonthName(c.month)}>
-            <h2 className="exm-mo">{mMonthName(c.month)}</h2>
-            {cards.map(({ t, n, total }) => {
-              const ty = M_TYPES[t];
-              return (
-                <button key={t} type="button" className="exm-card" onClick={() => setForm({ month: c.month, t })}>
-                  <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
-                    <MSvg size={19}>{ty.ico}</MSvg>
-                  </span>
-                  <b>{ty.name}</b>
-                  <span className="amt">{baht(total)} ฿</span>
-                  <span className="meta">{n} รายการ</span>
-                  <span className={`exm-chip ${M_STATUS[c.status]}`}>{c.status}</span>
-                </button>
-              );
-            })}
-          </section>
-        ))
+        shown.map((c) => {
+          const t: MType = c.fuel.length ? "fuel" : "other";
+          const ty = M_TYPES[t];
+          return (
+            <button key={c.month} type="button" className="exm-card" onClick={() => setForm({ month: c.month, t })}>
+              <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
+                <MSvg size={19}>{ty.ico}</MSvg>
+              </span>
+              <b>{mMonthName(c.month)}</b>
+              <span className="amt">{baht(claimTotal(c))} ฿</span>
+              <span className="meta">
+                {typesOf(c)} · ยื่น {thaiStamp(c.submittedAt)}
+              </span>
+              <span className={`exm-chip ${M_STATUS[c.status]}`}>{c.status}</span>
+            </button>
+          );
+        })
       )}
 
       <button type="button" className="exm-fab" aria-label="เบิกค่าใช้จ่ายใหม่" onClick={() => setSheet(true)}>
@@ -847,27 +1317,25 @@ function ExpenseMobile() {
             <div className="exm-panel">
               <div className="exm-grab" />
               <h2 id="exmSheetT">เลือกประเภทการเบิก</h2>
-              <p>เลือกก่อน แล้วค่อยกรอกรายละเอียดและส่งอนุมัติ</p>
-              {(["fuel", "other"] as MType[]).map((t) => {
-                const ty = M_TYPES[t];
+              {/* ค่าเดินทาง / ค่าน้ำมัน / ค่าคอมมิชชั่น / อื่นๆ — เหมือนจอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+              {picks.map((p) => {
+                const ty = M_TYPES[p.t];
                 return (
                   <button
-                    key={t}
+                    key={p.key}
                     type="button"
                     className="exm-type"
                     onClick={() => {
                       setSheet(false);
                       /* เบิกใหม่เป็นของเดือนปัจจุบันเสมอ — เดือนหน้ายังมาไม่ถึง ไม่ให้เบิกล่วงหน้า */
-                      setForm({ month: monthKey(bkkNow()), t });
+                      setForm({ month: monthKey(bkkNow()), t: p.t, kind: p.kind, label: p.label });
                     }}
                   >
                     <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
                       <MSvg size={21}>{ty.ico}</MSvg>
                     </span>
                     <span className="tx">
-                      <b>{ty.name}</b>
-                      <small>{ty.desc}</small>
-                      <small>{mRate(t)}</small>
+                      <b>{p.label}</b>
                     </span>
                     <MSvg size={18}>
                       <path d="m9 18 6-6-6-6" />
@@ -883,9 +1351,11 @@ function ExpenseMobile() {
       {form &&
         createPortal(
           <ExpenseMobileForm
-            key={`${form.month}-${form.t}`}
+            key={`${form.month}-${form.t}-${form.kind ?? ""}`}
             month={form.month}
             t={form.t}
+            kind0={form.kind}
+            label={form.label}
             onClose={() => setForm(null)}
             onSent={(msg) => {
               setForm(null);
@@ -908,18 +1378,26 @@ function ExpenseMobile() {
 
 function ExpenseMobileForm({
   month,
-  t,
+  t: t0,
+  kind0 = "",
+  label,
   onClose,
   onSent,
 }: {
   month: string;
   t: MType;
+  /** ประเภทค่าใช้จ่ายที่เลือกมา และชื่อหัวฟอร์ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  kind0?: string;
+  label?: string;
   onClose: () => void;
   onSent: (msg: string) => void;
 }) {
   const claims = useExpenseClaims();
   const claim = claimOf(claims, month);
   const locked = isLocked(claim.status);
+  /* ใบที่มีทั้งค่าน้ำมันและค่าใช้จ่ายอื่น สลับดูทีละประเภทได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const [t, setT] = useState<MType>(t0);
+  const both = claim.fuel.length > 0 && (claim.other ?? []).length > 0;
   const ty = M_TYPES[t];
   const noApprover = hasNoApprover(useRole(), "expense", useApprovalRoute());
   const [tried, setTried] = useState(false);
@@ -936,13 +1414,13 @@ function ExpenseMobileForm({
   const otherRows: OtherRow[] =
     (claim.other ?? []).length || locked
       ? claim.other ?? []
-      : [{ id: otherBlank, kind: "", date: "", amount: "", note: "" }];
+      : [{ id: otherBlank, kind: kind0, date: "", amount: "", note: "" }];
   const setFuel = (id: string, patch: Partial<Omit<FuelRow, "id">>) =>
     claim.fuel.some((r) => r.id === id) ? updateFuelRow(month, id, patch) : addFuelRow(month, { ...patch, id });
   const setOther = (id: string, patch: Partial<Omit<OtherRow, "id">>) =>
     (claim.other ?? []).some((r) => r.id === id)
       ? updateOtherRow(month, id, patch)
-      : addOtherRow(month, { ...patch, id });
+      : addOtherRow(month, { kind: kind0, ...patch, id });
 
   const total = t === "fuel" ? fuelTotal(claim.fuel) : otherTotal(claim.other);
   const count = t === "fuel" ? fuelRows.length : otherRows.length;
@@ -974,8 +1452,8 @@ function ExpenseMobileForm({
       if (!claim.fuel.length) addFuelRow(month, { id: fuelBlank });
       addFuelRow(month);
     } else {
-      if (!(claim.other ?? []).length) addOtherRow(month, { id: otherBlank });
-      addOtherRow(month);
+      if (!(claim.other ?? []).length) addOtherRow(month, { id: otherBlank, kind: kind0 });
+      addOtherRow(month, { kind: kind0 });
     }
     requestAnimationFrame(() => {
       const boxes = bodyRef.current?.querySelectorAll("[data-i]");
@@ -1019,7 +1497,7 @@ function ExpenseMobileForm({
           </MSvg>
         </button>
         <div>
-          <b id="exmFormT">{ty.name}</b>
+          <b id="exmFormT">{label && t === t0 ? label : ty.name}</b>
           <small>
             {mMonthName(month)}
             {claim.no && ` · ${claim.no}`}
@@ -1029,7 +1507,23 @@ function ExpenseMobileForm({
       </div>
 
       <div className="exm-fbody" ref={bodyRef}>
-        {(locked || claim.status === "ไม่อนุมัติ") && (
+        {both && (
+          <div className="exm-filter" role="tablist">
+            {(["fuel", "other"] as MType[]).map((x) => (
+              <button
+                key={x}
+                type="button"
+                role="tab"
+                aria-selected={t === x}
+                className={t === x ? "on" : ""}
+                onClick={() => setT(x)}
+              >
+                {M_TYPES[x].name}
+              </button>
+            ))}
+          </div>
+        )}
+        {(locked || claim.status === "ไม่อนุมัติ" || claim.status === "ยกเลิก") && (
           <p style={{ textAlign: "center", margin: "0 0 10px" }}>
             <span className={`exm-chip ${M_STATUS[claim.status]}`}>{claim.status}</span>
           </p>
@@ -1039,7 +1533,7 @@ function ExpenseMobileForm({
         )}
         {claim.status === "รออนุมัติ" && (
           <p className="exm-msg amber">
-            ยื่นแล้วเมื่อ {thaiStamp(claim.submittedAt)} · แก้ไม่ได้จนกว่าจะกด “ขอแก้ไข” เพื่อดึงกลับมาเป็นร่าง
+            ยื่นแล้วเมื่อ {thaiStamp(claim.submittedAt)}
           </p>
         )}
         {claim.status === "อนุมัติแล้ว" && (
@@ -1155,18 +1649,12 @@ function ExpenseMobileForm({
                     <input className="exm-in num" inputMode="decimal" value={r.amount} disabled={locked} placeholder="0" onChange={(e) => setOther(r.id, { amount: onlyNumber(e.target.value) })} />
                   </label>
                 </div>
-                {/* "รายการ" ของต้นแบบ = ประเภทค่าใช้จ่ายจากข้อมูลหลัก (ช่องเดียวกับจอใหญ่) */}
-                <label className="exm-f">
-                  <span className="exm-lbl">รายการ</span>
-                  <select className="exm-in" value={r.kind} disabled={locked} onChange={(e) => setOther(r.id, { kind: e.target.value })}>
-                    <option value="">เลือกรายการ เช่น ค่าทางด่วน ค่าจอดรถ</option>
-                    {kinds.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {!kind0 && (
+                  <label className="exm-f">
+                    <span className="exm-lbl">หัวข้อ</span>
+                    <input className="exm-in" value={r.kind} disabled={locked} placeholder="เช่น ค่าบัญชี Google" onChange={(e) => setOther(r.id, { kind: e.target.value })} />
+                  </label>
+                )}
                 <label className="exm-f">
                   <span className="exm-lbl">รายละเอียด</span>
                   <input className="exm-in" value={r.note} disabled={locked} placeholder="—" onChange={(e) => setOther(r.id, { note: e.target.value })} />
@@ -1222,6 +1710,18 @@ function ExpenseMobileForm({
         {claim.status === "รออนุมัติ" && (
           <button type="button" className="exm-send ghost" onClick={() => withdrawClaim(month)}>
             ขอแก้ไข
+          </button>
+        )}
+        {claim.status === "รออนุมัติ" && (
+          <button
+            type="button"
+            className="exm-send ghost"
+            onClick={() => {
+              cancelClaim(month);
+              onSent(`ยกเลิกใบเบิกเดือน${mMonthName(month)}แล้ว`);
+            }}
+          >
+            ยกเลิก
           </button>
         )}
       </div>

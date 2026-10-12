@@ -225,7 +225,7 @@ export function SaveBar({
   onSave,
   onCancel,
   onDefault,
-  note = "มีผลกับทุกบทบาททันทีที่บันทึก",
+  note = "",
 }: {
   dirty: boolean;
   isDefault: boolean;
@@ -250,7 +250,7 @@ export function SaveBar({
         <span
           className={`mr-auto text-[12.5px] max-sm:w-full ${invalid ? "text-destructive" : "text-muted-foreground"}`}
         >
-          {invalid || (dirty ? "มีการแก้ไขที่ยังไม่บันทึก · " + note : "บันทึกแล้ว")}
+          {invalid || (dirty ? (note ? `มีการแก้ไขที่ยังไม่บันทึก · ${note}` : "มีการแก้ไขที่ยังไม่บันทึก") : "บันทึกแล้ว")}
         </span>
         <button
           type="button"

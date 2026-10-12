@@ -152,7 +152,7 @@ export function PresalesWorkPage() {
       <div className="bar">
         <div>
           <h1>งานก่อนการขาย</h1>
-          <p>คำขอ SA และ BD ที่แสดงอยู่ {rows.length} รายการ</p>
+          <p>พบ {rows.length} รายการ</p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <SearchBox value={query} onChange={setQuery} placeholder="ค้นหาเลขที่ใบงาน ผู้สนใจ หรือโจทย์" />
@@ -434,10 +434,7 @@ function WorkDialog({
           role="status"
           className="mb-3.5 rounded-[11px] bg-[var(--success-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed font-semibold text-[var(--success)]"
         >
-          รับงาน {r.no} แล้ว · ย้ายไปแท็บ “กำลังทำ” และบันทึกผู้รับผิดชอบเป็น {ME.name} แล้ว
-          <span className="mt-0.5 block font-normal">
-            ปิดหน้าต่างนี้แล้วกด “ส่งงาน” ในตารางเมื่อมีข้อเสนอ หรือ “ขอข้อมูลเพิ่ม” ถ้าโจทย์ยังไม่พอ
-          </span>
+          รับงาน {r.no} แล้ว
         </p>
       )}
 
@@ -448,7 +445,6 @@ function WorkDialog({
             <dt className={dt}>ประเภทงาน</dt>
             <dd className="flex flex-wrap items-center gap-2">
               <KindTag kind={r.kind} full />
-              <span className="text-[12px] text-muted-foreground">ประเภทติดกับตัวงาน ไม่เปลี่ยนตามคนที่รับ</span>
             </dd>
             <dt className={dt}>ผู้รับผิดชอบ</dt>
             <dd className="break-words">{psOwner(r)}</dd>
@@ -692,7 +688,7 @@ function ProposalPlan({ request, readOnly }: { request: PresalesRequest; readOnl
 
       {!editing && saved.length === 0 && (
         <p className="text-[12.5px] text-muted-foreground">
-          ยังไม่ได้วางแผนงาน — PM จะได้แม่แบบเฟสมาตรฐานไปจัดเองตอนรับงาน
+          ยังไม่ได้วางแผนงาน
         </p>
       )}
 

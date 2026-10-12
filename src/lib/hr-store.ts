@@ -18,12 +18,18 @@ import {
   HR_PAYSLIP,
   HR_PERIOD,
   HR_TIME,
+  addTimeSample,
   HR_INTERN_LEAVE,
   HR_PAYAPPROVE,
+  HR_PAST_MONTHS,
+  pastPayrun,
+  pastSlip,
+  pastApprovals,
   ROLE_EMPLOYEE,
   accountRoles,
   payApproveKey,
   fillPeriod,
+  ensurePeriods,
   withLoginAccounts,
   fillSlip,
   hrCycle,
@@ -39,6 +45,14 @@ import {
   type InternLeave,
   type PayApproval,
   closedIn,
+  HR_DAILY_SPLIT_MONTH,
+  dailyRoundId,
+  legacyDailyRound,
+  newDailyRound,
+  overlapRound,
+  seedSplitRounds,
+  type Cycle,
+  type DailyRound,
 } from "./hr-data";
 import { isWorkday } from "./holidays";
 import { bkkStamp, parseIsoDate, toIsoDate, todayIso } from "./format";
@@ -59,18 +73,59 @@ export type HrState = {
   internLeave: InternLeave[];
   /** CEO อนุมัติยอดเงินเดือน แยกรอบและกลุ่ม (คีย์ month|group) */
   payApprove: Record<string, PayApproval>;
+  /** รอบจ่ายรายวันของพนักงานทดลองงาน — ช่วงวันที่ใดก็ได้ ไม่ผูกกับรอบเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  dailyRounds: DailyRound[];
 };
 
-const INITIAL: HrState = {
+/*
+ * ย้ายกลุ่มทดลองงานจากรอบเดือนมาเป็นรอบรายวัน (ผู้ใช้สั่ง 6 ต.ค. 2569) — ทำครั้งเดียวตอนยังไม่มี dailyRounds
+ * รอบ ก.ค. 2569 แบ่งเป็นสามรอบจ่ายที่ปิดครบแล้ว · รอบเดือนอื่นที่ปิดรอบเวลากลุ่มรายวันแล้วกลายเป็นหนึ่งรอบต่อรอบเดือน
+ * การอนุมัติของ CEO ย้ายจากคีย์ "เดือน|day" ไปเป็น "จาก~ถึง|day" — คีย์เดิมที่ยังรอ/ถูกตีกลับลบทิ้ง
+ * ไม่งั้น CEO จะเห็นยอดรายเดือนของกลุ่มที่ไม่ได้จ่ายรายเดือนแล้วค้างในคิว
+ * ช่อง dayClosed/daySum/dayPublished ของรอบเดือนไม่ถูกแตะ (หน้าสลิปของพนักงานยังอ่านอยู่)
+ */
+function addDailyRounds(s: HrState): HrState {
+  if (Array.isArray(s.dailyRounds)) return s;
+  const rounds: DailyRound[] = [];
+  const payApprove = { ...s.payApprove };
+  for (const p of s.periods) {
+    const legacyKey = payApproveKey(p.month, "day");
+    const legacy = payApprove[legacyKey];
+    if (p.month === HR_DAILY_SPLIT_MONTH && p.dayClosed) {
+      for (const r of seedSplitRounds(s.emp, s.time)) {
+        rounds.push(r);
+        payApprove[payApproveKey(r.id, "day")] = { status: "approved", by: "CEO", at: `${r.payClosedAt} 09:10` };
+      }
+    } else {
+      const r = legacyDailyRound(
+        p,
+        s.payruns.find((x) => x.month === p.month),
+        s.slips.find((x) => x.month === p.month),
+        s.emp,
+        s.time,
+      );
+      if (r) {
+        rounds.push(r);
+        if (legacy) payApprove[payApproveKey(r.id, "day")] = legacy;
+      }
+    }
+    if (legacy && (legacy.status === "waiting" || legacy.status === "rejected")) delete payApprove[legacyKey];
+  }
+  return { ...s, payApprove, dailyRounds: rounds.sort((a, b) => a.from.localeCompare(b.from)) };
+}
+
+const INITIAL: HrState = addDailyRounds({
   emp: withLoginAccounts(HR_EMP),
   time: HR_TIME,
-  periods: HR_PERIOD,
+  /* รอบเดือนเดินตามวันจริง — เครื่องที่ยังไม่เคยเก็บข้อมูลก็ได้รอบถึงเดือนปัจจุบัน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  periods: ensurePeriods(HR_PERIOD, todayIso()),
   payruns: HR_PAYRUN,
   slips: HR_PAYSLIP,
   extras: HR_EXTRA,
   internLeave: HR_INTERN_LEAVE,
   payApprove: HR_PAYAPPROVE,
-};
+  dailyRounds: undefined as unknown as DailyRound[],
+});
 
 function isHrState(value: unknown): value is HrState {
   if (typeof value !== "object" || value === null) return false;
@@ -105,19 +160,67 @@ function addNewStaff(s: HrState): HrState {
     ),
   };
   /* ข้อมูลที่เก็บไว้ก่อนแยกกลุ่มปิดรอบ ยังไม่มีช่องของกลุ่มรายวัน เติมให้ครบก่อนใช้ */
-  return {
+  /* เติมรอบ ม.ค. 2569 ถึงรอบปัจจุบันที่ยังไม่มี รอบเดิมไม่ถูกแตะ (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  const periods = ensurePeriods(withStaff.periods.map(fillPeriod), todayIso());
+  return addPastRounds({
     ...withStaff,
+    /* รอบรายวันเก่าที่ไม่มีช่องนับครั้งเปิดดู/ยกเลิกการส่ง เติมให้ครบ */
+    dailyRounds: Array.isArray(withStaff.dailyRounds)
+      ? withStaff.dailyRounds.map((r) => ({
+          ...r,
+          unpublished: r.unpublished ?? [],
+          views: r.views ?? {},
+          downloads: r.downloads ?? {},
+        }))
+      : withStaff.dailyRounds,
     emp: withLoginAccounts(withStaff.emp),
-    periods: withStaff.periods.map(fillPeriod),
+    periods,
     payruns: withStaff.payruns.map(fillPeriod),
     slips: withStaff.slips.map(fillSlip),
-    /* ข้อมูลที่เก็บไว้ก่อนมีใบลาฝึกงานและการอนุมัติของ CEO */
-    internLeave: withStaff.internLeave ?? HR_INTERN_LEAVE,
+    /* ข้อมูลที่เก็บไว้ก่อนมีใบลาฝึกงานและการอนุมัติของ CEO
+       ใบตั้งต้นที่เพิ่มทีหลัง (ตัวอย่าง ต.ค. 2569) เติมเฉพาะเลขที่ที่ยังไม่มี — ใบที่ตัดสินไปแล้วไม่ถูกทับ */
+    internLeave: withStaff.internLeave
+      ? [
+          ...withStaff.internLeave,
+          ...HR_INTERN_LEAVE.filter((r) => !withStaff.internLeave.some((x) => x.id === r.id)),
+        ]
+      : HR_INTERN_LEAVE,
+    /* แถวเวลาทำงานตัวอย่างรอบ ต.ค. 2569 — เติมเฉพาะวันที่ที่ยังไม่มี */
+    time: addTimeSample(withStaff.time),
     payApprove: withStaff.payApprove ?? HR_PAYAPPROVE,
+  });
+}
+
+/*
+ * รอบ ม.ค.–มิ.ย. 2569 ต้องเดินครบทุกขั้นแบบรอบ ก.ค. (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * ปิดรอบเวลา → คำนวณ → CEO อนุมัติ → ปิดรอบเงินเดือน → เผยแพร่สลิป ทั้งสองกลุ่ม
+ * ข้อมูลที่เก็บไว้ก่อนหน้านี้ไม่มีรอบเงินเดือน/สลิป/การอนุมัติของเดือนเหล่านี้ เติมให้เฉพาะที่ยังไม่มี ของเดิมไม่ถูกทับ
+ * เติมเฉพาะเดือนที่รอบเวลาทั้งสองกลุ่มปิดแล้ว — กันรอบเงินเดือนปิดทั้งที่รอบเวลายังเปิดอยู่
+ */
+function addPastRounds(s: HrState): HrState {
+  const months = HR_PAST_MONTHS.filter((m) => {
+    const p = s.periods.find((x) => x.month === m);
+    return closedIn(p, "month") && closedIn(p, "day");
+  });
+  const runHave = new Set(s.payruns.map((p) => p.month));
+  const slipHave = new Set(s.slips.map((sp) => sp.month));
+  const runAdd = months.filter((m) => !runHave.has(m)).map(pastPayrun);
+  const slipAdd = months.filter((m) => !slipHave.has(m)).map(pastSlip);
+  const apAdd = Object.fromEntries(
+    months.flatMap((m) => Object.entries(pastApprovals(m))).filter(([k]) => !(k in s.payApprove)),
+  );
+  if (!runAdd.length && !slipAdd.length && !Object.keys(apAdd).length) return s;
+  return {
+    ...s,
+    payruns: [...s.payruns, ...runAdd].sort((a, b) => a.month.localeCompare(b.month)),
+    slips: [...s.slips, ...slipAdd].sort((a, b) => a.month.localeCompare(b.month)),
+    payApprove: { ...apAdd, ...s.payApprove },
   };
 }
 
-const store = createPersistedStore<HrState>("maz-erp.hr.v3", INITIAL, isHrState, addNewStaff);
+const store = createPersistedStore<HrState>("maz-erp.hr.v3", INITIAL, isHrState, (s) =>
+  addDailyRounds(addNewStaff(s)),
+);
 
 export function useHr() {
   return useSyncExternalStore(store.subscribe, store.get, store.getServer);
@@ -361,6 +464,24 @@ export function setEmpLeft(id: string, leftAt: string, leftWhy: string) {
 
 // ─── เวลาทำงาน ────────────────────────────────────────────────────
 
+/**
+ * บันทึกเวลาเข้า-ออกงานที่ฝ่ายบุคคลแก้ทั้งรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * วันที่มีรายการผิดปกติค้างอยู่และกรอกเวลาครบ ถือว่าตรวจแล้ว — ปิดรอบได้
+ */
+export function saveDayFixes(id: string, rows: { d: string; in: string; out: string }[]) {
+  editTime(id, (r) => {
+    const fix = [...(r.fix ?? []).filter((x) => !rows.some((y) => y.d === x.d)), ...rows].sort((a, b) =>
+      a.d.localeCompare(b.d),
+    );
+    const issues = r.issues.map((x) => {
+      const row = rows.find((y) => y.d === x.d);
+      if (x.note || !row || !row.in || !row.out) return x;
+      return { ...x, in: row.in, out: row.out, note: `เข้า ${row.in} น. · ออก ${row.out} น.` };
+    });
+    return { ...r, fix, issues };
+  });
+}
+
 function editTime(id: string, fn: (r: TimeRec) => TimeRec) {
   store.update((s) => {
     const cur = s.time[id] ?? { late: [], leave: [], ot: [], issues: [] };
@@ -396,10 +517,17 @@ export function setOtHours(id: string, day: string, hours: number) {
  * ระบุด้วยวันที่ ไม่ใช่ลำดับในอาเรย์ เพราะรายการที่แสดงถูกกรองตามรอบมาแล้ว
  * ลำดับที่เห็นบนจอกับลำดับจริงในข้อมูลจึงไม่ตรงกัน
  */
-export function noteIssue(id: string, day: string, note: string) {
+/**
+ * เคลียร์วันที่ผิดปกติ — ฝ่ายบุคคลแก้ได้แค่เวลาเข้า-ออกงาน กรณีพนักงานลืมกด (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * note เก็บข้อความสรุป "เข้า 08:30 น. · ออก 17:30 น. · หมายเหตุ" — มีค่าแปลว่าเคลียร์แล้ว
+ */
+export function noteIssue(id: string, day: string, note: string, time: { in?: string; out?: string } = {}) {
+  const text = [time.in && `เข้า ${time.in} น.`, time.out && `ออก ${time.out} น.`, note]
+    .filter(Boolean)
+    .join(" · ");
   editTime(id, (r) => ({
     ...r,
-    issues: r.issues.map((x) => (x.d === day ? { ...x, note } : x)),
+    issues: r.issues.map((x) => (x.d === day ? { ...x, ...time, note: text } : x)),
   }));
 }
 
@@ -512,7 +640,7 @@ export function voidPayApproval(month: string, group: PayGroup, why: string) {
   });
 }
 
-// ─── ปิดรอบและเปิดรอบใหม่ ─────────────────────────────────────────
+// ─── ปิดรอบ ─────────────────────────────────────────
 
 const BLANK_PERIOD: Omit<Period, "month"> = {
   closed: false,
@@ -550,47 +678,9 @@ function closeIn(
   );
 }
 
-function reopenIn(
-  list: Period[],
-  month: string,
-  today: string,
-  by: string,
-  why: string,
-  group: PayGroup,
-) {
-  return editPeriod(list, month, (p) =>
-    group === "day"
-      ? {
-          ...p,
-          dayClosed: false,
-          dayClosedAt: "",
-          dayClosedBy: "",
-          dayReopened: [...p.dayReopened, { at: today, by, why }],
-        }
-      : {
-          ...p,
-          closed: false,
-          closedAt: "",
-          closedBy: "",
-          reopened: [...p.reopened, { at: today, by, why }],
-        },
-  );
-}
-
 /** ปิดรอบเวลาทำงานของกลุ่มหนึ่ง — หน้าจอกันไว้แล้วว่าต้องไม่มีรายการค้างตรวจ */
 export function closePeriod(month: string, today: string, group: PayGroup, by = HR_ME) {
   store.update((s) => ({ ...s, periods: closeIn(s.periods, month, today, by, group, null) }));
-}
-
-/** เปิดรอบเวลาทำงานใหม่ — ต้องมีเหตุผลเสมอ ระบบเก็บเป็นประวัติ */
-export function reopenPeriod(
-  month: string,
-  today: string,
-  why: string,
-  group: PayGroup,
-  by = HR_ME,
-) {
-  store.update((s) => ({ ...s, periods: reopenIn(s.periods, month, today, by, why, group) }));
 }
 
 /**
@@ -617,79 +707,62 @@ export function closePayrun(
   });
 }
 
-export function reopenPayrun(
-  month: string,
-  today: string,
-  why: string,
-  group: PayGroup,
-  by = HR_ME,
-) {
-  store.update((s) => ({ ...s, payruns: reopenIn(s.payruns, month, today, by, why, group) }));
+// ─── รอบจ่ายรายวันของพนักงานทดลองงาน (ผู้ใช้สั่ง 6 ต.ค. 2569) ─────────
+
+function editRound(id: string, fn: (r: DailyRound) => DailyRound) {
+  store.update((s) => ({ ...s, dailyRounds: s.dailyRounds.map((r) => (r.id === id ? fn(r) : r)) }));
 }
 
 /**
- * เปิดรอบเงินเดือนกลับ (ผู้ใช้กำหนด 23 ก.ย. 2569)
- *
- * รอบที่ปิดและ CEO อนุมัติแล้วแก้เงียบ ๆ ไม่ได้ (HR-BR-03) ถ้าจำเป็นต้องแก้จริง
- * ต้องเป็นการเปิดรอบกลับที่ทำสามอย่างพร้อมกันในครั้งเดียว ไม่ใช่ทยอยทำทีละอย่าง
- *   1. เปิดรอบกลับพร้อมเหตุผล ใคร และเมื่อไร (เก็บใน reopened ของรอบ)
- *   2. ยกเลิกการอนุมัติของ CEO — ยอดต้องถูกส่งให้อนุมัติใหม่
- *   3. เพิกถอนสลิปที่เผยแพร่ไปแล้ว และล้างวันที่สร้าง เพื่อบังคับให้สร้างใหม่จากตัวเลขชุดใหม่
- * ทำในการอัปเดตเดียว ไม่งั้นจะมีจังหวะที่รอบเปิดแล้วแต่สลิปเก่ายังเผยแพร่อยู่
- *
- * ยอดที่ปิดไว้ (sum) ไม่ลบทิ้ง — ประวัติรอบต้องยังอ่านได้ว่าตอนปิดครั้งก่อนปิดไปเท่าไร
+ * ปิดรอบเวลาทำงานของช่วงวันหนึ่ง — รอบรายวันเกิดขึ้นตรงนี้
+ * กันที่สโตร์อีกชั้น: ช่วงเดียวกันปิดซ้ำไม่ได้ และช่วงที่ทับรอบเดิมไม่ได้ (วันเดียวกันจ่ายสองครั้ง)
  */
-export function reopenPayrunWithReason(
-  month: string,
-  today: string,
-  why: string,
-  group: PayGroup,
-  by = HR_ME,
-) {
-  const reason = why.trim();
-  if (!reason) return false;
-  const day = group === "day";
+export function closeDailyTime(c: Cycle, today: string, by = HR_ME) {
   store.update((s) => {
-    const run = s.payruns.find((p) => p.month === month);
-    if (!run || !(day ? run.dayClosed : run.closed)) return s;
-    const key = payApproveKey(month, group);
-    const ap = s.payApprove[key];
-    return {
-      ...s,
-      payruns: reopenIn(s.payruns, month, today, by, reason, group),
-      /* กลับไปเป็นร่าง ไม่ใช่ "ตีกลับ" เพราะ CEO ไม่ได้เป็นคนสั่ง — เก็บเหตุผลไว้ให้เห็นบนป้ายสถานะ */
-      payApprove: ap
-        ? { ...s.payApprove, [key]: { status: "draft" as const, reason: `เปิดรอบกลับ · ${reason}` } }
-        : s.payApprove,
-      slips: s.slips.map((sp) =>
-        sp.month !== month
-          ? sp
-          : day
-            ? {
-                ...sp,
-                dayMadeAt: "",
-                dayPublished: false,
-                dayPublishedAt: "",
-                dayBy: "",
-                dayUnpublished: sp.dayPublished
-                  ? [...sp.dayUnpublished, { at: today, by, why: `เปิดรอบกลับ · ${reason}` }]
-                  : sp.dayUnpublished,
-              }
-            : {
-                ...sp,
-                madeAt: "",
-                published: false,
-                publishedAt: "",
-                by: "",
-                unpublished: sp.published
-                  ? [...sp.unpublished, { at: today, by, why: `เปิดรอบกลับ · ${reason}` }]
-                  : sp.unpublished,
-              },
-      ),
-    };
+    if (s.dailyRounds.some((r) => r.id === dailyRoundId(c)) || overlapRound(s.dailyRounds, c)) return s;
+    const dailyRounds = [...s.dailyRounds, newDailyRound(c, today, by)].sort((a, b) => a.from.localeCompare(b.from));
+    return { ...s, dailyRounds };
   });
-  return true;
 }
+
+/** ปิดรอบเงินเดือนของรอบรายวัน พร้อมยอดที่บันทึกไว้ — ต้องปิดรอบเวลาแล้ว (มีรอบอยู่) */
+export function closeDailyPay(id: string, today: string, sum: CycleSum, by = HR_ME) {
+  editRound(id, (r) => (r.closedAt && !r.payClosedAt ? { ...r, payClosedAt: today, payClosedBy: by, sum } : r));
+}
+
+export function makeDailySlips(id: string, today: string) {
+  editRound(id, (r) => (r.payClosedAt && !r.slipsMadeAt ? { ...r, slipsMadeAt: today } : r));
+}
+
+export function publishDailySlips(id: string, today: string, by = HR_ME) {
+  editRound(id, (r) => (r.payClosedAt ? { ...r, published: true, publishedAt: today, publishedBy: by } : r));
+}
+
+export function unpublishDailySlips(id: string, today: string, why: string, by = HR_ME) {
+  editRound(id, (r) => ({
+    ...r,
+    published: false,
+    publishedAt: "",
+    publishedBy: "",
+    unpublished: [...r.unpublished, { at: today, by, why }],
+  }));
+}
+
+/** นับครั้งเปิดดู/ดาวน์โหลดสลิปของรอบรายวัน — นับเฉพาะรอบที่ส่งแล้ว เหตุผลเดียวกับ countView */
+export function countDailyView(id: string, emp: string) {
+  editRound(id, (r) => (r.published ? { ...r, views: { ...r.views, [emp]: (r.views[emp] ?? 0) + 1 } } : r));
+}
+
+export function countDailyDownload(id: string, emp: string) {
+  editRound(id, (r) =>
+    r.published ? { ...r, downloads: { ...r.downloads, [emp]: (r.downloads[emp] ?? 0) + 1 } } : r,
+  );
+}
+
+/*
+ * ปิดแล้วปิดเลย — ไม่มีฟังก์ชันย้อนสถานะรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * ช่อง reopened / dayReopened ของรอบยังเก็บไว้เพื่อให้ข้อมูลเก่าอ่านได้ หน้าจอไม่อ่านแล้ว
+ */
 
 // ─── ค่าที่ไม่มีสูตร ──────────────────────────────────────────────
 

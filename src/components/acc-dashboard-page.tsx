@@ -125,14 +125,14 @@ export function AccDashboardPage() {
           skin="info"
           title="วางบิลในช่วงนี้"
           value={`${baht(billed)} บาท`}
-          meta="ยอดตามใบแจ้งหนี้ที่ออกในช่วงที่เลือก ไม่นับใบที่ยกเลิก"
+          meta=""
         />
         <Kpi
           icon={<CheckCircleIcon className="size-[17px]" />}
           skin="won"
           title="รับชำระในช่วงนี้"
           value={`${baht(got)} บาท`}
-          meta="เงินโอนบวกภาษีที่ลูกค้าหักไว้"
+          meta=""
         />
         <Kpi
           icon={<ClockIcon className="size-[17px]" />}
@@ -154,9 +154,6 @@ export function AccDashboardPage() {
       <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1.34fr)_minmax(0,0.66fr)]">
         <section className="glass rounded-[15px] px-5 py-[18px]">
           <h2 className="text-[15px] font-bold">วางบิล เทียบ รับชำระ</h2>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            ยอดตามใบแจ้งหนี้ที่ออก เทียบกับเงินที่รับเข้าจริงในเดือนเดียวกัน
-          </p>
           <p className="mt-2.5 flex gap-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <i
@@ -297,7 +294,7 @@ function RecentReceipts({ acc }: { acc: ReturnType<typeof useAcc> }) {
     <section className="glass flex flex-1 flex-col rounded-[14px] px-5 py-[18px]">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-[15px] font-bold">รับชำระล่าสุด</h2>
-        <Link href="/acc/receipts" className="text-[12.5px] font-semibold text-primary">
+        <Link href="/acc/billing?tab=rc" className="text-[12.5px] font-semibold text-primary">
           ใบเสร็จ
         </Link>
       </div>

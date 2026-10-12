@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
-  CHANGE_KIND,
   STALE_DAYS,
-  type ChangeLog,
   type Customer,
   type CustomerStatus,
   CUSTOMER_STATUS,
@@ -15,18 +13,18 @@ import { useCrm } from "@/lib/crm-store";
 import { daysBetween, thaiDate, todayIso } from "@/lib/format";
 import { ClockIcon, PhoneIcon, PlusIcon } from "./icons";
 import { LeadNewDialog } from "./lead-form";
-import { ChangeFromTo, Pager, SearchBox, TabStrip, Who, usePaged } from "./sales-ui";
+import { Pager, SearchBox, TabStrip, Who, usePaged } from "./sales-ui";
 
 const PER_PAGE = 7;
 
-type TabKey = "all" | CustomerStatus | "log";
+/* ปิดงานแล้ว = เป็นลูกค้า/ดีลไปแล้ว ไม่ขึ้นในหน้าผู้สนใจ ไม่มีแท็บปิดงาน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+/* เอาแท็บประวัติการเปลี่ยนแปลงออก ข้อมูลยังเก็บอยู่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+type TabKey = "all" | Exclude<CustomerStatus, "ปิดงาน">;
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "ทั้งหมด" },
   { key: "รอนัดหมาย", label: "รอนัดหมาย" },
   { key: "ปฏิเสธ", label: "ปฏิเสธ" },
-  { key: "ปิดงาน", label: "ปิดงาน" },
-  { key: "log", label: "ประวัติการเปลี่ยนแปลง" },
 ];
 
 export function LeadsPage() {
@@ -56,6 +54,8 @@ export function LeadsPage() {
   const scoped = useMemo(() => {
     const q = query.trim().toLowerCase();
     return crm.customers.filter((c) => {
+      /* ลูกค้าที่ปิดการขายแล้ว (ปิดงาน) ไปอยู่ที่หน้าดีล — ข้อมูลยังอยู่ แค่ไม่แสดงที่นี่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+      if (c.status === "ปิดงาน") return false;
       if (staleOnly && !isStale(c)) return false;
       if (!q) return true;
       return `${c.name} ${c.contact} ${c.phone} ${c.code}`.toLowerCase().includes(q);
@@ -63,29 +63,13 @@ export function LeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crm.customers, query, staleOnly, lastContact, today]);
 
-  const logs = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const byCode = new Map(crm.customers.map((c) => [c.code, c.name]));
-    return crm.changeLogs
-      .filter((l) =>
-        !q ||
-        `${byCode.get(l.customerCode) ?? ""} ${l.customerCode} ${l.reason}`
-          .toLowerCase()
-          .includes(q),
-      )
-      .sort((a, b) => b.at.localeCompare(a.at))
-      .map((l) => ({ ...l, name: byCode.get(l.customerCode) ?? l.customerCode }));
-  }, [crm.changeLogs, crm.customers, query]);
-
-  const rows = tab === "all" || tab === "log" ? scoped : scoped.filter((c) => c.status === tab);
-  const paged = usePaged<Customer | LogRow>(tab === "log" ? logs : rows, PER_PAGE);
+  const rows = tab === "all" ? scoped : scoped.filter((c) => c.status === tab);
+  const paged = usePaged(rows, PER_PAGE);
 
   const counts: Record<string, number> = {
     all: scoped.length,
     รอนัดหมาย: scoped.filter((c) => c.status === "รอนัดหมาย").length,
-    ปิดงาน: scoped.filter((c) => c.status === "ปิดงาน").length,
     ปฏิเสธ: scoped.filter((c) => c.status === "ปฏิเสธ").length,
-    log: logs.length,
   };
 
   return (
@@ -103,7 +87,7 @@ export function LeadsPage() {
       <div className="bar">
         <div>
           <h1>ผู้สนใจ</h1>
-          <p>พบ {tab === "log" ? logs.length : rows.length} รายการ</p>
+          <p>พบ {rows.length} รายการ</p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <SearchBox
@@ -136,8 +120,7 @@ export function LeadsPage() {
               paged.setPage(1);
             }}
           />
-          {tab !== "log" && (
-            <button
+          <button
               type="button"
               onClick={() => {
                 setStaleOnly((v) => !v);
@@ -150,19 +133,9 @@ export function LeadsPage() {
               <ClockIcon className="size-[13px]" strokeWidth={2} />
               ค้างติดตาม
             </button>
-          )}
         </div>
 
-        {tab === "log" ? (
-          <LogTable rows={paged.list as LogRow[]} />
-        ) : (
-          <CustomerTable
-            rows={paged.list as Customer[]}
-            lastContact={lastContact}
-            today={today}
-            isStale={isStale}
-          />
-        )}
+        <CustomerTable rows={paged.list} lastContact={lastContact} today={today} isStale={isStale} />
 
         <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
           <span>{paged.range("รายการ")}</span>
@@ -288,65 +261,6 @@ function CustomerTable({
                 <PhoneIcon className="size-[17px]" strokeWidth={2} />
               </a>
             )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-/** แถวประวัติ = ChangeLog บวกชื่อลูกค้าที่หาไว้ล่วงหน้าแล้ว */
-type LogRow = ChangeLog & { name: string };
-
-function LogTable({ rows }: { rows: LogRow[] }) {
-  if (!rows.length) {
-    return <p className="px-5 py-14 text-center text-muted-foreground">ยังไม่มีประวัติการเปลี่ยนแปลง</p>;
-  }
-  return (
-    <>
-      <div className="scroll-stable hidden min-h-0 flex-1 overflow-auto md:block">
-        <table className="data-table min-w-[880px]">
-          <thead>
-            <tr>
-              <th style={{ width: 120 }}>วันที่</th>
-              <th style={{ width: "24%" }}>ลูกค้า</th>
-              <th style={{ width: 130 }}>ประเภท</th>
-              <th style={{ width: "26%" }}>การเปลี่ยนแปลง</th>
-              <th>เหตุผล</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((l) => (
-              <tr key={l.id}>
-                <td className="num muted">{thaiDate(l.at)}</td>
-                <td>
-                  <Link href={`/leads/${l.customerCode}`}>
-                    <Who name={l.name} />
-                  </Link>
-                </td>
-                <td className="muted">{CHANGE_KIND[l.kind]}</td>
-                <td>
-                  <ChangeFromTo log={l} />
-                </td>
-                <td className="muted">{l.reason || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <ul className="divide-y divide-border md:hidden">
-        {rows.map((l) => (
-          <li key={l.id} className="px-5 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <Who name={l.name} />
-              <span className="num shrink-0 text-xs text-muted-foreground">{thaiDate(l.at)}</span>
-            </div>
-            <p className="mt-1 text-[11.5px] text-muted-foreground">{CHANGE_KIND[l.kind]}</p>
-            <p className="mt-2 flex flex-wrap items-center gap-1.5">
-              <ChangeFromTo log={l} />
-            </p>
-            {l.reason && <p className="mt-1.5 text-sm break-words">{l.reason}</p>}
           </li>
         ))}
       </ul>

@@ -240,11 +240,7 @@ export function EmployeeDetail({
 
                 {onProbation && (
                   <div className="mt-3 rounded-[12px] border border-border bg-muted/50 px-3.5 py-3">
-                    <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-                      ตอนนี้จ่ายค่าจ้างรายวัน ผ่านทดลองงานแล้วจะเปลี่ยนเป็นพนักงานประจำจ่ายรายเดือน
-                      ฝ่ายบุคคลต้องระบุเงินเดือนที่จะใช้ตั้งแต่วันที่มีผล
-                    </p>
-                    <button type="button" className="btn solid btn-solid mt-2.5" onClick={onPass}>
+                    <button type="button" className="btn solid btn-solid" onClick={onPass}>
                       บันทึกผ่านทดลองงาน
                     </button>
                   </div>
@@ -345,8 +341,7 @@ export function EmployeeDetail({
             {tab === "pay" && seePay && (
               <Sect title="ประวัติตำแหน่งและเงินเดือน">
                 <p className="mb-2.5 text-[12.5px] text-muted-foreground">
-                  เงินเดือนปัจจุบัน <b className="num text-foreground">{baht(cur.salary)}</b> บาท ·
-                  เพิ่มเป็นแถวใหม่ทุกครั้งที่ปรับ ไม่ทับของเดิม
+                  เงินเดือนปัจจุบัน <b className="num text-foreground">{baht(cur.salary)}</b> บาท
                 </p>
                 <History emp={emp} />
               </Sect>

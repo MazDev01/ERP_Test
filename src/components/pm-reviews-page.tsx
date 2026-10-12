@@ -70,12 +70,8 @@ export function PmReviewsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="bar max-md:hidden">
-        <div>
-          <h1>งานรอตรวจ</h1>
-          <p>งานที่ทีมส่งมาให้ตรวจก่อนปิดงาน</p>
-        </div>
-      </div>
+      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <h1 className="sr-only">งานรอตรวจ</h1>
       <ReadOnlyNote />
 
       {/* แท็บ: งานที่ทีมส่งมาให้ PM ตรวจ · รอบที่ลูกค้าตอบกลับผ่านลิงก์ตรวจงาน */}
@@ -279,7 +275,7 @@ export function PmReviewsPage() {
 
 // ─── กล่องตรวจงาน ─────────────────────────────────────────────────
 
-function ReviewDialog({
+export function ReviewDialog({
   row,
   onClose,
   onDone,
@@ -384,7 +380,6 @@ function ReviewDialog({
               ? "ส่งกลับให้แก้ต้องบอกว่าต้องแก้อะไร ผู้ทำงานจะได้รู้ว่าต้องทำอะไรต่อ"
               : undefined
           }
-          hint="กรอกเฉพาะตอนส่งกลับแก้ · กดผ่านไม่ต้องกรอก"
         >
           <textarea
             value={why}

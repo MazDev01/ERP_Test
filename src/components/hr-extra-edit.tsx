@@ -11,7 +11,18 @@
 
 import { useState } from "react";
 import { baht, commaInput, commaInputSigned, thaiMonth, todayIso } from "@/lib/format";
-import { extraOf, hrCycle, hrPos, payIn, type Adjust, type Employee, type Extra } from "@/lib/hr-data";
+import {
+  dailyRoundRange,
+  extraOf,
+  hrCycle,
+  hrPos,
+  isDailyRoundKey,
+  payIn,
+  payKeyLabel,
+  type Adjust,
+  type Employee,
+  type Extra,
+} from "@/lib/hr-data";
 import { saveExtra, useHr } from "@/lib/hr-store";
 import { useComSource, useHrTime } from "@/lib/hr-link";
 import { Sheet } from "./lead-dialogs";
@@ -19,19 +30,20 @@ import { Field, Input } from "./ui";
 
 export function EditExtra({
   emp,
-  month,
+  runKey,
   hr,
   time,
   onClose,
 }: {
   emp: Employee;
-  month: string;
+  /** รอบเดือน "yyyy-mm" หรือรอบรายช่วงของทดลองงาน "จาก~ถึง" */
+  runKey: string;
   hr: ReturnType<typeof useHr>;
   time: ReturnType<typeof useHrTime>;
   onClose: () => void;
 }) {
   const src = useComSource();
-  const saved = extraOf(hr.extras, emp.id, month);
+  const saved = extraOf(hr.extras, emp.id, runKey);
   const [inc, setInc] = useState(commaInput(String(saved.incentive)));
   const [allow, setAllow] = useState(commaInput(String(saved.allowance)));
   const [adjust, setAdjust] = useState<Adjust[]>(saved.adjust);
@@ -49,7 +61,7 @@ export function EditExtra({
   /* ศูนย์ไม่ใช่การปรับปรุง และการปรับปรุงที่ไม่มีเหตุผลตรวจย้อนไม่ได้ */
   const canAdd = amtNum !== null && amtNum !== 0 && why.trim() !== "";
 
-  const now = payIn(emp, hrCycle(month), time, hr.extras, todayIso(), src);
+  const now = payIn(emp, isDailyRoundKey(runKey) ? dailyRoundRange(runKey) : hrCycle(runKey), time, hr.extras, todayIso(), src);
   const adjSum = adjust.reduce((a, x) => a + x.amt, 0);
   const savedSum = saved.adjust.reduce((a, x) => a + x.amt, 0);
   const preview =
@@ -80,7 +92,7 @@ export function EditExtra({
                 allowance: allowNum ?? 0,
                 adjust,
               };
-              saveExtra(month, emp.id, next);
+              saveExtra(runKey, emp.id, next);
               onClose();
             }}
           >
@@ -90,7 +102,7 @@ export function EditExtra({
       }
     >
       <p className="text-[12.5px] text-muted-foreground">
-        {hrPos(emp.pos).label} · รอบ {thaiMonth(month)}
+        {hrPos(emp.pos).label} · รอบ {payKeyLabel(runKey, thaiMonth)}
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -109,9 +121,6 @@ export function EditExtra({
           />
         </Field>
       </div>
-      <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-        สองรายการนี้ไม่มีสูตร ขึ้นกับการพิจารณาของ CEO ฝ่ายบุคคลเป็นผู้บันทึก
-      </p>
 
       <hr className="my-4 border-border" />
 

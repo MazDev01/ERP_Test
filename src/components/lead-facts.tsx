@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { branchLabel, HEAD_OFFICE, type Customer } from "@/lib/crm-data";
 import { PencilIcon } from "./icons";
 import { useAddOption } from "./add-option";
@@ -80,13 +80,49 @@ export function ProfileFacts({
   customer,
   sources,
   onSave,
+  editing: editingProp,
+  onEditingChange,
+  facts = [],
+  editExtra,
+  desktopKeys,
 }: {
   customer: Customer;
   sources: string[];
   onSave: (patch: Partial<Editable>) => void;
+  /* หน้าแม่คุมโหมดแก้ไขเอง — ปุ่ม "แก้ไขข้อมูล" อยู่แถบหัวเรื่อง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  editing?: boolean;
+  onEditingChange?: (v: boolean) => void;
+  /* ช่องอ่านอย่างเดียว เช่น ผู้ดูแล — วางก่อนช่องที่อยู่ */
+  facts?: { label: string; value: string }[];
+  /* ปุ่มเสริมท้ายโหมดแก้ไข เช่น ลบผู้สนใจ */
+  editExtra?: ReactNode;
+  /* จอคอมตอนอ่านอย่างเดียว โชว์เฉพาะช่องเหล่านี้ ตัวใหญ่ ห่างขึ้น — มือถือเหมือนเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  desktopKeys?: (keyof Editable)[];
 }) {
-  const [editing, setEditing] = useState(false);
+  const controlled = editingProp !== undefined;
+  const [ownEditing, setOwnEditing] = useState(false);
+  const editing = controlled ? editingProp : ownEditing;
+  const setEditing = (v: boolean) => (onEditingChange ?? setOwnEditing)(v);
   const [draft, setDraft] = useState<Editable>(() => pick(customer));
+  /* เข้าโหมดแก้ไขจากหน้าแม่ — ตั้งค่าร่างจากข้อมูลล่าสุดทุกครั้ง */
+  const [wasEditing, setWasEditing] = useState(editing);
+  if (wasEditing !== editing) {
+    setWasEditing(editing);
+    if (editing) setDraft(pick(customer));
+  }
+  const firstWide = FIELDS.findIndex((f) => f.wide);
+  /* จอคอมอ่านอย่างเดียว: ช่องนอกรายการซ่อน · เลขภาษีกับที่อยู่ชิดคอลัมน์ซ้าย (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const deskRead = Boolean(desktopKeys) && !editing;
+  const deskCls = (key: keyof Editable) =>
+    !deskRead
+      ? ""
+      : !desktopKeys!.includes(key)
+        ? "md:hidden"
+        : key === "taxId" || key === "address"
+          ? "md:col-span-1 md:col-start-1"
+          : "";
+  const dtCls = desktopKeys ? "md:text-[14px]" : "";
+  const ddCls = deskRead ? "md:mt-1.5 md:text-[18px]" : "";
   const fields = FIELDS.filter((f) => !f.juristic || customer.type === "juristic");
   const addSource = useAddOption({ list: "leadSource" }, (v) => setDraft((d) => ({ ...d, source: v })));
   /* รายการที่เพิ่งเพิ่มจากตรงนี้ ยังไม่อยู่ใน props ที่หน้าแม่ส่งมา — ต่อท้ายให้เห็นทันที */
@@ -104,7 +140,7 @@ export function ProfileFacts({
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2 lg:hidden">
+      <div className={`mb-3 flex items-center gap-2 ${controlled ? "md:hidden" : "lg:hidden"}`}>
         <h3 className="text-[15px] font-semibold">ข้อมูลติดต่อ</h3>
         {!editing && (
           <button
@@ -119,10 +155,16 @@ export function ProfileFacts({
       </div>
 
       {addSource.dialog}
-      <dl className="grid gap-4 sm:grid-cols-2 sm:gap-x-[22px]">
+      <dl className={`grid gap-4 sm:grid-cols-2 sm:gap-x-[22px] ${deskRead ? "md:gap-x-7 md:gap-y-[26px]" : ""}`}>
         {fields.map((f) => (
-          <div key={f.key} className={f.wide ? "sm:col-span-2" : undefined}>
-            <dt className="text-[11.5px] text-muted-foreground">{f.label}</dt>
+          <FactSlot
+            key={f.key}
+            before={FIELDS.indexOf(f) === firstWide ? facts : []}
+            hideDesk={deskRead}
+            dtCls={dtCls}
+          >
+          <div className={`${f.wide ? "sm:col-span-2" : ""} ${deskCls(f.key)}`}>
+            <dt className={`text-[11.5px] text-muted-foreground ${dtCls}`}>{f.label}</dt>
             <dd className="mt-[3px]">
               {editing ? (
                 f.kind === "branch" ? (
@@ -163,7 +205,7 @@ export function ProfileFacts({
                 )
               ) : (
                 <span
-                  className={`block text-sm break-words ${f.num ? "num" : ""} ${
+                  className={`block text-sm break-words ${ddCls} ${f.num ? "num" : ""} ${
                     shown(customer, f.key) ? "font-medium" : "text-muted-foreground"
                   }`}
                 >
@@ -172,12 +214,15 @@ export function ProfileFacts({
               )}
             </dd>
           </div>
+          </FactSlot>
         ))}
       </dl>
 
+      {(editing || !controlled) && (
       <div className="mt-4 flex justify-end gap-2">
         {editing ? (
           <>
+            {editExtra && <div className="mr-auto flex flex-wrap gap-2">{editExtra}</div>}
             <button
               type="button"
               onClick={() => setEditing(false)}
@@ -193,7 +238,7 @@ export function ProfileFacts({
               บันทึก
             </button>
           </>
-        ) : (
+        ) : controlled ? null : (
           /* .btn ประกาศ display เอง คลาส hidden จึงชนะ lg:inline-flex แล้วปุ่มหายไปทั้งบนจอคอม
              (เจ้าของทัก 28 ก.ย. 2569 ว่าแก้ข้อมูลไม่ได้) ต้องซ่อนที่กล่องนอกแทน */
           <div className="hidden lg:block">
@@ -209,7 +254,37 @@ export function ProfileFacts({
           </div>
         )}
       </div>
+      )}
     </div>
+  );
+}
+
+/** ช่องอ่านอย่างเดียววางก่อนช่องที่กำหนด */
+function FactSlot({
+  before,
+  hideDesk,
+  dtCls,
+  children,
+}: {
+  before: { label: string; value: string }[];
+  hideDesk?: boolean;
+  dtCls?: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {before.map((x) => (
+        <div key={x.label} className={hideDesk ? "md:hidden" : undefined}>
+          <dt className={`text-[11.5px] text-muted-foreground ${dtCls ?? ""}`}>{x.label}</dt>
+          <dd className="mt-[3px]">
+            <span className={`block text-sm break-words ${x.value ? "font-medium" : "text-muted-foreground"}`}>
+              {x.value || "ยังไม่ได้กรอก"}
+            </span>
+          </dd>
+        </div>
+      ))}
+      {children}
+    </>
   );
 }
 

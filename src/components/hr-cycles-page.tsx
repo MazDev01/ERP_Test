@@ -16,20 +16,25 @@ import {
   cutOf,
   hrCycle,
   hrPos,
+  rangeLabel,
+  type Cycle,
   type CycleSum,
   type PayGroup,
-  type Period,
 } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
-import { HrSteps, PayCard, PayHead, PayList, PayTiles, payHref, usePayGroup } from "./hr-steps";
+import { HrStepTabs, HrSteps, PayCard, PayHead, PayList, PayTiles, YearStepper, payHref, usePayGroup } from "./hr-steps";
 import { Sheet } from "./lead-dialogs";
-import { CheckCircleIcon } from "./icons";
+import { CheckCircleIcon, EyeIcon } from "./icons";
 
-type Row = { period: Period; sum: CycleSum | null; at: string; by: string };
+/*
+ * หนึ่งแถวของประวัติ — รอบเดือน (key = "yyyy-mm") หรือรอบจ่ายรายวันของทดลองงาน (key = "จาก~ถึง") (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * label = ชื่อรอบที่แสดง · range = ช่วงวันจริงของรอบ · year = ปีที่ใช้กรอง
+ */
+type Row = { key: string; label: string; range: Cycle; year: number; sum: CycleSum | null; at: string };
 
 export function HrCyclesPage() {
   const hr = useHr();
-  const [open, setOpen] = useState<{ month: string; group: PayGroup } | null>(null);
+  const [open, setOpen] = useState<{ key: string; group: PayGroup } | null>(null);
   /* มือถือ: เลือกกลุ่มจากสี่เหลี่ยมก่อน (ต้นแบบ m-pay-tiles) — หน้านี้ไม่มีปฏิทิน */
   const g = usePayGroup();
   /* กลุ่มมาจากเมนูย่อย (?g=) ไม่มีแท็บในหน้าแล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569)
@@ -42,40 +47,99 @@ export function HrCyclesPage() {
   }
 
   const day = tab === "day";
-  /* รอบล่าสุดขึ้นก่อน คนมักย้อนดูรอบที่เพิ่งผ่านมา */
-  const rows: Row[] = [...hr.payruns]
-    .sort((a, b) => b.month.localeCompare(a.month))
-    .filter((p) => (day ? p.dayClosed : p.closed))
-    .map((p) => ({
-      period: p,
-      sum: day ? p.daySum : p.sum,
-      at: day ? p.dayClosedAt : p.closedAt,
-      by: day ? p.dayClosedBy : p.closedBy,
-    }));
+  /* รอบล่าสุดขึ้นก่อน คนมักย้อนดูรอบที่เพิ่งผ่านมา
+     ทดลองงานแสดงรอบจ่ายรายวันที่ปิดเงินเดือนแล้ว พร้อมวันที่จริงของแต่ละรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  const allRows: Row[] = day
+    ? [...hr.dailyRounds]
+        .filter((r) => r.payClosedAt)
+        .sort((a, b) => b.to.localeCompare(a.to))
+        .map((r) => ({
+          key: r.id,
+          label: rangeLabel(r),
+          range: { from: r.from, to: r.to },
+          year: Number(r.to.slice(0, 4)),
+          sum: r.sum,
+          at: r.payClosedAt,
+        }))
+    : [...hr.payruns]
+        .sort((a, b) => b.month.localeCompare(a.month))
+        .filter((p) => p.closed)
+        .map((p) => ({
+          key: p.month,
+          label: thaiMonth(p.month),
+          range: hrCycle(p.month),
+          year: Number(p.month.slice(0, 4)),
+          sum: p.sum,
+          at: p.closedAt,
+        }));
 
-  const picked = open
-    ? hr.payruns.find((p) => p.month === open.month)
-    : undefined;
+  /*
+   * กรองเป็นรายปีแทนรายเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569) — ปีที่เลือกได้คือปีที่มีรอบในระบบ
+   * ค่าตั้งต้นคือปีของรอบล่าสุดที่ปิดแล้ว ขึ้นปีใหม่ที่ยังไม่มีรอบปิดจะได้ไม่เปิดมาเจอหน้าว่าง
+   */
+  const years = [
+    ...new Set([
+      ...[...hr.periods, ...hr.payruns].map((p) => Number(p.month.slice(0, 4))),
+      ...allRows.map((r) => r.year),
+    ]),
+  ].sort((a, b) => a - b);
+  const [pickedYear, setYear] = useState<number | null>(null);
+  const year = pickedYear ?? (allRows[0] ? allRows[0].year : years[years.length - 1]);
+  const rows = allRows.filter((r) => r.year === year);
+  const emptyText = `ยังไม่มีรอบที่ปิดแล้วในปี ${year + 543}`;
+  const yearPick = (
+    <YearStepper
+      years={years}
+      value={year}
+      onChange={(y) => {
+        setYear(y);
+        setOpen(null);
+      }}
+    />
+  );
 
-  /* แถบขั้นตอนพาเดือนไปด้วย — ย้อนจากประวัติกลับไปขั้นก่อนหน้าแล้วได้รอบล่าสุดที่ปิดของกลุ่มนี้เลย */
-  const stepMonth = rows[0]?.period.month;
+  const picked = open ? allRows.find((r) => r.key === open.key) : undefined;
+
+  /* แถบขั้นตอนพารอบไปด้วย — ย้อนจากประวัติกลับไปขั้นก่อนหน้าแล้วได้รอบล่าสุดที่ปิดของกลุ่มนี้เลย */
+  const stepRow = rows[0] ?? allRows[0];
+  const stepMonth = day ? undefined : stepRow?.key;
+  const stepRange = day && stepRow ? stepRow.range : null;
+  /* ลิงก์ "ดูรอบนี้" — รอบรายวันส่งช่วงวัน รอบเดือนส่งเดือน */
+  const viewHref = (r: Row) => payHref("/hr/payroll", g.group, day ? undefined : r.key, day ? r.range : null);
 
   return (
     <div className={`hp-page space-y-4 ${g.picked ? "" : "hp-pick"}`}>
-      <PayHead title="ประวัติรอบ" onBack={g.picked ? g.home : undefined} />
+      <PayHead title="ประวัติรอบจ่าย" onBack={g.picked ? g.home : undefined} />
       <PayTiles onOpen={g.open} />
 
-      <HrSteps month={stepMonth} group={g.group} />
+      {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองปีอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569)
+          มือถือซ่อน .bar ทั้งแถบ จึงมีแถบขั้นตอนอีกชุดด้านล่าง และตัวกรองปีอยู่หัวรายการ */}
+      <div className="bar">
+        <h1 className="sr-only">ประวัติรอบจ่าย</h1>
+        <div className="tools ml-auto">{yearPick}</div>
+      </div>
+
+      <HrSteps month={stepMonth} range={stepRange} group={g.group} className="md:hidden" />
 
       <section className="panel glass flex flex-col">
-        {/* แถบแท็บสลับกลุ่มเอาออกทั้งแถบ (หน้านี้ไม่มีปุ่มอื่นในแถบ) — เลือกกลุ่มจากเมนูย่อยแทน (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
+        <div className="strip max-md:hidden">
+          <HrStepTabs month={stepMonth} range={stepRange} group={g.group} />
+        </div>
+        {/* จอคอม: ปีในตารางเป็นข้อความกลางตาราง ไม่มีกรอบและปุ่ม ‹ › — ตัวกรองอยู่ขวาบนแล้ว (ผู้ใช้สั่ง 6 ต.ค. 2569)
+            มือถือ: แถบขวาบนถูกซ่อน ตัวกรองปีจึงยังอยู่ตรงนี้ */}
+        <p className="num py-3 text-center text-[15px] font-bold max-md:hidden">ปี {year + 543}</p>
+        <div className="p-3 md:hidden">
+          <div className="tools">{yearPick}</div>
+        </div>
 
-        <div className="scroll-stable min-h-0 flex-1 overflow-auto max-md:hidden">
+        {/* ไม่จองร่องแถบเลื่อน ตารางเต็มกล่อง ไม่มีแถบขาวด้านขวา (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+        <div className="min-h-0 flex-1 overflow-auto max-md:hidden">
           <table className="data-table cards-sm min-w-[900px]">
             <thead>
               <tr>
-                <th style={{ width: 170 }}>รอบ</th>
-                <th style={{ width: 230 }}>ช่วงวันที่</th>
+                <th style={{ width: day ? 230 : 170 }}>รอบ</th>
+                {/* รอบรายวันชื่อรอบคือช่วงวันที่อยู่แล้ว ไม่ต้องมีคอลัมน์ซ้ำ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+                {!day && <th style={{ width: 230 }}>ช่วงวันที่</th>}
                 <th style={{ width: 140 }}>ปิดรอบเมื่อ</th>
                 <th className="c" style={{ width: 100 }}>จำนวนคน</th>
                 {day && (
@@ -88,38 +152,41 @@ export function HrCyclesPage() {
                   ยอดจ่ายสุทธิ
                   <span className="mt-0.5 block text-[10.5px] font-medium text-muted-foreground">(บาท)</span>
                 </th>
-                <th className="c" style={{ width: 130 }}>จัดการ</th>
+                {/* ไม่มีหัวคอลัมน์ที่มองเห็น — มีแค่ปุ่มรูปตา (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+                <th className="c" style={{ width: 64 }} aria-label="ดูรอบ" />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={day ? 7 : 6} className="py-12 text-center text-muted-foreground">
-                    ยังไม่มีรอบที่ปิดแล้ว
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    {emptyText}
                   </td>
                 </tr>
               ) : (
-                rows.map(({ period, sum, at }) => {
-                  const c = hrCycle(period.month);
+                rows.map((row) => {
+                  const { key, label, range: c, sum, at } = row;
                   return (
                     <tr
-                      key={period.month}
+                      key={key}
                       tabIndex={0}
                       style={{ cursor: "pointer" }}
-                      onClick={() => setOpen({ month: period.month, group: tab })}
+                      onClick={() => setOpen({ key, group: tab })}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setOpen({ month: period.month, group: tab });
+                          setOpen({ key, group: tab });
                         }
                       }}
                     >
                       <td data-label="รอบ">
-                        <b className="text-[13.5px] font-bold">{thaiMonth(period.month)}</b>
+                        <b className="num text-[13.5px] font-bold">{label}</b>
                       </td>
-                      <td data-label="ช่วงวันที่" className="num">
-                        {thaiDate(c.from)} – {thaiDate(c.to)}
-                      </td>
+                      {!day && (
+                        <td data-label="ช่วงวันที่" className="num">
+                          {thaiDate(c.from)} – {thaiDate(c.to)}
+                        </td>
+                      )}
                       <td data-label="ปิดรอบเมื่อ" className="num">
                         {thaiDate(at)}
                       </td>
@@ -135,15 +202,18 @@ export function HrCyclesPage() {
                       <td data-label="ยอดจ่ายสุทธิ" className="r num font-semibold">
                         {baht(sum ? sum.net : 0)}
                       </td>
-                      <td data-label="จัดการ" className="c">
-                        {/* ปุ่มนี้ทำงานของตัวเอง ไม่ให้ไปเปิดกล่องสรุปยอด (ต้นแบบ onCycClick) */}
+                      <td data-label="ดูรอบ" className="c">
+                        {/* ปุ่มนี้ทำงานของตัวเอง ไม่ให้ไปเปิดกล่องสรุปยอด (ต้นแบบ onCycClick)
+                            ปุ่มรูปตา "ดูรอบนี้" (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
                         <Link
-                          href={payHref("/hr/payroll", g.group, period.month)}
-                          className="btn glass-thin h-8"
+                          href={viewHref(row)}
+                          className="btn glass-thin inline-grid place-items-center"
+                          style={{ width: 30, height: 30, padding: 0 }}
                           onClick={(e) => e.stopPropagation()}
-                          aria-label={`เปิดรอบ ${thaiMonth(period.month)} ที่หน้าคำนวณเงินเดือน`}
+                          title="ดูรอบนี้"
+                          aria-label={`ดูรอบนี้ · ${label}`}
                         >
-                          เปิดรอบนี้
+                          <EyeIcon className="size-4" strokeWidth={1.9} />
                         </Link>
                       </td>
                     </tr>
@@ -155,17 +225,17 @@ export function HrCyclesPage() {
         </div>
 
         {/* มือถือ: ชื่อเดือนของรอบเป็นหัวการ์ด ตัวเลขเป็นแถว แตะการ์ดเพื่อดูยอดที่ปิดรอบ (ต้นแบบ cy-mobile) */}
-        <PayList empty={rows.length === 0 ? "ยังไม่มีรอบที่ปิดแล้ว" : undefined}>
-          {rows.map(({ period, sum, at }) => {
-            const c = hrCycle(period.month);
+        <PayList empty={rows.length === 0 ? emptyText : undefined}>
+          {rows.map((row) => {
+            const { key, label, range: c, sum, at } = row;
             return (
               <PayCard
-                key={period.month}
-                title={thaiMonth(period.month)}
-                onOpen={() => setOpen({ month: period.month, group: tab })}
-                openLabel={`ดูยอดที่ปิดรอบ ${thaiMonth(period.month)}`}
+                key={key}
+                title={label}
+                onOpen={() => setOpen({ key, group: tab })}
+                openLabel={`ดูยอดที่ปิดรอบ ${label}`}
                 rows={[
-                  { label: "ช่วงวันที่", value: `${thaiDate(c.from)} – ${thaiDate(c.to)}` },
+                  ...(day ? [] : [{ label: "ช่วงวันที่", value: `${thaiDate(c.from)} – ${thaiDate(c.to)}` }]),
                   { label: "ปิดรอบเมื่อ", value: thaiDate(at) },
                   { label: "จำนวนคน", value: `${sum ? sum.n : 0} คน` },
                   ...(day ? [{ label: "วันที่มาทำงาน (วัน)", value: sum ? sum.days : 0 }] : []),
@@ -174,11 +244,11 @@ export function HrCyclesPage() {
               >
                 {/* ลิงก์นี้ทำงานของตัวเอง ไม่ให้ไปเปิดกล่องสรุปยอด (ต้นแบบ onCycClick) */}
                 <Link
-                  href={payHref("/hr/payroll", g.group, period.month)}
+                  href={viewHref(row)}
                   className="btn glass-thin hp-cardbtn"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  เปิดรอบนี้
+                  ดูรอบนี้
                 </Link>
               </PayCard>
             );
@@ -188,11 +258,12 @@ export function HrCyclesPage() {
 
       {open && picked && (
         <SumDialog
-          month={open.month}
+          label={picked.label}
+          range={picked.range}
           group={open.group}
-          sum={open.group === "day" ? picked.daySum : picked.sum}
-          closed={open.group === "day" ? picked.dayClosed : picked.closed}
-          closedAt={open.group === "day" ? picked.dayClosedAt : picked.closedAt}
+          sum={picked.sum}
+          closed
+          closedAt={picked.at}
           onClose={() => setOpen(null)}
         />
       )}
@@ -203,14 +274,17 @@ export function HrCyclesPage() {
 
 /** กล่องสรุปยอดที่ปิดรอบของกลุ่มหนึ่ง พร้อมรายคนที่บันทึกไว้ตอนนั้น */
 function SumDialog({
-  month,
+  label,
+  range: c,
   group,
   sum,
   closed,
   closedAt,
   onClose,
 }: {
-  month: string;
+  /** ชื่อรอบ — เดือน หรือช่วงวันของรอบจ่ายรายวัน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  label: string;
+  range: Cycle;
   group: PayGroup;
   sum: CycleSum | null;
   closed: boolean;
@@ -218,11 +292,10 @@ function SumDialog({
   onClose: () => void;
 }) {
   const day = group === "day";
-  const c = hrCycle(month);
 
   return (
     <Sheet
-      title={`สรุปยอดเงินเดือน ${thaiMonth(month)} — ${GROUP_LABEL[group]}`}
+      title={`สรุปยอดเงินเดือน ${label} — ${GROUP_LABEL[group]}`}
       onClose={onClose}
       footer={
         <button type="button" className="btn glass-thin" onClick={onClose}>
@@ -285,14 +358,15 @@ function SumDialog({
               รายการปรับปรุงย้ายมาจากฝั่งรายได้ ติดลบคือหักเพิ่ม บวกคือคืนกลับ
               บวกลบในกล่องแล้วต้องได้ยอดจ่ายสุทธิพอดี */}
           <Part head="รายการหัก" bar="var(--info)">
-            <Line k="ประกันสังคมหัก" v={`-${baht(sum.ss)}`} />
+            {/* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) — รอบที่ไม่มียอดไม่ต้องมีบรรทัด */}
+            {sum.ss > 0 && <Line k="ประกันสังคมหัก" v={`-${baht(sum.ss)}`} />}
             <Line k="หักมาสาย" v={sum.late ? `-${baht(sum.late)}` : "—"} />
             <Line
               k="รายการปรับปรุงอื่น"
               v={sum.adj ? (sum.adj < 0 ? `-${baht(-sum.adj)}` : `+${baht(sum.adj)}`) : "—"}
             />
             <Line k="รวมรายการหัก" v={`-${baht(cutOf(sum))}`} />
-            <Line k="นำส่งประกันสังคม (รวมส่วนบริษัท)" v={baht(sum.ss * 2)} />
+            {sum.ss > 0 && <Line k="นำส่งประกันสังคม (รวมส่วนบริษัท)" v={baht(sum.ss * 2)} />}
           </Part>
 
           {/* ยอดสุทธิ — ตัวเลขที่คนเปิดกล่องนี้มาหา อยู่ท้ายสุดและใหญ่ที่สุด */}

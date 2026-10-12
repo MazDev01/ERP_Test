@@ -157,7 +157,6 @@ export function LeadForm({
           <Field
             label="เบอร์โทรศัพท์"
             error={touched && problems.phone ? "เบอร์โทรศัพท์ต้องมี 9–10 หลัก" : undefined}
-            hint={duplicate ? undefined : "ใช้ตรวจสอบข้อมูลซ้ำ"}
           >
             <input
               value={phone}
@@ -205,7 +204,7 @@ export function LeadForm({
 
           <div className="sm:col-span-2">
             {/* ไม่บังคับตอนนี้ แต่ถ้าไม่มี บัญชีจะออกใบกำกับภาษีให้ไม่ได้ตอนเก็บเงิน — บอกไว้ตั้งแต่ตรงนี้ */}
-            <Field label="ที่อยู่" hint="ใช้เป็นที่อยู่จดทะเบียนบนใบกำกับภาษี — ไม่กรอกตอนนี้ก็ได้ แต่ต้องมีก่อนบัญชีออกใบเสร็จ">
+            <Field label="ที่อยู่">
               <textarea
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
@@ -215,7 +214,7 @@ export function LeadForm({
             </Field>
           </div>
 
-          <Field label="ประเภทผู้ซื้อ" hint="ใช้ตัดสินว่าต้องมีข้อมูลอะไรบ้างตอนออกใบกำกับภาษี">
+          <Field label="ประเภทผู้ซื้อ">
             <select
               value={buyerType}
               onChange={(e) => setBuyerType(e.target.value as BuyerType)}
@@ -231,7 +230,6 @@ export function LeadForm({
               <div className="sm:col-span-2">
                 <Field
                   label="ชื่อตามหนังสือรับรอง"
-                  hint="ชื่อเต็มที่จะขึ้นบนใบกำกับภาษี เว้นว่างไว้ก่อนได้ แต่ต้องมีก่อนออกใบเสร็จ"
                 >
                   <input
                     value={legalName}
@@ -244,7 +242,6 @@ export function LeadForm({
 
               <Field
                 label="สำนักงานใหญ่ / สาขา"
-                hint="ใบกำกับภาษีต้องระบุว่าออกให้สำนักงานใหญ่หรือสาขาไหน"
               >
                 <BranchInput value={branch} onChange={setBranch} />
               </Field>
@@ -312,7 +309,7 @@ export function LeadForm({
             </Field>
           </div>
 
-          <Field label="นัดติดตามครั้งถัดไป" hint="ใช้ตั้งการเตือนบนหน้ารายละเอียด">
+          <Field label="นัดติดตามครั้งถัดไป">
             <DateField
               value={followUp}
               onChange={(iso) => setFollowUp(iso)}

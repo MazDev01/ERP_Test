@@ -4,7 +4,7 @@
  * สรุปเวลาทำงานรายเดือน — ด่านก่อนคำนวณเงินเดือน (ตามต้นแบบ hr-timesheet.html)
  *
  * หน้านี้มีหน้าที่เดียวคือทำให้ตัวเลขเวลาของทุกคน "นิ่ง" ก่อนเอาไปคิดเงิน
- * ปิดรอบแล้วตัวเลขถูกล็อก และปิดแล้วปิดเลย ไม่มีการเปิดกลับ (ตามต้นแบบ)
+ * ปิดรอบแล้วตัวเลขถูกล็อก และปิดแล้วปิดเลย (ตามต้นแบบ)
  * เพราะถ้าแก้ได้ตลอด เงินเดือนที่คำนวณไปแล้วจะไม่ตรงกับข้อมูลที่ใช้คำนวณ
  *
  * พนักงานทดลองงานจ่ายค่าจ้างรายวัน ฐานการจ่ายคนละแบบ จึงแยกเป็นอีกแท็บ ไม่ต่อท้ายตารางเดิม
@@ -16,37 +16,49 @@
  * ระบบไม่เดาให้ เพราะการเดาผิดหนึ่งวันคือเงินของคนคนหนึ่ง
  */
 
+import { WORK_SCHEDULE } from "@/lib/work-schedule";
 import { useState } from "react";
 import { thaiDate, thaiMonth, todayIso } from "@/lib/format";
 import {
   HR_ISSUE_LABEL,
   HR_LEAVE_LABEL,
   HR_OT_LABEL,
-  daysOf,
+  daysOfIn,
   empOf,
   hrCycle,
+  defaultHrMonth,
+  defaultDailyRange,
+  dailyRoundId,
+  overlapRound,
+  rangeLabel,
   hrPos,
-  inPeriod,
+  inRange,
   isDaily,
   lateMin,
   leaveDays,
   openIssues,
   otKindAt,
   otHours,
-  recIn,
+  recInRange,
   workedDaysIn,
+  type Cycle,
   type Employee,
+  type DayFix,
   type TimeRec,
   type PayGroup,
   GROUP_LABEL,
 } from "@/lib/hr-data";
 import {
+  closeDailyTime,
   closePeriod,
-  noteIssue,
+  saveDayFixes,
   useHr,
 } from "@/lib/hr-store";
 import {
+  DayRangePicker,
+  HrStepTabs,
   HrSteps,
+  useUrlRange,
   PayCalendar,
   PayCard,
   PayHead,
@@ -55,8 +67,9 @@ import {
   PayTiles,
   usePayGroup,
   useUrlMonth,
+  MonthStepper,
 } from "./hr-steps";
-import { usePendingInMonth, useHrTime, useMissingApproved, type MissingReq } from "@/lib/hr-link";
+import { usePendingRequests, useHrTime, useMissingApproved, type MissingReq } from "@/lib/hr-link";
 import { MissingBox } from "./hr-payroll-page";
 import { targetWorkMs } from "@/lib/work-schedule";
 import { PencilIcon } from "./icons";
@@ -87,13 +100,20 @@ function sumOf(list: Line[]): Sum {
 export function HrTimesheetPage() {
   const hr = useHr();
   const today = todayIso();
-  /* มาจากขั้นอื่นพร้อม ?m= ก็เปิดรอบนั้นเลย ไม่ต้องเลือกใหม่ (ต้นแบบ urlMonth) */
+  /* มาจากขั้นอื่นพร้อม ?m= ก็แสดงรอบนั้นเลย ไม่ต้องเลือกใหม่ (ต้นแบบ urlMonth) */
   const urlMonth = useUrlMonth(hr.periods.map((p) => p.month));
-  const [month, setMonth] = useState(urlMonth || hr.periods[hr.periods.length - 1].month);
+  /* ไม่มี ?m= แสดงรอบล่าสุดที่จบแล้ว ไม่ใช่รอบปัจจุบันที่ยังเดินอยู่ (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  const [month, setMonth] = useState(urlMonth || defaultHrMonth(hr.periods.map((p) => p.month), today));
+  /*
+   * กลุ่มทดลองงานจ่ายรายวัน — รอบคือช่วงวันที่เลือกเอง ไม่ใช่รอบเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569)
+   * มาจากขั้นอื่นพร้อม ?r= ใช้ช่วงนั้น · ไม่มีก็รอบรายวันที่ยังไม่จบล่าสุด หรือวันนี้วันเดียว
+   * คิดค่าตั้งต้นใหม่ทุกครั้งจนกว่าจะเลือกเอง (useState จำค่าตอน hydrate ซึ่งยังเป็นข้อมูลตั้งต้น)
+   */
+  const urlRange = useUrlRange();
+  const [pickedRange, setPickedRange] = useState<Cycle | null>(null);
+  const dayRange = pickedRange ?? urlRange ?? defaultDailyRange(hr.dailyRounds, today);
   /* เวลาทำงานอ่านผ่านสะพาน — ใบลาใบโอทีของคนที่ผูกบทบาทไว้มาจากใบจริงในระบบ */
   const time = useHrTime();
-  /* ใบที่ยังไม่ตัดสินและตกอยู่ในรอบนี้ ปิดรอบไปทั้งที่มีใบค้าง = ตัวเลขจะเปลี่ยนทีหลัง */
-  const pending = usePendingInMonth(month);
   /* edit = เปิดจากปุ่มแก้ไข — กล่องจะเปิดช่องแก้รายการแรกให้เลย ไม่ต้องหาเอง */
   const [viewing, setViewing] = useState<{ id: string; edit: boolean } | null>(null);
   const [closing, setClosing] = useState(false);
@@ -112,17 +132,26 @@ export function HrTimesheetPage() {
   const period = hr.periods.find((p) => p.month === month)!;
   /* ปิดรอบทีละกลุ่ม ปุ่มและสถานะจึงอ่านจากแท็บที่เปิดอยู่ */
   const group: PayGroup = tab === "month" ? "month" : "day";
-  const locked = group === "month" ? period.closed : period.dayClosed;
-  const cycle = hrCycle(month);
+  const isDay = group === "day";
+  /* ช่วงวันของรอบที่ดูอยู่ — รายเดือนคือรอบเดือน (26–25) · ทดลองงานคือช่วงที่เลือก */
+  const cycle: Cycle = isDay ? dayRange : hrCycle(month);
+  const roundId = dailyRoundId(dayRange);
+  const round = isDay ? hr.dailyRounds.find((r) => r.id === roundId) : undefined;
+  /* ช่วงที่ทับรอบรายวันที่ปิดไปแล้ว ปิดซ้ำไม่ได้ — วันเดียวกันจะถูกจ่ายสองครั้ง */
+  const clash = isDay ? overlapRound(hr.dailyRounds, dayRange) : undefined;
+  const locked = isDay ? Boolean(round) : period.closed;
+  const roundTitle = isDay ? `รอบจ่าย ${rangeLabel(dayRange)}` : `รอบ ${thaiMonth(month)}`;
+  /* ใบที่ยังไม่ตัดสินและตกอยู่ในรอบนี้ ปิดรอบไปทั้งที่มีใบค้าง = ตัวเลขจะเปลี่ยนทีหลัง */
+  const pending = usePendingRequests(cycle);
 
   /* คนที่มีรายการต้องตรวจขึ้นก่อน เพราะนั่นคือสิ่งเดียวที่กั้นไม่ให้ปิดรอบ */
   const people = hr.emp
-    .filter((e) => inPeriod(e, month))
+    .filter((e) => inRange(e, cycle))
     .map((e) => {
-      const r = recIn(time, e.id, month);
+      const r = recInRange(time, e.id, cycle);
       const days = isDaily(e)
         ? workedDaysIn(e, cycle, time, today)
-        : daysOf(e, month).length - leaveDays(r);
+        : daysOfIn(e, cycle).length - leaveDays(r);
       return { e, r, days };
     })
     .sort((a, b) => openIssues(b.r).length - openIssues(a.r).length);
@@ -156,59 +185,67 @@ export function HrTimesheetPage() {
    * ปิดก่อนถึงวันนั้น = ปิดรอบที่ยังมีวันทำงานเหลืออยู่ ตัวเลขจะเพิ่มหลังปิดแน่นอน
    */
   const cutReady = today >= cycle.to;
-  const closeWhy = !cutReady
-    ? `ปิดรอบได้เมื่อถึงวันตัดรอบแล้ว (${thaiDate(cycle.to)})`
-    : groupOpen > 0
-      ? `ยังมีรายการที่ต้องตรวจ ${groupOpen} รายการ`
-      : missing.length > 0
-        ? `มีใบที่อนุมัติแล้วยังไม่เข้ารอบนี้ ${missing.length} ใบ — ปิดรอบตอนนี้เวลาก้อนนี้จะหาย`
-        : undefined;
-  const closedAt = group === "month" ? period.closedAt : period.dayClosedAt;
-  const closedById = group === "month" ? period.closedBy : period.dayClosedBy;
-  const reopenedTimes = (group === "month" ? period.reopened : period.dayReopened).length;
+  const closeWhy = clash
+    ? `ช่วงนี้ทับรอบจ่าย ${rangeLabel(clash)} ที่ปิดไปแล้ว — เลือกช่วงที่ไม่ซ้อนกัน`
+    : !cutReady
+      ? `ปิดรอบได้เมื่อถึงวันตัดรอบแล้ว (${thaiDate(cycle.to)})`
+      : groupOpen > 0
+        ? `ยังมีรายการที่ต้องตรวจ ${groupOpen} รายการ`
+        : missing.length > 0
+          ? `มีใบที่อนุมัติแล้วยังไม่เข้ารอบนี้ ${missing.length} ใบ — ปิดรอบตอนนี้เวลาก้อนนี้จะหาย`
+          : isDay && list.length === 0
+            ? "ไม่มีพนักงานทดลองงานในช่วงนี้"
+            : undefined;
+  const closedAt = (isDay ? round?.closedAt : period.closedAt) ?? "";
+  const closedById = (isDay ? round?.closedBy : period.closedBy) ?? "";
   const closedBy = closedById ? (empOf(hr.emp, closedById)?.name ?? closedById) : "";
+
+  function pickRange(c: Cycle) {
+    setPickedRange(c);
+    setViewing(null);
+  }
 
   return (
     <div className={`hp-page space-y-4 ${g.picked ? "" : "hp-pick"}`}>
       <PayHead
-        title={thaiMonth(month)}
+        title={isDay ? rangeLabel(dayRange) : thaiMonth(month)}
         onBack={g.picked ? g.home : undefined}
-        onCal={() => setCal(true)}
+        onCal={isDay ? undefined : () => setCal(true)}
       />
       <PayTiles onOpen={g.open} />
 
+      {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
-        <div>
-          <h1>สรุปเวลาทำงาน</h1>
-        </div>
-        <div className="tools w-full flex-wrap items-end sm:w-auto">
-          <Field label="รอบเดือน">
-            <Select
+        <h1 className="sr-only">สรุปเวลาทำงาน</h1>
+        <div className="tools ml-auto">
+          {isDay ? (
+            <DayRangePicker value={dayRange} max={today} onChange={pickRange} />
+          ) : (
+            <MonthStepper
+              months={hr.periods.map((p) => p.month)}
               value={month}
-              onChange={(e) => {
-                setMonth(e.target.value);
+              onChange={(m) => {
+                setMonth(m);
                 setViewing(null);
               }}
-              aria-label="เลือกรอบเดือน"
-              className="w-auto min-w-[170px] font-semibold"
-            >
-              {[...hr.periods].reverse().map((p) => (
-                <option key={p.month} value={p.month}>
-                  {thaiMonth(p.month)}
-                </option>
-              ))}
-            </Select>
-          </Field>
+            />
+          )}
         </div>
       </div>
 
-      <HrSteps month={month} group={tab} />
+      {/* มือถือ: .bar ซ่อนทั้งแถบ — ขั้นตอนเป็นชิป และช่วงวันของทดลองงานอยู่ใต้ชิป */}
+      <HrSteps month={month} range={isDay ? dayRange : null} group={tab} className="md:hidden" />
+      {isDay && (
+        <div className="hp-only-m">
+          <DayRangePicker value={dayRange} max={today} onChange={pickRange} />
+        </div>
+      )}
 
       <section className="panel glass flex flex-col">
         <div className="strip">
-          {/* แท็บสลับกลุ่มเอาออก — เลือกกลุ่มจากเมนูย่อยแทน (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
+          <HrStepTabs month={month} range={isDay ? dayRange : null} group={tab} />
           {locked ? (
-            /* ปิดแล้วปิดเลย ป้ายแทนที่ปุ่ม ไม่มีทางเปิดกลับ */
+            /* ปิดแล้วปิดเลย ป้ายแทนที่ปุ่ม */
             <span className="tag t-ok my-2 ml-auto">
               <i />
               ปิดรอบแล้ว {thaiDate(closedAt)}
@@ -232,7 +269,8 @@ export function HrTimesheetPage() {
         {/* ใบที่อนุมัติแล้วแต่ไม่ปรากฏในรอบ — เคยเงียบมาแล้ว ต้องเห็นบนหน้าจอ ไม่ใช่รอให้พนักงานทัก */}
         {missing.length > 0 && <MissingBox rows={missing} emp={hr.emp} />}
 
-        <div className="scroll-stable min-h-0 flex-1 overflow-auto max-md:hidden">
+        {/* ไม่จองร่องแถบเลื่อน ตารางเต็มกล่อง ไม่มีแถบขาวด้านขวา (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+        <div className="min-h-0 flex-1 overflow-auto max-md:hidden">
           <table className="data-table cards-sm min-w-[1100px]">
             <thead>
               <tr>
@@ -247,14 +285,13 @@ export function HrTimesheetPage() {
                 <Th w={96} unit="วัน">ลา</Th>
                 <Th w={124} unit="ชม.">โอทีวันธรรมดา</Th>
                 <Th w={116} unit="ชม.">โอทีวันหยุด</Th>
-                <th style={{ width: 150 }}>ต้องตรวจ</th>
                 <th className="c" style={{ width: 110 }}>จัดการ</th>
               </tr>
             </thead>
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-12 text-center text-muted-foreground">
                     {tab === "month" ? "ไม่มีพนักงานในรอบนี้" : "ไม่มีพนักงานทดลองงานในรอบนี้"}
                   </td>
                 </tr>
@@ -320,13 +357,14 @@ export function HrTimesheetPage() {
         {tab === "month" ? null : (
           <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
             <span className="flex flex-wrap items-center gap-2">
-              คิดค่าจ้างตามวันที่มาทำงานจริง นับถึง {thaiDate(today)}
+              {/* นับเฉพาะวันในช่วงของรอบจ่ายนี้ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+              ช่วง {rangeLabel(dayRange)}
+              {today < dayRange.to && ` · นับถึง ${thaiDate(today)}`}
               <CycleTag
                 locked={locked}
                 open={groupOpen}
                 at={closedAt}
                 by={closedBy}
-                reopened={reopenedTimes}
               />
             </span>
             {daily.length > 0 && (
@@ -348,9 +386,11 @@ export function HrTimesheetPage() {
         <DayDetail
           key={current.id}
           emp={current}
-          month={month}
+          label={isDay ? rangeLabel(dayRange) : thaiMonth(month)}
           locked={locked}
-          rec={recIn(time, current.id, month)}
+          rec={recInRange(time, current.id, cycle)}
+          fixes={hr.time[current.id]?.fix ?? []}
+          days={daysOfIn(current, cycle).filter((d) => d <= today)}
           onClose={() => setViewing(null)}
         />
       )}
@@ -371,8 +411,10 @@ export function HrTimesheetPage() {
 
       {closing && !locked && (
         <CloseDialog
-          month={month}
+          title={roundTitle}
+          range={cycle}
           group={group}
+          onConfirm={() => (isDay ? closeDailyTime(dayRange, today) : closePeriod(month, today, group))}
           blocked={Boolean(closeWhy)}
           why={closeWhy}
           people={list.length}
@@ -448,27 +490,9 @@ function TimeRow({
       <Num label="โอทีวันธรรมดา (ชม.)" v={otHours(r, "after_work")} fixed2 />
       {/* วันหยุดราชการรวมอยู่ในช่องวันหยุด — ต้นแบบแยกแค่วันธรรมดากับวันหยุด (เรตยังคิดแยกในเงินเดือน) */}
       <Num label="โอทีวันหยุด (ชม.)" v={otHours(r, "holiday") + otHours(r, "public")} fixed2 />
-      <td data-label="ต้องตรวจ">
-        {open > 0 ? (
-          <span className="tag t-late">
-            <i />
-            ต้องตรวจ {open}
-          </span>
-        ) : fixed > 0 ? (
-          <span className="tag t-early">
-            <i />
-            บันทึกเหตุผลแล้ว
-          </span>
-        ) : (
-          <span className="tag t-ok">
-            <i />
-            ครบถ้วน
-          </span>
-        )}
-      </td>
       <td data-label="จัดการ" className="c">
-        {/* แถวที่ครบถ้วนไม่มีอะไรต้องแก้ ปุ่มแก้ไขจึงขึ้นเฉพาะแถวที่มีรายการต้องตรวจ */}
-        {locked || r.issues.length === 0 ? (
+        {/* แก้เวลาเข้า-ออกงานได้ทุกคนทั้งรอบ จนกว่าจะปิดรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+        {locked ? (
           <span className="text-muted-foreground">—</span>
         ) : (
           <button
@@ -525,24 +549,8 @@ function TimeCard({
       openLabel={`${expanded ? "ซ่อน" : "ดู"}ตัวเลขเวลาของ ${e.name}`}
       corner={
         <>
-          {open > 0 ? (
-            <span className="tag t-late">
-              <i />
-              ต้องตรวจ {open}
-            </span>
-          ) : fixed > 0 ? (
-            <span className="tag t-early">
-              <i />
-              บันทึกเหตุผลแล้ว
-            </span>
-          ) : (
-            <span className="tag t-ok">
-              <i />
-              ครบถ้วน
-            </span>
-          )}
           {/* ปุ่มแก้ขึ้นเฉพาะคนที่มีรายการต้องตรวจ และรอบยังไม่ปิด เหมือนคอลัมน์จัดการบนจอกว้าง */}
-          {!locked && r.issues.length > 0 && (
+          {!locked && (
             <PayIconBtn label={`แก้ไขเวลาของ ${e.name}`} title="แก้ไข" onClick={onEdit}>
               <PencilIcon strokeWidth={1.9} />
             </PayIconBtn>
@@ -594,144 +602,135 @@ function Num({ label, v, fixed2 }: { label: string; v: number; fixed2?: boolean 
 
 function DayDetail({
   emp,
-  month,
+  label,
   locked,
   rec,
+  fixes,
+  days,
   onClose,
 }: {
   emp: Employee;
-  month: string;
+  /** ชื่อรอบที่ดูอยู่ — รอบเดือนหรือช่วงวันของรอบจ่ายรายวัน */
+  label: string;
   locked: boolean;
   rec: TimeRec;
+  /** เวลาที่ฝ่ายบุคคลแก้ไว้แล้ว */
+  fixes: DayFix[];
+  /** วันทำงานของคนนี้ในรอบ ถึงวันนี้ */
+  days: string[];
   onClose: () => void;
 }) {
-  const [notes, setNotes] = useState<Record<string, string>>({});
-
-  /* รวมทุกอย่างเข้าเป็น "วันที่" เดียวกัน เพราะวันหนึ่งอาจมาสายและมีโอทีพร้อมกัน */
-  const byDay = new Map<string, React.ReactNode[]>();
-  const push = (d: string, node: React.ReactNode) => {
-    byDay.set(d, [...(byDay.get(d) ?? []), node]);
+  /*
+   * รายการยาวทุกวันทำงานของรอบ แก้ได้แค่เวลาเข้า-ออกงาน (ผู้ใช้สั่ง 6 ต.ค. 2569)
+   * ค่าตั้งต้นของแต่ละวัน: ที่แก้ไว้แล้ว → ไม่มีลงเวลา = ว่าง · ไม่ลงออก = ว่างช่องออก · มาสาย = เวลาเข้าจริง · ปกติ = เวลาทำงานบริษัท
+   */
+  const start = WORK_SCHEDULE.start;
+  const end = WORK_SCHEDULE.end;
+  const initial = (d: string) => {
+    const f = fixes.find((x) => x.d === d);
+    if (f) return { in: f.in, out: f.out };
+    const issue = rec.issues.find((x) => x.d === d);
+    if (issue?.in || issue?.out) return { in: issue.in ?? start, out: issue.out ?? "" };
+    if (issue?.kind === "norecord") return { in: "", out: "" };
+    const late = rec.late.find((x) => x.d === d);
+    const tin = late ? addMin(start, late.min) : start;
+    return { in: tin, out: issue?.kind === "nopair" ? "" : end };
   };
-
-  for (const x of rec.late) {
-    push(
-      x.d,
-      <span key={`late-${x.d}`} className="flex flex-wrap items-center gap-2">
-        <span className="tag t-late">
-          <i />
-          มาสาย {x.min} นาที
-        </span>
-        {x.was != null && (
-          <em className="num basis-full text-[11.5px] not-italic text-muted-foreground">
-            แก้จาก {x.was} นาที
-          </em>
-        )}
-      </span>,
-    );
-  }
-
-  for (const x of rec.leave) {
-    push(
-      x.d,
-      <span key={`lv-${x.d}`} className="tag t-info">
-        <i />
-        {HR_LEAVE_LABEL[x.type]}
-        {x.span === "half" ? " ครึ่งวัน" : ""}
-      </span>,
-    );
-  }
-
-  for (const x of rec.ot) {
-    push(
-      x.d,
-      <span key={`ot-${x.d}`} className="flex flex-wrap items-center gap-2">
-        <span className="tag t-early">
-          <i />
-          โอที {x.h.toFixed(2)} ชม. {HR_OT_LABEL[otKindAt(x)]}
-        </span>
-        {x.was != null && (
-          <em className="num basis-full text-[11.5px] not-italic text-muted-foreground">
-            แก้จาก {x.was.toFixed(2)} ชม.
-          </em>
-        )}
-      </span>,
-    );
-  }
-
-  const days = [...byDay.keys()].sort();
+  const [rows, setRows] = useState(() => Object.fromEntries(days.map((d) => [d, initial(d)])));
+  const changed = days.filter((d) => {
+    const a = initial(d);
+    const b = rows[d];
+    return a.in !== b.in || a.out !== b.out;
+  });
+  const bad = days.find((d) => rows[d].in && rows[d].out && rows[d].in >= rows[d].out);
+  const fullLeave = (d: string) => rec.leave.find((x) => x.d === d && x.span === "full");
+  const cls = "field-control num h-9 w-[120px] rounded-[10px] px-3 text-[13px] disabled:opacity-60";
 
   return (
     <Sheet
-      title={`${emp.name} ${thaiMonth(month)}`}
+      title={`${emp.name} ${label}`}
       wide
       onClose={onClose}
       footer={
-        <button type="button" className="btn glass-thin" onClick={onClose}>
-          ปิด
-        </button>
+        <>
+          <button type="button" className="btn glass-thin" onClick={onClose}>
+            {locked ? "ปิด" : "ยกเลิก"}
+          </button>
+          {!locked && (
+            <button
+              type="button"
+              className="btn solid btn-solid disabled:opacity-45"
+              disabled={changed.length === 0 || Boolean(bad)}
+              title={bad ? `${thaiDate(bad)} เวลาออกต้องหลังเวลาเข้า` : undefined}
+              onClick={() => {
+                saveDayFixes(emp.id, changed.map((d) => ({ d, ...rows[d] })));
+                onClose();
+              }}
+            >
+              บันทึก
+            </button>
+          )}
+        </>
       }
     >
-      {/* มือถือ: รายการที่ต้องตรวจขึ้นก่อน แต่ละวันเป็นการ์ด ช่องเหตุผลกับปุ่มบันทึกเต็มความกว้าง (ต้นแบบ ts-detail) */}
-      <div className="hp-dlg">
-      <section className="hp-sect">
-        <h3 className="mb-2.5 text-[12.5px] font-bold text-primary">วันที่มีรายการ</h3>
-        {days.length === 0 ? (
-          <p className="text-[12.5px] text-muted-foreground">ไม่มีวันที่ผิดจากปกติ</p>
-        ) : (
-          days.map((d) => (
-            <div key={d} className="hp-dayrow border-t border-border py-3 first:border-t-0 first:pt-1">
-              <p className="num text-[12px] font-semibold text-muted-foreground">{thaiDate(d)}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2.5">{byDay.get(d)}</div>
-            </div>
-          ))
-        )}
-        {/* มาสายและโอทีแสดงอย่างเดียว ถ้าผิดต้องแก้ที่ต้นทาง (บันทึกเวลา / ใบขอโอที) */}
-        {locked && <p className="mt-2.5 text-[12.5px] text-muted-foreground">รอบนี้ปิดแล้ว</p>}
-      </section>
-
-      <section className={`hp-sect ${rec.issues.length > 0 ? "fix" : ""} mt-5 border-t border-border pt-4`}>
-        <h3 className="mb-2.5 text-[12.5px] font-bold text-primary">รายการที่ต้องตรวจ</h3>
-        {rec.issues.length === 0 ? (
-          <p className="text-[12.5px] text-muted-foreground">ไม่มีรายการที่ต้องตรวจ</p>
-        ) : (
-          rec.issues.map((x) => (
-            <div key={x.d} className="hp-dayrow border-t border-border py-3 first:border-t-0 first:pt-1">
-              <p className="num text-[12px] font-semibold text-muted-foreground">{thaiDate(x.d)}</p>
-              <span className={`tag mt-2 ${x.note ? "t-early" : "t-late"}`}>
-                <i />
-                {HR_ISSUE_LABEL[x.kind]}
-              </span>
-              {x.note ? (
-                <p className="mt-2 text-[12.5px] text-muted-foreground">เหตุผลที่บันทึกไว้ · {x.note}</p>
-              ) : locked ? (
-                <p className="mt-2 text-[12.5px] text-muted-foreground">รอบนี้ปิดแล้ว</p>
-              ) : (
-                <div className="hp-fixbox mt-2.5 flex items-center gap-2">
-                  <input
-                    value={notes[x.d] ?? ""}
-                    onChange={(e) => setNotes((v) => ({ ...v, [x.d]: e.target.value }))}
-                    placeholder="ระบุเหตุผลหรือผลการตรวจสอบ"
-                    aria-label={`เหตุผลของวันที่ ${thaiDate(x.d)}`}
-                    style={{ height: 36 }}
-                    className="field-control min-w-0 flex-1 rounded-[10px] px-3 text-[13px]"
-                  />
-                  <button
-                    type="button"
-                    className="btn solid btn-solid flex-none disabled:opacity-45"
-                    disabled={!(notes[x.d] ?? "").trim()}
-                    onClick={() => noteIssue(emp.id, x.d, (notes[x.d] ?? "").trim())}
-                  >
-                    บันทึก
-                  </button>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </section>
-      </div>
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-left text-[12px] text-muted-foreground">
+            <th className="pb-2 font-semibold">วันที่</th>
+            <th className="pb-2 font-semibold">เวลาเข้างาน</th>
+            <th className="pb-2 font-semibold">เวลาออกงาน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((d) => {
+            const lv = fullLeave(d);
+            const r = rows[d];
+            const off = d === bad;
+            return (
+              <tr key={d} className="border-t border-border">
+                <td className="num py-2 pr-3 font-semibold whitespace-nowrap">{thaiDate(d)}</td>
+                {lv ? (
+                  <td colSpan={2} className="py-2 text-muted-foreground">
+                    {HR_LEAVE_LABEL[lv.type]}
+                  </td>
+                ) : (
+                  <>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="time"
+                        value={r.in}
+                        disabled={locked}
+                        onChange={(e) => setRows((v) => ({ ...v, [d]: { ...v[d], in: e.target.value } }))}
+                        aria-label={`เวลาเข้างาน ${thaiDate(d)}`}
+                        className={`${cls} ${r.in ? "" : "border-destructive"}`}
+                      />
+                    </td>
+                    <td className="py-2">
+                      <input
+                        type="time"
+                        value={r.out}
+                        disabled={locked}
+                        onChange={(e) => setRows((v) => ({ ...v, [d]: { ...v[d], out: e.target.value } }))}
+                        aria-label={`เวลาออกงาน ${thaiDate(d)}`}
+                        className={`${cls} ${r.out && !off ? "" : "border-destructive"}`}
+                      />
+                    </td>
+                  </>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </Sheet>
   );
+}
+
+/** "08:30" + 15 นาที → "08:45" */
+function addMin(hm: string, min: number) {
+  const [h, m] = hm.split(":").map(Number);
+  const t = h * 60 + m + min;
+  return `${String(Math.floor(t / 60) % 24).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
 
 /* ปิดรอบต้องเคลียร์ทั้งสองแท็บ บอกบนแท็บเลยว่าค้างอยู่ฝั่งไหน ไม่งั้นต้องสลับไปหาเอง */
@@ -742,8 +741,10 @@ function issuesOf(list: { r: Parameters<typeof openIssues>[0] }[]) {
 // ─── ปิดรอบ ──────────────────────────────────────────────────────
 
 function CloseDialog({
-  month,
+  title,
+  range: c,
   group,
+  onConfirm,
   blocked,
   why,
   people,
@@ -751,11 +752,14 @@ function CloseDialog({
   pending,
   missing,
   emp,
-  today,
   onClose,
 }: {
-  month: string;
+  /** "รอบ กันยายน 2569" หรือ "รอบจ่าย 6 – 8 ต.ค. 2569" */
+  title: string;
+  range: Cycle;
   group: PayGroup;
+  /** ปิดรอบเดือน หรือสร้างรอบจ่ายรายวันของช่วงนี้ (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  onConfirm: () => void;
   blocked: boolean;
   why?: string;
   people: number;
@@ -766,12 +770,10 @@ function CloseDialog({
   today: string;
   onClose: () => void;
 }) {
-  const c = hrCycle(month);
-
   function confirm() {
     /* กันไว้อีกชั้น เผื่อสถานะเปลี่ยนระหว่างเปิดกล่อง */
     if (blocked) return;
-    closePeriod(month, today, group);
+    onConfirm();
     onClose();
   }
 
@@ -798,11 +800,11 @@ function CloseDialog({
     >
       <div className="hp-dlg">
       <p className="text-[12.5px] text-muted-foreground max-md:hidden">
-        รอบ {thaiMonth(month)} · {thaiDate(c.from)} – {thaiDate(c.to)} · กลุ่ม {GROUP_LABEL[group]}
+        {title} · {thaiDate(c.from)} – {thaiDate(c.to)} · กลุ่ม {GROUP_LABEL[group]}
       </p>
       {/* มือถือ: สรุปรอบเป็นกล่องชมพู (ต้นแบบ p.rule) */}
       <p className="hp-rule hp-only-m">
-        <b>รอบ {thaiMonth(month)}</b>
+        <b>{title}</b>
         <span>
           {thaiDate(c.from)} – {thaiDate(c.to)}
         </span>
@@ -856,13 +858,11 @@ function CycleTag({
   open,
   at,
   by,
-  reopened,
 }: {
   locked: boolean;
   open: number;
   at: string;
   by: string;
-  reopened: number;
 }) {
   if (locked) {
     return (
@@ -870,7 +870,6 @@ function CycleTag({
         <i />
         ปิดรอบแล้ว {thaiDate(at)}
         {by && ` โดย ${by}`}
-        {reopened > 0 && ` · เคยเปิดรอบใหม่ ${reopened} ครั้ง`}
       </span>
     );
   }
@@ -883,7 +882,7 @@ function CycleTag({
     /* ยังไม่ปิดและไม่มีรายการค้างตรวจ — ข้อความตาม mockup (rangetag free) */
     <span className="tag t-miss">
       <i />
-      รอบยังไม่จบ ตัวเลขจะเพิ่มทุกวันทำงาน
+      รอบยังไม่จบ
     </span>
   );
 }

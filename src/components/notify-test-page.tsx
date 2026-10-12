@@ -84,11 +84,6 @@ export function NotifyTestPage() {
     <main className="flex min-h-dvh justify-center px-4 pt-8 pb-16">
       <div className="w-full max-w-[560px]">
         <h1 className="text-center text-[21px] font-bold">ทดสอบแจ้งเตือนบนมือถือ</h1>
-        <p className="mt-2 text-center text-sm leading-[1.75] text-muted-foreground">
-          ใช้ได้ทั้ง iPhone และ Android — ทำตามเอกสาร TestPlan_Notifications_Mobile
-          <br />
-          ยังไม่มี backend จึงจำลอง push ในเครื่อง ผ่านทางเดียวกับ push จริง
-        </p>
 
         <Section title="1. ความพร้อมของเครื่อง" action={<SmallBtn onClick={() => reload()}>ตรวจใหม่</SmallBtn>}>
           <div className="glass overflow-hidden rounded-[15px]">
@@ -200,7 +195,7 @@ export function NotifyTestPage() {
                   {new Date(e.at).toLocaleTimeString("th-TH")} · {e.title}
                   {e.url && <span className="block text-muted-foreground">→ {e.url}</span>}
                   {e.source === "push" && e.sentAt ? (
-                    <span className="block text-muted-foreground">ส่งถึงเครื่องใช้ {((e.at - e.sentAt) / 1000).toFixed(1)} วินาที (นาฬิกาเซิร์ฟเวอร์กับเครื่องอาจต่างกันเล็กน้อย)</span>
+                    <span className="block text-muted-foreground">ส่งถึงเครื่องใช้ {((e.at - e.sentAt) / 1000).toFixed(1)} วินาที</span>
                   ) : null}
                 </div>
               ))

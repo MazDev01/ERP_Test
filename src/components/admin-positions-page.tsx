@@ -5,16 +5,16 @@
  *
  *   การ์ดพับได้รายแผนก ข้างในเป็นตารางตำแหน่ง: ชื่อ · ผู้อนุมัติ ลา/โอที/เบิก · สวิตช์เปิดใช้ · แก้/ลบ
  *   ตำแหน่งสังกัดแผนก — เพิ่ม แก้ชื่อ ย้ายแผนก · ตำแหน่งที่มีพนักงานอยู่ลบไม่ได้ (ปิดใช้งานแทน)
- *   เลือกผู้อนุมัติ ลา โอที เบิกค่าใช้จ่าย ต่อตำแหน่งในกล่องแก้ไข — ไม่ตั้ง = ใช้สายตามบทบาท (แท็บสายอนุมัติ ?t=approval)
+ *   เลือกผู้อนุมัติ ลา โอที เบิกค่าใช้จ่าย ต่อตำแหน่งในกล่องแก้ไข — ไม่ตั้ง = ใช้สายตั้งต้นของบทบาท (แท็บสายอนุมัติเอาออกแล้ว ผู้ใช้สั่ง 6 ต.ค. 2569)
  *   ผู้อนุมัติอนุมัติคำขอของตนเองไม่ได้ — ตำแหน่งของผู้อนุมัติเองจึงเลือกตัวเองไม่ได้
  *
  * เก็บสองหมวด: catalog (ตำแหน่งและแผนก) และ posRoute (สายอนุมัติรายตำแหน่ง)
  * บันทึกทีเดียวทั้งสองหมวด เพราะผู้ใช้มองว่าเป็นหน้าเดียว
  */
 
+import { AdminOptionsPage } from "./admin-options-page";
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { DualRolePane, MenuAccessPane, RoutePane } from "./admin-roles-page";
 import type { Catalog, PosRoute } from "@/lib/system-settings";
 import { BUILTIN_HR_DEPT, BUILTIN_HR_POSITION, holdsPos, hrDept, hrPos } from "@/lib/hr-data";
 import { merged } from "@/lib/catalog";
@@ -42,6 +42,8 @@ const KINDS: { key: RequestKind; label: string }[] = [
 ];
 
 const APPROVER_KEYS: ApproverKey[] = ["pm", "acc", "hr", "gm", "exec"];
+/** ผู้อนุมัติที่เลือกได้ในกล่องแก้ตำแหน่ง — GM กับ CEO เท่านั้น (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+const APPROVER_CHOICES: ApproverKey[] = ["gm", "exec"];
 
 /** ชื่อสั้นของผู้อนุมัติที่ใช้บนป้ายในตาราง (ต้นแบบใช้ GM / CEO / HR) */
 const APPR_SHORT: Record<ApproverKey, string> = {
@@ -147,11 +149,10 @@ function ApprChip({ who, dim }: { who: string; dim?: boolean }) {
  *   เมนูที่ใช้ได้ · บทบาทของบัญชีผู้ใช้ — ยกมาจากหน้าบทบาทและสิทธิ์เดิมทั้งก้อน
  * แท็บที่เปิดอยู่อยู่ใน ?t= (ไม่มี = ตำแหน่ง) ลิงก์ตรงเข้าแท็บได้ · หน้าที่เรียกต้องมี Suspense คร่อม (page.tsx มีแล้ว)
  */
+/* แผนกอยู่แท็บแรก ย้ายมาจากข้อมูลหลัก (ผู้ใช้สั่ง 6 ต.ค. 2569) */
 const POS_TABS = [
+  { key: "depts", label: "แผนก" },
   { key: "positions", label: "ตำแหน่ง" },
-  { key: "approval", label: "สายอนุมัติ" },
-  { key: "menu", label: "เมนูที่ใช้ได้" },
-  { key: "accounts", label: "บทบาทของบัญชีผู้ใช้" },
 ] as const;
 type PosTab = (typeof POS_TABS)[number]["key"];
 
@@ -159,12 +160,12 @@ export function AdminPositionsPage() {
   const q = useSearchParams();
   const here = usePathname();
   const router = useRouter();
-  const tab: PosTab = POS_TABS.find((x) => x.key === q.get("t"))?.key ?? "positions";
+  const tab: PosTab = POS_TABS.find((x) => x.key === q.get("t"))?.key ?? "depts";
 
   function go(t: PosTab) {
     const next = new URLSearchParams(q.toString());
     next.set("s", "positions");
-    if (t === "positions") next.delete("t");
+    if (t === "depts") next.delete("t");
     else next.set("t", t);
     router.replace(`${here}?${next.toString()}`, { scroll: false });
   }
@@ -186,16 +187,9 @@ export function AdminPositionsPage() {
     </div>
   );
 
-  if (tab === "positions") return <PositionsPane tabs={tabs} />;
-  return (
-    <div className="space-y-4">
-      <h1 className="sr-only">ตำแหน่งและสายอนุมัติ</h1>
-      <section className="panel glass flex flex-col">
-        <div className="strip">{tabs}</div>
-        {tab === "approval" ? <RoutePane /> : tab === "menu" ? <MenuAccessPane /> : <DualRolePane />}
-      </section>
-    </div>
-  );
+  if (tab === "depts") return <AdminOptionsPage only="depts" topTabs={tabs} />;
+  /* แท็บเมนูที่ใช้ได้เอาออก — เมนูกำหนดจาก "งานที่รับผิดชอบ" ของบัญชีแล้ว (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  return <PositionsPane tabs={tabs} />;
 }
 
 function PositionsPane({ tabs }: { tabs: ReactNode }) {
@@ -369,16 +363,17 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
                                 >
                                   <PencilIcon className="size-4" strokeWidth={2.2} />
                                 </button>
-                                <button
-                                  type="button"
-                                  aria-label={`ลบ ${p.label}`}
-                                  title={why}
-                                  disabled={Boolean(why)}
-                                  className="btn glass-thin btn-mini disabled:opacity-40"
-                                  onClick={() => removePos(p.v)}
-                                >
-                                  <TrashIcon className="size-4" strokeWidth={2.2} />
-                                </button>
+                                {/* ลบไม่ได้ก็ไม่ต้องมีปุ่มลบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+                                {!why && (
+                                  <button
+                                    type="button"
+                                    aria-label={`ลบ ${p.label}`}
+                                    className="btn glass-thin btn-mini"
+                                    onClick={() => removePos(p.v)}
+                                  >
+                                    <TrashIcon className="size-4" strokeWidth={2.2} />
+                                  </button>
+                                )}
                               </span>
                             </div>
                           );
@@ -491,9 +486,16 @@ function PosSheet({
 }) {
   const [label, setLabel] = useState(initial?.label ?? "");
   const [dept, setDept] = useState(initial?.dept ?? depts[0]?.v ?? "");
-  const [appr, setAppr] = useState<Partial<Record<RequestKind, string>>>(route);
-  const bad = !label.trim() ? "ใส่ชื่อตำแหน่ง" : "";
   const pos = initial?.v ?? "";
+  /* ผู้อนุมัติเลือกได้แค่ GM กับ CEO (ผู้ใช้สั่ง 6 ต.ค. 2569) — อนุมัติคำขอของตนเองไม่ได้ จึงตัดตำแหน่งของตัวเองออก
+     ค่าเดิมที่ไม่ใช่สองตัวนี้ (หรือยังไม่ได้ตั้ง) ตั้งต้นเป็นตัวแรกที่เลือกได้ */
+  const choices = APPROVER_CHOICES.filter((a) => !pos || !isSelf(a, pos));
+  const [appr, setAppr] = useState<Partial<Record<RequestKind, string>>>(() =>
+    Object.fromEntries(
+      KINDS.map((k) => [k.key, choices.includes(route[k.key] as ApproverKey) ? route[k.key] : choices[0]]),
+    ),
+  );
+  const bad = !label.trim() ? "ใส่ชื่อตำแหน่ง" : "";
 
   return (
     <Sheet
@@ -541,8 +543,7 @@ function PosSheet({
                 onChange={(e) => setAppr((v) => ({ ...v, [k.key]: e.target.value }))}
                 className={inputCls}
               >
-                <option value="">ตามบทบาท</option>
-                {APPROVER_KEYS.filter((a) => !pos || !isSelf(a, pos)).map((a) => (
+                {choices.map((a) => (
                   <option key={a} value={a}>
                     {names[a].name} · {names[a].title}
                   </option>
@@ -551,10 +552,6 @@ function PosSheet({
             </Input2>
           ))}
         </div>
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
-          ไม่เลือก = ใช้สายอนุมัติตามบทบาทในแท็บสายอนุมัติ · ผู้อนุมัติอนุมัติคำขอของตนเองไม่ได้ จึงไม่ขึ้นให้เลือกในตำแหน่งของตัวเอง
-          {pos && rolesOfPos(pos).length > 0 && ` · ตำแหน่งนี้เข้าระบบด้วยบทบาท ${rolesOfPos(pos).map(roleLabel).join(" · ")}`}
-        </p>
       </div>
     </Sheet>
   );

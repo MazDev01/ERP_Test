@@ -208,7 +208,7 @@ export function AttendanceTable() {
           {/* ใบที่ยังรออนุมัติไม่ถูกนับเป็นวันลา แต่ต้องเห็นว่ามีค้างอยู่ ไม่ใช่หายไปเฉย ๆ */}
           {tab === "leave" && waitingDays > 0 && (
             <span className="py-2 text-[12px] font-semibold text-[var(--warning)]">
-              รออนุมัติอีก {waitingDays} วัน (ยังไม่นับเป็นวันลา)
+              รออนุมัติอีก {waitingDays} วัน
             </span>
           )}
           <div className="legend hidden sm:flex">
@@ -226,20 +226,19 @@ export function AttendanceTable() {
             <thead>
               <tr>
                 {/* ความกว้างเป็นสัดส่วน คอลัมน์จะกระจายเต็มตารางทุกขนาดจอ ไม่กองที่ช่องหมายเหตุ */}
-                <th style={{ width: "14%" }}>วันที่</th>
-                <th className="c" style={{ width: "11%" }}>เข้างาน</th>
-                <th className="c" style={{ width: "11%" }}>ออกงาน</th>
-                <th className="c" style={{ width: "12%" }}>กะที่ต้องทำ</th>
-                <th className="c" style={{ width: "12%" }}>ชั่วโมงทำงาน</th>
-                <th className="c" style={{ width: "12%" }}>โอที</th>
-                <th className="c" style={{ width: "12%" }}>สถานะ</th>
-                <th style={{ width: "16%" }}>หมายเหตุ</th>
+                {/* ไม่มีโอทีและหมายเหตุในตารางเวลา · "กะที่ต้องทำ" เรียกว่าเวลา (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                <th style={{ width: "20%" }}>วันที่</th>
+                <th className="c" style={{ width: "16%" }}>เข้างาน</th>
+                <th className="c" style={{ width: "16%" }}>ออกงาน</th>
+                <th className="c" style={{ width: "16%" }}>เวลา</th>
+                <th className="c" style={{ width: "16%" }}>ชั่วโมงทำงาน</th>
+                <th className="c" style={{ width: "16%" }}>สถานะ</th>
               </tr>
             </thead>
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-[50px] text-center text-muted-foreground">
+                  <td colSpan={6} className="py-[50px] text-center text-muted-foreground">
                     ไม่มีรายการในหมวดนี้
                   </td>
                 </tr>
@@ -326,11 +325,11 @@ function Row({ row }: { row: DayRow }) {
       </td>
       <td className="c num">
         {hhmm(row.inMin)}
-        {lateM > 0 && <span className="diff late">+{lateM}</span>}
+        
       </td>
       <td className="c num">
         {hhmm(row.outMin)}
-        {earlyM > 0 && <span className="diff early">−{earlyM}</span>}
+        
       </td>
       <td className="c num muted whitespace-nowrap">
         {row.holiday
@@ -346,25 +345,12 @@ function Row({ row }: { row: DayRow }) {
           "—"
         )}
       </td>
-      <td className="c num">
-        {row.ot ? (
-          <>
-            <b className="font-semibold">{row.ot.hours} ชม.</b>
-            <span className="sub2">
-              ×{row.ot.rate} · {row.ot.status}
-            </span>
-          </>
-        ) : (
-          <span className="muted">—</span>
-        )}
-      </td>
       <td className="c">
         <span className={`tag ${STATUS[status].cls}`}>
           <i />
           {STATUS[status].label}
         </span>
       </td>
-      <td className="muted">{row.note || "—"}</td>
     </tr>
   );
 }
@@ -404,14 +390,14 @@ function MobileRow({ row }: { row: DayRow }) {
           <dt className="text-[10.5px] text-muted-foreground">เข้างาน</dt>
           <dd className="num mt-0.5 text-[13.5px] font-semibold">
             {hhmm(row.inMin)}
-            {lateM > 0 && <span className="diff late">+{lateM}</span>}
+            
           </dd>
         </div>
         <div>
           <dt className="text-[10.5px] text-muted-foreground">ออกงาน</dt>
           <dd className="num mt-0.5 text-[13.5px] font-semibold">
             {hhmm(row.outMin)}
-            {earlyM > 0 && <span className="diff early">−{earlyM}</span>}
+            
           </dd>
         </div>
         <div>
@@ -422,11 +408,6 @@ function MobileRow({ row }: { row: DayRow }) {
         </div>
       </dl>
 
-      {row.ot && (
-        <p className="mt-2 text-xs text-[var(--info)]">
-          โอที {row.ot.hours} ชม. ×{row.ot.rate} · {row.ot.status}
-        </p>
-      )}
 
       {/* กะปกติไม่ต้องบอกซ้ำทุกวัน — บอกเฉพาะวันที่กะไม่ตรงค่ามาตรฐาน (ลาครึ่งวัน/ลาทั้งวัน) หรือมีหมายเหตุ */}
       {(offShift || row.note) && (

@@ -75,9 +75,14 @@ export function PmInboxPage() {
   /* งานที่วางแผนจบแล้วออกจากกล่องไปเป็นโปรเจค — ลิงก์ที่เจาะมาต้องยังบอกได้ว่าอยู่ที่ไหน */
   const project = filter ? pm.projects.find((p) => isRef(p, filter)) : undefined;
   const term = q.trim().toLowerCase();
+  /* ตัวกรองต่อท้ายช่องค้นหา — ประเภทบริการ และสถานะ (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+  const [svc, setSvc] = useState("");
+  const [stage, setStage] = useState<"" | "new" | "plan">("");
+  const services = [...new Set(board.map((j) => j.service))];
   /* งานรอรับขึ้นก่อน งานที่รับแล้วต่อท้าย — ในแต่ละกลุ่มล่าสุดอยู่บน เพราะเป็นกล่องงานเข้า */
   const rows = board
     .filter((j) => !term || `${j.scope} ${j.cus} ${j.pj} ${j.deal ?? ""} ${j.takenBy ?? ""}`.toLowerCase().includes(term))
+    .filter((j) => (!svc || j.service === svc) && (!stage || j.stage === stage))
     .sort((a, b) => Number(a.stage !== "new") - Number(b.stage !== "new") || b.sentAt.localeCompare(a.sentAt));
   const waitN = rows.filter((j) => j.stage === "new").length;
   const takenN = rows.length - waitN;
@@ -97,11 +102,7 @@ export function PmInboxPage() {
 
   /* แตะแถว/การ์ด: งานที่ตัวเองรับไป → หน้าวางแผน · นอกนั้นเปิดรายละเอียดดูอย่างเดียว */
   function open(j: InboxJob) {
-    if (j.stage !== "new" && j.takenBy && j.takenBy === me) {
-      setNotice("");
-      router.push(planHref(j.pj));
-      return;
-    }
+    /* แตะแถวเปิดรายละเอียดเสมอ ไม่พาไปหน้าวางแผน — วางแผนจากหน้าโปรเจค (ผู้ใช้สั่ง 8 ต.ค. 2569) */
     view(j);
   }
 
@@ -132,26 +133,9 @@ export function PmInboxPage() {
   return (
     <div className="ib-m space-y-4">
       {/* มือถือ: ซ่อนหัวหน้าและตัวนับ — ชื่อหน้าอยู่ที่แถบหัวของ shell แล้ว (ต้นแบบ ib-mobile) */}
-      <div className="bar ib-m-bar">
-        <div>
-          <h1>งานเข้าใหม่</h1>
-          <p>กระดานรับงานของ PM และ GM · ใครรับก่อนได้งาน</p>
-        </div>
-        <div className="tools">
-          <span className="text-[13px] text-muted-foreground">
-            {rows.length ? (
-              <>
-                {filter && "งานที่กรองอยู่ · "}รอรับ <b className="num text-primary">{waitN}</b> · รับแล้ว{" "}
-                <b className="num">{takenN}</b>
-              </>
-            ) : filter ? (
-              "ไม่มีงานในกล่องนี้"
-            ) : (
-              "ไม่มีงานรอรับ"
-            )}
-          </span>
-        </div>
-      </div>
+      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <h1 className="sr-only">งานเข้าใหม่</h1>
+      {/* ไม่มีตัวนับรอรับ/รับแล้ว — สถานะอยู่ในตารางแล้ว (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       <ReadOnlyNote />
 
       {notice && (
@@ -195,7 +179,36 @@ export function PmInboxPage() {
         </div>
       )}
 
-      <SearchBox value={q} onChange={setQ} placeholder="ค้นหางาน ลูกค้า หรือคนรับงาน" />
+      <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap">
+        <div className="min-w-0 max-sm:w-full">
+          <SearchBox value={q} onChange={setQ} placeholder="ค้นหางาน ลูกค้า หรือคนรับงาน" />
+        </div>
+        <select
+          value={svc}
+          onChange={(e) => setSvc(e.target.value)}
+          aria-label="กรองตามประเภทบริการ"
+          style={{ width: "auto" }}
+          className="field-control h-10 cursor-pointer text-[13.5px] max-sm:flex-1"
+        >
+          <option value="">ทุกประเภทบริการ</option>
+          {services.map((v) => (
+            <option key={v} value={v}>
+              {serviceLabel(v)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={stage}
+          onChange={(e) => setStage(e.target.value as "" | "new" | "plan")}
+          aria-label="กรองตามสถานะ"
+          style={{ width: "auto" }}
+          className="field-control h-10 cursor-pointer text-[13.5px] max-sm:flex-1"
+        >
+          <option value="">ทุกสถานะ</option>
+          <option value="new">รอรับงาน</option>
+          <option value="plan">รับแล้ว</option>
+        </select>
+      </div>
 
       {/* มือถือ (ต้นแบบ ib-mobile): การ์ดต่องาน — ไอคอนกล่องงานเข้า | ลูกค้า / ชื่องาน / บริการ
           เส้นประ · แหล่งที่มา + วันที่เข้า ซ้าย ปุ่มตา + ปุ่มรับงานขวา · แตะการ์ดเปิดรายละเอียดดูอย่างเดียว · รับงานเปิดกล่องยืนยัน
@@ -224,7 +237,6 @@ export function PmInboxPage() {
                 </span>
                 <span className="ib-m-cus">{j.cus}</span>
                 <b className="ib-m-name">
-                  {waiting && !j.seen && <i className="ib-m-unread" aria-label="ยังไม่ได้เปิดดู" />}
                   {j.scope}
                 </b>
                 <span className="ib-m-svc">{serviceLabel(j.service)}</span>
@@ -253,7 +265,6 @@ export function PmInboxPage() {
                   ) : (
                     <span className="ib-m-stage">
                       {takenTag(j)}
-                      {mine && <span className="block text-primary">ไปหน้าวางแผน</span>}
                     </span>
                   )}
                 </span>
@@ -298,12 +309,6 @@ export function PmInboxPage() {
                     >
                       <td data-label="รหัสโปรเจค">
                         <span className="num inline-flex items-center gap-2 font-semibold whitespace-nowrap">
-                          {waiting && !j.seen && (
-                            <i
-                              className="size-2 flex-none rounded-full bg-primary"
-                              aria-label="ยังไม่ได้เปิดดู"
-                            />
-                          )}
                           {j.pj}
                         </span>
                       </td>
@@ -345,15 +350,7 @@ export function PmInboxPage() {
                                   รับงาน
                                 </button>
                               )
-                            : mine && (
-                                <Link
-                                  href={planHref(j.pj)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-[12px] font-semibold text-primary hover:underline"
-                                >
-                                  ไปหน้าวางแผน
-                                </Link>
-                              )}
+                            : null}
                         </span>
                       </td>
                     </tr>
@@ -396,9 +393,7 @@ export function PmInboxPage() {
               return;
             }
             setTaking(null);
-            /* รับแล้วพาไปหน้าวางแผนของโปรเจคที่เพิ่งเปิด
-               เพราะจัดคิวงานคือขั้นถัดไปที่ต้องทำแน่ ๆ ไม่ใช่ให้ไปหาเองจากหน้าโปรเจค */
-            router.push(planHref(takeJob.pj));
+            /* รับแล้วอยู่หน้านี้ต่อ งานเข้าไปรอวางแผนในหน้าโปรเจค PM ค่อยเปิดไปวางแผนเองเมื่อพร้อม (ผู้ใช้สั่ง 8 ต.ค. 2569) */
           }}
         />
       )}
@@ -457,7 +452,7 @@ function TakeConfirm({
               <span className="font-semibold text-destructive">เลือกวันเริ่มโครงการก่อน</span>
             ) : !hasPlan ? (
               <>
-                งานนี้ไม่มีโครงเฟสมาให้ เริ่มโครงการ <b>{thaiDate(start)}</b> แล้วสร้างเฟสเองในหน้าวางแผน
+                เริ่มโครงการ <b>{thaiDate(start)}</b>
               </>
             ) : (
               <>
@@ -525,12 +520,7 @@ function DetailSheet({
       ) : job.proposal ? (
         /* หาเอกสารข้อเสนอไม่เจอจริง ๆ — บอกไปตรง ๆ ว่าไม่มี ไม่ใช่โชว์เอกสารเปล่า */
         <Note>{job.proposal.note}</Note>
-      ) : (
-        <Note className="max-md:hidden">
-          งานเดี่ยว รับจ้างเป็นชิ้น ไม่มีข้อเสนอจึงไม่มีเฟสและกรอบเวลา
-          ผู้จัดการโครงการจับคนและกำหนดวันส่งได้เลย ไม่ต้องเปิดเป็นโปรเจค
-        </Note>
-      )}
+      ) : null}
       </div>
     </Sheet>
   );

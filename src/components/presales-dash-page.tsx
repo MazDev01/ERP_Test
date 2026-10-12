@@ -60,7 +60,7 @@ export function PresalesDashPage() {
           <h1>แดชบอร์ด</h1>
           {/* กล่องเดียวรวมทั้ง SA และ BD — คำขอต้องมีคนเห็นเสมอ (ดู psMine) */}
           <p>
-            {ME.full} ({ME.kind}) · ดูแลคำขอทั้ง SA และ BD
+            {ME.full} ({ME.kind})
           </p>
         </div>
       </div>

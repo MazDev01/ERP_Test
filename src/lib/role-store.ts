@@ -26,6 +26,11 @@ export function createRoleStore<T>(
   isSlice: (value: unknown) => value is T,
   /** ปรับข้อมูลเก่าของแต่ละบทบาทให้ทันรูปแบบล่าสุด */
   fixSlice?: (value: T) => T,
+  /**
+   * เติมรายการตั้งต้นที่เพิ่มเข้าชุดทีหลัง (เช่น ตัวอย่างเดือนปัจจุบัน) ให้เครื่องที่เก็บข้อมูลไว้ก่อนแล้ว
+   * ต้องเติมเฉพาะที่ยังไม่มี ห้ามทับหรือลบของที่ผู้ใช้แก้ไว้ — ส่งชุดตั้งต้นของบทบาทนั้นมาให้เทียบ
+   */
+  addMissing?: (have: T, seed: T) => T,
 ) {
   /* บทบาทที่เพิ่มทีหลัง (เช่น ceo, gm) ยังไม่มีส่วนของตัวเองในข้อมูลที่เก็บไว้ก่อน
      จึงตรวจเฉพาะส่วนที่มีอยู่ แล้วค่อยเติมส่วนที่ขาดจากชุดตั้งต้น — ไม่งั้นข้อมูลเดิมทั้งก้อนถูกทิ้ง */
@@ -41,6 +46,7 @@ export function createRoleStore<T>(
     for (const r of ROLES) {
       if (!(r.key in out)) out[r.key] = seed[r.key];
       if (fixSlice) out[r.key] = fixSlice(out[r.key]);
+      if (addMissing && seed[r.key] !== undefined) out[r.key] = addMissing(out[r.key], seed[r.key]);
     }
     return out;
   }

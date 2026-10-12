@@ -87,6 +87,33 @@ const SEED: EmpRequest[] = [
     { date: "2026-08-12", place: "ออฟฟิศ – บุญมีฟาร์ม อ.สันทราย", km: 41, work: "สำรวจอินเทอร์เน็ตหน้างานก่อนติดตั้ง", note: "เติมน้ำมันเอง" },
     { date: "2026-08-29", place: "ออฟฟิศ – อัลฟ่าคอร์ป สาขาเชียงใหม่", km: 12, work: "อบรมผู้ใช้รอบที่ 2", note: "" },
   ] },
+
+  /* ── ตัวอย่างรอบปัจจุบัน ปลาย ก.ย. – ต.ค. 2569 (เจ้าของสั่ง 8 ต.ค. 2569) — เติมเข้าเครื่องเดิมผ่าน addNewSeed ── */
+  /* คิวผู้บริหาร (/ceo/approvals) */
+  { id: "OT-2569-0060", emp: "E03", to: "exec", kind: "ot", date: "2026-10-05", start: "18:00", end: "21:00", hours: 3, holiday: false, note: "แก้บั๊กระบบสต็อกของพูลผลอะไหล่ก่อนส่งมอบ", at: "2026-10-05 21:15", status: "pending" },
+  { id: "OT-2569-0061", emp: "E04", to: "exec", kind: "ot", date: "2026-10-10", start: "09:00", end: "15:00", hours: 5, holiday: true, note: "ติดตั้งเครือข่ายและกล้องวงจรปิดที่บุญมีฟาร์ม ลูกค้าสะดวกวันเสาร์", at: "2026-10-07 10:05", status: "pending" },
+  { id: "OT-2569-0062", emp: "E09", to: "exec", kind: "ot", date: "2026-10-06", start: "18:00", end: "20:30", hours: 2.5, holiday: false, note: "สำรองข้อมูลและอัปเดตเซิร์ฟเวอร์ลูกค้านอกเวลาทำการ", at: "2026-10-06 20:40", status: "pending" },
+  { id: "OT-2569-0063", emp: "E06", to: "exec", kind: "ot", date: "2026-09-29", start: "18:00", end: "20:00", hours: 2, holiday: false, note: "ย้ายระบบอีเมลของอัลฟ่าคอร์ปขึ้นเซิร์ฟเวอร์ใหม่", at: "2026-09-29 20:10", status: "approved", decidedAt: "2026-09-30 09:10" },
+  { id: "OT-2569-0064", emp: "E08", to: "exec", kind: "ot", date: "2026-10-01", start: "18:00", end: "19:30", hours: 1.5, holiday: false, note: "ทดสอบรายงานยอดขายก่อนส่งลูกค้า", at: "2026-10-01 19:40", status: "rejected", reason: "ทดสอบในเวลางานพรุ่งนี้ได้ ลูกค้ายังไม่ต้องใช้", decidedAt: "2026-10-02 08:50" },
+  /* คิวของ GM — ทีมงานที่ยังไม่มีบัญชีเข้าระบบ */
+  { id: "OT-2569-0065", emp: "E07", to: "gm", kind: "ot", date: "2026-10-07", start: "18:00", end: "20:00", hours: 2, holiday: false, note: "ทดสอบแอปจองคิวบนมือถือรอบสุดท้าย", at: "2026-10-07 20:10", status: "pending" },
+  { id: "LV-2569-0050", emp: "E13", to: "gm", kind: "leave", leaveType: "ลาป่วย", from: "2026-10-06", toDate: "2026-10-06", days: 1, span: "full", files: ["ใบรับรองแพทย์.pdf"], note: "ท้องเสีย ไปโรงพยาบาล", at: "2026-10-06 07:50", status: "pending" },
+  { id: "LV-2569-0051", emp: "E02", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-10-12", toDate: "2026-10-12", days: 1, span: "full", files: [], note: "ไปทำเรื่องโอนรถที่ขนส่ง", at: "2026-10-05 16:20", status: "pending" },
+  { id: "LV-2569-0052", emp: "E17", to: "gm", kind: "leave", leaveType: "ลาพักร้อน", from: "2026-10-19", toDate: "2026-10-21", days: 3, span: "full", files: [], note: "กลับบ้านที่น่านช่วงงานบุญ", at: "2026-10-04 11:35", status: "pending" },
+  { id: "LV-2569-0053", emp: "E03", to: "gm", kind: "leave", leaveType: "ลาป่วย", from: "2026-09-30", toDate: "2026-09-30", days: 1, span: "full", files: [], note: "เป็นไข้หวัด", at: "2026-09-30 07:35", status: "approved", decidedAt: "2026-09-30 08:40" },
+  { id: "LV-2569-0054", emp: "E09", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-10-02", toDate: "2026-10-02", days: 0.5, span: "half", period: "am", start: "09:00", end: "12:00", files: [], note: "พาลูกไปฉีดวัคซีน", at: "2026-09-30 17:05", status: "approved", decidedAt: "2026-10-01 09:00" },
+  { id: "LV-2569-0055", emp: "E06", to: "gm", kind: "leave", leaveType: "ลาพักร้อน", from: "2026-10-26", toDate: "2026-10-27", days: 2, span: "full", files: [], note: "พักผ่อน", at: "2026-10-03 10:00", status: "rejected", reason: "ช่วงนั้นมีงานติดตั้งที่บุญมีฟาร์ม ขอเลื่อนเป็นต้นเดือน พ.ย.", decidedAt: "2026-10-03 14:30" },
+  { id: "EX-2569-0027", emp: "E04", to: "gm", kind: "expense", month: "2026-09", plate: "3กก 5521 เชียงใหม่", note: "", at: "2026-10-01 08:45", status: "pending", fuel: [
+    { date: "2026-09-12", place: "ออฟฟิศ – บุญมีฟาร์ม อ.สันทราย", km: 41, work: "สำรวจจุดติดตั้งกล้องวงจรปิด", note: "" },
+    { date: "2026-09-26", place: "ออฟฟิศ – มั่นคงก่อสร้าง ไซต์งาน", km: 76, work: "ติดตั้งอุปกรณ์เครือข่ายหน้างาน", note: "" },
+  ] },
+  { id: "EX-2569-0028", emp: "E09", to: "gm", kind: "expense", month: "2026-09", plate: "4กข 1180 เชียงใหม่", note: "", at: "2026-10-02 09:30", status: "pending", fuel: [
+    { date: "2026-09-17", place: "ออฟฟิศ – สยามพลาสติก อ.เมือง", km: 48, work: "ตรวจเช็กเซิร์ฟเวอร์ประจำเดือน", note: "" },
+  ] },
+  { id: "EX-2569-0029", emp: "E06", to: "gm", kind: "expense", month: "2026-09", plate: "2กท 0391 เชียงใหม่", note: "", at: "2026-09-30 17:20", status: "approved", decidedAt: "2026-10-01 10:15", fuel: [
+    { date: "2026-09-09", place: "ออฟฟิศ – อัลฟ่าคอร์ป สาขาเชียงใหม่", km: 12, work: "ย้ายระบบอีเมลลูกค้า", note: "" },
+    { date: "2026-09-22", place: "ออฟฟิศ – บุญมีฟาร์ม อ.สันทราย", km: 41, work: "ตั้งค่าอินเทอร์เน็ตหน้างาน", note: "" },
+  ] },
 ];
 
 /**

@@ -45,7 +45,44 @@ function readAll(): ByRole {
 
 export function loadRecords(role: Role): PunchRecord[] {
   const list = readAll()[role];
-  return Array.isArray(list) ? list.filter(isPunchRecord) : [];
+  const have = Array.isArray(list) ? list.filter(isPunchRecord) : [];
+  /* ตัวอย่างการตอกบัตรรอบปัจจุบัน — เติมเฉพาะรหัสที่ยังไม่มี ของที่ผู้ใช้ตอกเองไม่ถูกแตะ */
+  const ids = new Set(have.map((r) => r.id));
+  const add = samplePunches(role).filter((r) => !ids.has(r.id));
+  return add.length ? [...add, ...have].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()) : have;
+}
+
+/*
+ * ตัวอย่างการตอกบัตร 28 ก.ย. – 7 ต.ค. 2569 (วันทำงาน) ของทุกบทบาทที่ลงเวลา (เจ้าของสั่ง 8 ต.ค. 2569)
+ * หน้าบันทึกเวลาของฉันและสรุปเวลาทำงานรอบปัจจุบันจะได้มีข้อมูลให้ดูตอนสาธิต
+ * ไม่ใส่วันนี้ ปุ่มตอกบัตรของวันนี้จึงยังเป็นของผู้ใช้ · ข้ามวันที่มีใบลาตัวอย่างที่อนุมัติแล้ว
+ * CEO ไม่ลงเวลา จึงไม่มีตัวอย่าง
+ */
+const SAMPLE_DAYS = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"];
+const SAMPLE_SKIP: Partial<Record<Role, string[]>> = {
+  sales: ["2026-10-02"],
+  staff: ["2026-09-29"],
+  intern: ["2026-09-28"],
+};
+/* ลำดับบทบาทเลื่อนนาทีให้แต่ละคนไม่ตรงกันเป๊ะ — วันที่สามของบางคนมาสายเล็กน้อย */
+const SAMPLE_ROLES: Role[] = ["sales", "ps", "pm", "acc", "hr", "staff", "gm", "intern", "maid"];
+
+function samplePunches(role: Role): PunchRecord[] {
+  const n = SAMPLE_ROLES.indexOf(role);
+  if (n < 0) return [];
+  const pad = (v: number) => String(v).padStart(2, "0");
+  /* บัญชีกับบุคคลเป็นคนเดียวกัน — เวลาเดียวกันทั้งสองบทบาท */
+  const k = role === "hr" ? SAMPLE_ROLES.indexOf("acc") : n;
+  return SAMPLE_DAYS.filter((d) => !(SAMPLE_SKIP[role] ?? []).includes(d)).flatMap((d, i) => {
+    const late = (i + k) % 7 === 3;
+    const inMin = late ? 9 * 60 + 5 + ((k * 3) % 12) : 8 * 60 + 35 + ((i * 7 + k * 5) % 22);
+    const outMin = 18 * 60 + 2 + ((i * 11 + k * 3) % 40);
+    const at = (m: number) => `${d}T${pad(Math.floor(m / 60))}:${pad(m % 60)}:00+07:00`;
+    return [
+      { id: `sample-${role}-${d}-in`, type: "in" as const, at: at(inMin), note: "" },
+      { id: `sample-${role}-${d}-out`, type: "out" as const, at: at(outMin), note: "" },
+    ];
+  });
 }
 
 export function saveRecords(role: Role, records: PunchRecord[]) {

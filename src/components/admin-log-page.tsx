@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useAdminLog, type LogArea } from "@/lib/admin-log";
 import { thaiDate } from "@/lib/format";
 import { AdminHead } from "./admin-ui";
+import { AttHistory } from "./admin-attendance-page";
 import { Pager, SearchBox, usePaged } from "./sales-ui";
 
 const AREAS: LogArea[] = [
@@ -134,6 +135,7 @@ export function AdminLogPage() {
           </div>
         )}
       </section>
+      <AttHistory />
     </div>
   );
 }

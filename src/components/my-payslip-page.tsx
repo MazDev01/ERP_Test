@@ -17,19 +17,23 @@ import { useState } from "react";
 import { baht, thaiDate, thaiMonth } from "@/lib/format";
 import {
   cutOf,
+  dailyRoundRange,
   dailyRateIn,
   extraOf,
   hrCycle,
   hrPos,
+  inRange,
   inPeriod,
   isDaily,
+  isDailyRoundKey,
+  payKeyLabel,
   payOf,
   workedDaysIn,
   type ComSource,
   type CycleLine,
   type Employee,
 } from "@/lib/hr-data";
-import { countDownload, countView, useHr } from "@/lib/hr-store";
+import { countDailyDownload, countDailyView, countDownload, countView, useHr } from "@/lib/hr-store";
 import { ROLE_EMPLOYEE, useComSource, useHrTime } from "@/lib/hr-link";
 import { downloadCsv, toCsv } from "@/lib/report-export";
 import { useRole } from "@/lib/role";
@@ -39,7 +43,18 @@ import { DateField } from "./thai-date-picker";
 import "@/styles/mobile/payslip.css";
 
 /** หนึ่งแถวในรายการ = รอบที่เผยแพร่แล้วหนึ่งรอบ พร้อมบรรทัดของเราในรอบนั้น */
+/** month = คีย์รอบ — รอบเดือน "yyyy-mm" หรือรอบรายช่วงของทดลองงาน "จาก~ถึง" */
 type Row = { month: string; line: CycleLine; day: boolean; at: string };
+
+/** ช่วงวันที่ของรอบ — รอบเดือนตัดตามวันตัดรอบ · รอบรายช่วงคือช่วงที่ฝ่ายบุคคลปิดไว้ */
+function rangeOf(key: string) {
+  return isDailyRoundKey(key) ? dailyRoundRange(key) : hrCycle(key);
+}
+
+/** ชื่อรอบ — "กันยายน 2569" · "6 – 8 ต.ค. 2569" */
+function labelOf(key: string) {
+  return payKeyLabel(key, thaiMonth);
+}
 
 export function MyPayslipPage() {
   const hr = useHr();
@@ -54,11 +69,22 @@ export function MyPayslipPage() {
   /* บทบาทที่ยังไม่ได้ผูกกับทะเบียนพนักงานจะไม่มีสลิป (ดู ROLE_EMPLOYEE) */
   const myId = ROLE_EMPLOYEE[role];
   const me = myId ? hr.emp.find((e) => e.id === myId) : undefined;
+  /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) — ไม่ต้องมีช่องนี้ */
+  const noSs = Boolean(me && isDaily(me));
 
   const rows: Row[] = [];
   if (me && me.type !== "intern") {
     const day = isDaily(me);
-    for (const sp of hr.slips) {
+    /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569) — ยอดอ่านจากที่บันทึกไว้ตอนปิดรอบ */
+    if (day) {
+      for (const r of hr.dailyRounds) {
+        if (!r.published || !inRange(me, r)) continue;
+        const line = r.sum?.lines.find((x) => x.id === me.id);
+        if (!line) continue;
+        rows.push({ month: r.id, line, day, at: r.publishedAt });
+      }
+    }
+    for (const sp of day ? [] : hr.slips) {
       const published = day ? sp.dayPublished : sp.published;
       if (!published || !inPeriod(me, sp.month)) continue;
       const line = lineOf(hr, me, sp.month, day, time, src);
@@ -70,7 +96,7 @@ export function MyPayslipPage() {
         at: day ? sp.dayPublishedAt : sp.publishedAt,
       });
     }
-    rows.sort((a, b) => b.month.localeCompare(a.month));
+    rows.sort((a, b) => rangeOf(b.month).to.localeCompare(rangeOf(a.month).to));
   }
 
   const picked = rows.find((r) => r.month === open);
@@ -84,7 +110,7 @@ export function MyPayslipPage() {
 
   /* รอบที่ทับช่วงวันที่ที่เลือก (รอบ = hrCycle วันตัดรอบเดือนก่อน → วันตัดรอบเดือนนี้) */
   const mobileRows = rows.filter((r) => {
-    const c = hrCycle(r.month);
+    const c = rangeOf(r.month);
     return (!fFrom || c.to >= fFrom) && (!fTo || c.from <= fTo);
   });
 
@@ -102,7 +128,7 @@ export function MyPayslipPage() {
       <div className="m-ps md:hidden">
         {why || rows.length === 0 ? (
           <p className="m-ps-none">
-            {why || "ยังไม่มีสลิปที่เผยแพร่ · ฝ่ายบุคคลจะแจ้งเมื่อรอบเงินเดือนพร้อมให้ดู"}
+            {why || "ยังไม่มีสลิปที่เผยแพร่"}
           </p>
         ) : (
           <>
@@ -134,8 +160,8 @@ export function MyPayslipPage() {
             ) : (
               <div className="m-ps-list">
                 {mobileRows.map((r) => {
-                  const c = hrCycle(r.month);
-                  const mon = thaiMonth(r.month);
+                  const c = rangeOf(r.month);
+                  const mon = labelOf(r.month);
                   return (
                     /* แตะตัวการ์ดไม่เปิดอะไร — ใช้ไอคอนดู/ดาวน์โหลดมุมขวาล่าง (ต้นแบบ myslip-icons) */
                     <article key={r.month} className="m-ps-card">
@@ -148,7 +174,7 @@ export function MyPayslipPage() {
                           </dd>
                         </div>
                         {/* รายการหักสามช่องยังแสดงบนการ์ด — ผู้ใช้กำหนดให้เห็นตั้งแต่หน้ารายการ (24 ก.ย. 2569) */}
-                        <CutRow label="ประกันสังคม" v={r.line.ss} />
+                        {!noSs && <CutRow label="ประกันสังคม" v={r.line.ss} />}
                         <CutRow label="หักมาสาย" v={r.line.late} />
                         <CutRow label="ปรับปรุงอื่น" v={-r.line.adj} />
                         <div className="net">
@@ -197,10 +223,12 @@ export function MyPayslipPage() {
                 <th style={{ width: 190 }}>ช่วงวันที่</th>
                 {/* รายการหักแยกสามช่องตั้งแต่หน้ารายการ ไม่ต้องเปิดสลิปก่อนถึงจะรู้ว่าถูกหักอะไร
                     (ผู้ใช้กำหนด 24 ก.ย. 2569) บนมือถือตารางคลี่เป็นการ์ด ทุกช่องจึงได้บรรทัดของตัวเอง */}
-                <th className="r" style={{ width: 120 }}>
-                  ประกันสังคม
-                  <span className="u"> (บาท)</span>
-                </th>
+                {!noSs && (
+                  <th className="r" style={{ width: 120 }}>
+                    ประกันสังคม
+                    <span className="u"> (บาท)</span>
+                  </th>
+                )}
                 <th className="r" style={{ width: 110 }}>
                   หักมาสาย
                   <span className="u"> (บาท)</span>
@@ -219,13 +247,13 @@ export function MyPayslipPage() {
             <tbody>
               {why || rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
-                    {why || "ยังไม่มีสลิปที่เผยแพร่ · ฝ่ายบุคคลจะแจ้งเมื่อรอบเงินเดือนพร้อมให้ดู"}
+                  <td colSpan={noSs ? 6 : 7} className="py-12 text-center text-muted-foreground">
+                    {why || "ยังไม่มีสลิปที่เผยแพร่"}
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => {
-                  const c = hrCycle(r.month);
+                  const c = rangeOf(r.month);
                   return (
                     <tr
                       key={r.month}
@@ -240,12 +268,12 @@ export function MyPayslipPage() {
                       }}
                     >
                       <td data-label="รอบ">
-                        <b className="text-[13.5px] font-bold">{thaiMonth(r.month)}</b>
+                        <b className="text-[13.5px] font-bold">{labelOf(r.month)}</b>
                       </td>
                       <td data-label="ช่วงวันที่" className="num">
                         {thaiDate(c.from)} – {thaiDate(c.to)}
                       </td>
-                      <Cut label="ประกันสังคม (บาท)" v={r.line.ss} />
+                      {!noSs && <Cut label="ประกันสังคม (บาท)" v={r.line.ss} />}
                       <Cut label="หักมาสาย (บาท)" v={r.line.late} />
                       {/* ปรับปรุงติดลบคือหักเพิ่ม บวกคือคืนกลับ — ส่งยอดที่ถูกหักไปเข้าช่อง */}
                       <Cut label="ปรับปรุงอื่น (บาท)" v={-r.line.adj} />
@@ -274,7 +302,7 @@ export function MyPayslipPage() {
   function openSlip(month: string) {
     setOpen(month);
     /* เปิดดูรอบไหนก็นับครั้งของรอบนั้น — ฝ่ายบุคคลใช้ยืนยันว่าพนักงานได้รับสลิปแล้ว (BR-05) */
-    if (myId) countView(month, myId);
+    if (myId) (isDailyRoundKey(month) ? countDailyView : countView)(month, myId);
   }
 }
 
@@ -363,7 +391,7 @@ function lineOf(
  * จะได้ไม่มีสองที่คิดรายได้/รายการหักคนละแบบ
  */
 function slipParts(row: Row) {
-  const c = hrCycle(row.month);
+  const c = rangeOf(row.month);
   const x = row.line;
   const earn: [string, number][] = [
     [
@@ -387,7 +415,8 @@ function slipParts(row: Row) {
    * รายการปรับปรุงลงเป็นยอดที่ถูกหักไป (-amt) ติดลบคือรายการที่คืนกลับเข้ายอด
    */
   const cuts: [string, number][] = [
-    ["ประกันสังคม", x.ss],
+    /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+    ...(row.day ? [] : [["ประกันสังคม", x.ss] as [string, number]]),
     ["หักมาสาย", x.late],
     ...(x.adjust && x.adjust.length
       ? x.adjust.map((a): [string, number] => [`รายการปรับปรุงอื่น · ${a.why}`, -a.amt || 0])
@@ -401,11 +430,11 @@ function slipParts(row: Row) {
 /** ดาวน์โหลดสลิปหนึ่งรอบเป็น CSV และนับครั้งที่ดาวน์โหลด (BR-05) */
 function downloadSlip(emp: Employee, row: Row) {
   const { c, x, earn, gross, cuts, cut } = slipParts(row);
-  countDownload(row.month, emp.id);
+  (row.day ? countDailyDownload : countDownload)(row.month, emp.id);
   downloadCsv(
     `สลิปเงินเดือน-${row.month}-${emp.id}.csv`,
     toCsv([
-      ["สลิปเงินเดือน", thaiMonth(row.month)],
+      ["สลิปเงินเดือน", labelOf(row.month)],
       ["ชื่อ", emp.name],
       ["รหัสพนักงาน", emp.id],
       ["ตำแหน่ง", hrPos(emp.pos).label],
@@ -443,7 +472,7 @@ function SlipDialog({
 
   return (
     <Sheet
-      title={`สลิปเงินเดือน ${thaiMonth(row.month)}`}
+      title={`สลิปเงินเดือน ${labelOf(row.month)}`}
       onClose={onClose}
       className="m-ps-dlg"
       footer={
@@ -467,7 +496,7 @@ function SlipDialog({
       <Sect title="ข้อมูลพนักงาน" className="max-md:hidden md:mt-0">
         <Row2 k="ชื่อ" v={emp.name} />
         <Row2 k="ตำแหน่ง" v={hrPos(emp.pos).label} />
-        <Row2 k="รอบ" v={thaiMonth(row.month)} />
+        <Row2 k="รอบ" v={labelOf(row.month)} />
         <Row2 k="ช่วงวันที่" v={`${thaiDate(c.from)} – ${thaiDate(c.to)}`} />
       </Sect>
 
@@ -497,10 +526,6 @@ function SlipDialog({
       <Sect title="ยอดสุทธิ" className="max-md:hidden">
         <Row2 k="รับสุทธิ" v={`${baht(x.net)} บาท`} strong />
       </Sect>
-
-      <p className="mt-4 text-[12px] leading-relaxed text-muted-foreground max-md:hidden">
-        ตัวเลขชุดเดียวกับที่ฝ่ายบุคคลปิดรอบไว้ ถ้าเห็นว่าไม่ตรงให้แจ้งฝ่ายบุคคลก่อนสิ้นรอบถัดไป
-      </p>
       </div>
     </Sheet>
   );

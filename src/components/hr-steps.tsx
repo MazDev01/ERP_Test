@@ -3,7 +3,7 @@
 /*
  * แถบขั้นตอนของรอบเงินเดือน (ตามต้นแบบ dose-erp-maz/hr-payroll.html — .steps)
  *
- * สี่หน้านี้เดินต่อกันเป็นสาย ตรวจเวลา → คำนวณเงินเดือน → ออกสลิป → ประวัติรอบ
+ * สี่หน้านี้เดินต่อกันเป็นสาย ตรวจเวลา → คำนวณเงินเดือน → ออกสลิป → ประวัติรอบจ่าย
  * เมนูข้างจึงมีรายการเดียวคือ "รอบเงินเดือน" แล้วข้ามขั้นด้วยแถบนี้
  * เดือนที่เลือกส่งต่อกันทาง ?m= จะได้ไม่ต้องเลือกเดือนใหม่ทุกครั้งที่ข้ามขั้น
  * กลุ่มที่ดูอยู่ส่งต่อกันทาง ?g=month|daily — คือเมนูย่อย "พนักงาน" | "ทดลองงาน" ของ "รอบเงินเดือน"
@@ -20,30 +20,42 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { thaiMonth } from "@/lib/format";
-import { hrCycle } from "@/lib/hr-data";
+import { hrCycle, type Cycle } from "@/lib/hr-data";
 import { CalendarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "./icons";
+import { DateField } from "./thai-date-picker";
 
 const STEPS = [
-  { href: "/hr/timesheet", label: "ตรวจเวลาทำงาน" },
+  { href: "/hr/timesheet", label: "สรุปเวลาทำงาน" },
   { href: "/hr/payroll", label: "คำนวณเงินเดือน" },
   { href: "/hr/payslip", label: "ออกสลิปเงินเดือน" },
-  { href: "/hr/cycles", label: "ประวัติรอบ" },
+  /* ชื่อขั้นเต็ม "ประวัติรอบจ่าย" (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  { href: "/hr/cycles", label: "ประวัติรอบจ่าย" },
 ];
 
 /** กลุ่มที่เปิดอยู่ — ค่าของ ?g= (ต้นแบบเดิมใช้ #month / #daily เฉพาะมือถือ) */
 export type PayKey = "month" | "daily";
 
-/** ที่อยู่ของขั้นในรอบเงินเดือน พร้อมกลุ่มและเดือน — ลิงก์ข้ามขั้นทุกอันสร้างจากตรงนี้ กลุ่มจะได้ไม่หลุด */
-export function payHref(path: string, group: PayKey = "month", month?: string | null) {
+/**
+ * ที่อยู่ของขั้นในรอบเงินเดือน พร้อมกลุ่มและเดือน — ลิงก์ข้ามขั้นทุกอันสร้างจากตรงนี้ กลุ่มจะได้ไม่หลุด
+ * กลุ่มทดลองงานส่งช่วงวันของรอบจ่ายรายวันทาง ?r=จาก~ถึง แทน ?m= (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ */
+export function payHref(path: string, group: PayKey = "month", month?: string | null, range?: Cycle | null) {
+  if (group === "daily" && range) return `${path}?g=daily&r=${range.from}~${range.to}`;
   return `${path}?g=${group}${month ? `&m=${month}` : ""}`;
 }
 
+/**
+ * ขั้นตอนบนมือถือ — ชิปเลื่อนข้างได้ (hr-pay.css .hp-steps) จอกว้างใช้ HrStepTabs ที่หัวแผงตารางแทน
+ */
 export function HrSteps({
   month,
+  range,
   group,
   className = "",
 }: {
   month?: string;
+  /** ช่วงวันของรอบจ่ายรายวัน (กลุ่มทดลองงาน) */
+  range?: Cycle | null;
   /** กลุ่มที่เปิดอยู่ ต่อท้ายลิงก์เป็น ?g= ข้ามขั้นแล้วยังอยู่กลุ่มเดิม */
   group: PayKey;
   className?: string;
@@ -52,7 +64,6 @@ export function HrSteps({
   return (
     <nav
       aria-label="ขั้นตอนของรอบเงินเดือน"
-      /* มือถือ: ชิปเลื่อนข้างได้ (hr-pay.css .hp-steps) */
       className={`hp-steps flex w-fit max-w-full overflow-x-auto rounded-[12px] border border-border bg-muted/50 ${className}`}
     >
       {STEPS.map((s) => {
@@ -60,7 +71,7 @@ export function HrSteps({
         return (
           <Link
             key={s.href}
-            href={payHref(s.href, group, month)}
+            href={payHref(s.href, group, month, range)}
             aria-current={on ? "page" : undefined}
             className={`flex h-11 flex-none items-center px-4 text-[14px] font-semibold whitespace-nowrap transition-colors sm:px-6 ${
               on ? "on bg-card text-primary" : "text-muted-foreground hover:text-primary"
@@ -71,6 +82,89 @@ export function HrSteps({
         );
       })}
     </nav>
+  );
+}
+
+/**
+ * ขั้นตอนเป็นแท็บขีดเส้นใต้ที่หัวแผงตาราง แบบเดียวกับแท็บหน้าตั้งค่า (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * วางเป็นลูกตัวแรกของ .strip ใน section.panel · มือถือซ่อน (.hp-page .strip .tabs) ใช้ HrSteps แทน
+ */
+export function HrStepTabs({
+  month,
+  range,
+  group,
+}: {
+  month?: string;
+  range?: Cycle | null;
+  group: PayKey;
+}) {
+  const here = usePathname();
+  return (
+    <nav className="tabs hp-tabs" aria-label="ขั้นตอนของรอบเงินเดือน">
+      {STEPS.map((s) => {
+        const on = here === s.href;
+        return (
+          <Link
+            key={s.href}
+            href={payHref(s.href, group, month, range)}
+            aria-current={on ? "page" : undefined}
+            className={on ? "on" : ""}
+          >
+            {s.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * ช่วงวันที่ส่งมาทาง ?r=จาก~ถึง (กลุ่มทดลองงาน) — รูปแบบไม่ถูกคืน null
+ * หน้าที่เรียกต้องมี Suspense คร่อมที่ page.tsx เพราะ useSearchParams
+ */
+export function useUrlRange(): Cycle | null {
+  const r = useSearchParams().get("r") ?? "";
+  const m = /^(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})$/.exec(r);
+  if (!m) return null;
+  return m[1] <= m[2] ? { from: m[1], to: m[2] } : { from: m[2], to: m[1] };
+}
+
+/**
+ * ตัวเลือกช่วงวันของรอบจ่ายรายวัน (เริ่มต้น – สิ้นสุด) (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * วันเดียวก็ได้ หลายวันก็ได้ · เลือกกลับด้านสลับให้เอง · max = วันสุดท้ายที่เลือกได้ (ปกติคือวันนี้)
+ */
+export function DayRangePicker({
+  value,
+  max,
+  onChange,
+}: {
+  value: Cycle;
+  max?: string;
+  onChange: (c: Cycle) => void;
+}) {
+  const set = (from: string, to: string) => onChange(from > to ? { from: to, to: from } : { from, to });
+  return (
+    <div className="hp-range flex flex-wrap items-center gap-2">
+      <span className="text-[12.5px] font-semibold text-muted-foreground">เริ่มต้น</span>
+      <DateField
+        variant="chip"
+        label="วันที่เริ่มต้นของรอบจ่าย"
+        value={value.from}
+        max={max}
+        onChange={(d) => d && set(d, value.to)}
+      />
+      <span aria-hidden className="text-muted-foreground">
+        –
+      </span>
+      <span className="text-[12.5px] font-semibold text-muted-foreground">สิ้นสุด</span>
+      <DateField
+        variant="chip"
+        label="วันที่สิ้นสุดของรอบจ่าย"
+        value={value.to}
+        max={max}
+        onChange={(d) => d && set(value.from, d)}
+      />
+    </div>
   );
 }
 
@@ -128,7 +222,7 @@ export function PayTiles({ onOpen }: { onOpen: (k: PayKey) => void }) {
   return (
     <div className="hp-tiles" role="list">
       <button type="button" role="listitem" className="hp-tile" onClick={() => onOpen("month")}>
-        <b>พนักงาน</b>
+        <b>พนักงานทั่วไป</b>
       </button>
       <button type="button" role="listitem" className="hp-tile" onClick={() => onOpen("daily")}>
         <b>ทดลองงาน</b>
@@ -281,9 +375,6 @@ export function PayCalendar({
             <ChevronRightIcon className="size-4" strokeWidth={2.4} />
           </button>
         </div>
-        <p className="hp-cal-hint">
-          {mode === "cycle" ? "แตะวันใดก็ได้ในรอบ (26 ถึง 25 ของเดือนถัดไป)" : "แตะวันใดก็ได้ในเดือนที่ต้องการ"}
-        </p>
         <div className="hp-cal-wk" aria-hidden>
           {WEEK.map((w) => (
             <span key={w}>{w}</span>
@@ -432,5 +523,70 @@ export function PayIconBtn({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * ตัวกรองเดือนแบบ ‹ เดือน › ชุดเดียวทั้งสามขั้นของรอบเงินเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * ไม่มีป้ายเหนือกรอบ · เลื่อนได้เฉพาะเดือนที่มีรอบในระบบ เดือนที่ยังไม่มีข้อมูลกดไม่ไป
+ * months เรียงจากเก่าไปใหม่
+ */
+export function MonthStepper({
+  months,
+  value,
+  onChange,
+}: {
+  months: string[];
+  value: string;
+  onChange: (m: string) => void;
+}) {
+  const i = months.indexOf(value);
+  return (
+    <div className="mo glass-thin">
+      <button type="button" aria-label="เดือนก่อนหน้า" disabled={i <= 0} onClick={() => i > 0 && onChange(months[i - 1])}>
+        <ChevronLeftIcon className="size-[15px]" strokeWidth={2.4} />
+      </button>
+      <span>{thaiMonth(value)}</span>
+      <button
+        type="button"
+        aria-label="เดือนถัดไป"
+        disabled={i < 0 || i >= months.length - 1}
+        onClick={() => i >= 0 && i < months.length - 1 && onChange(months[i + 1])}
+      >
+        <ChevronRightIcon className="size-[15px]" strokeWidth={2.4} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * ตัวกรองปีแบบ ‹ ปี › ของหน้าประวัติรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569) — หน้าตาเดียวกับ MonthStepper
+ * years เป็นปี ค.ศ. เรียงจากเก่าไปใหม่ แสดงเป็นปี พ.ศ.
+ */
+export function YearStepper({
+  years,
+  value,
+  onChange,
+}: {
+  years: number[];
+  value: number;
+  onChange: (y: number) => void;
+}) {
+  const i = years.indexOf(value);
+  return (
+    <div className="mo glass-thin">
+      <button type="button" aria-label="ปีก่อนหน้า" disabled={i <= 0} onClick={() => i > 0 && onChange(years[i - 1])}>
+        <ChevronLeftIcon className="size-[15px]" strokeWidth={2.4} />
+      </button>
+      <span>ปี {value + 543}</span>
+      <button
+        type="button"
+        aria-label="ปีถัดไป"
+        disabled={i < 0 || i >= years.length - 1}
+        onClick={() => i >= 0 && i < years.length - 1 && onChange(years[i + 1])}
+      >
+        <ChevronRightIcon className="size-[15px]" strokeWidth={2.4} />
+      </button>
+    </div>
   );
 }

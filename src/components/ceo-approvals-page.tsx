@@ -23,7 +23,7 @@ import { useMemo, useState } from "react";
 import { claimTotal } from "@/lib/expense-data";
 import { useAllClaims } from "@/lib/expense-store";
 import { baht, bkkStamp, thaiDate, thaiMonth, thaiStamp } from "@/lib/format";
-import { GROUP_LABEL, ROLE_EMPLOYEE, empOf, hrPos, type PayGroup } from "@/lib/hr-data";
+import { GROUP_LABEL, ROLE_EMPLOYEE, empOf, hrPos, payKeyLabel, type PayGroup } from "@/lib/hr-data";
 import { useEmpRequests } from "@/lib/emp-requests";
 import { decidePayroll, useHr } from "@/lib/hr-store";
 import { usePayrollSumFn, usePayrollVoidWatch } from "@/lib/hr-link";
@@ -160,7 +160,8 @@ export function useCeoRequests(): Item[] {
       }
       if (kind === "expense") {
         for (const v of claims[from]) {
-          if (v.status === "ร่าง") continue;
+          /* ใบที่ผู้ยื่นยกเลิกเองไม่เข้าคิวอนุมัติ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+          if (v.status === "ร่าง" || v.status === "ยกเลิก") continue;
           const total = claimTotal(v);
           out.push({
             kind,
@@ -366,10 +367,11 @@ function PayrollStrip() {
           <div className="flex flex-wrap items-center gap-3.5">
             <div className="min-w-0 flex-1 sm:min-w-[240px]">
               <b className="block text-[14px] font-semibold">
-                รอบ {thaiMonth(month)} · {GROUP_LABEL[group]}
+                รอบ {payKeyLabel(month, thaiMonth)} · {GROUP_LABEL[group]}
               </b>
               <p className="mt-0.5 text-[13px]">
-                {sum.n} คน · ยอดจ่ายสุทธิ {baht(sum.net)} บาท · นำส่งประกันสังคม {baht(sum.ss * 2)} บาท
+                {sum.n} คน · ยอดจ่ายสุทธิ {baht(sum.net)} บาท
+                {sum.ss > 0 && ` · นำส่งประกันสังคม ${baht(sum.ss * 2)} บาท`}
               </p>
               {/* ตัวเลขนี้คิดเมื่อไร ต้องอ่านออกจากหน้าจอ ไม่ใช่เดาว่าเป็นของวันนี้ */}
               <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -484,12 +486,12 @@ function PayrollStrip() {
           <ConfirmDialog
             open
             title="อนุมัติยอดเงินเดือน"
-            description={`รอบ ${thaiMonth(w.month)} · ${GROUP_LABEL[w.group]} · ${w.sum.n} คน`}
+            description={`รอบ ${payKeyLabel(w.month, thaiMonth)} · ${GROUP_LABEL[w.group]} · ${w.sum.n} คน`}
             detail={
               <>
                 <b className="num block text-[17px] font-bold">{baht(w.sum.net)} บาท</b>
                 <span className="block text-[12.5px] text-muted-foreground">
-                  ยอดจ่ายสุทธิ · นำส่งประกันสังคม {baht(w.sum.ss * 2)} บาท
+                  ยอดจ่ายสุทธิ{w.sum.ss > 0 && ` · นำส่งประกันสังคม ${baht(w.sum.ss * 2)} บาท`}
                 </span>
                 <span className="mt-1 block text-[12.5px] text-muted-foreground">
                   อนุมัติแล้วฝ่ายบุคคลปิดรอบและจ่ายตามยอดนี้

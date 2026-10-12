@@ -82,7 +82,7 @@ export function IssuerAddDialog({ onClose, onAdded }: { onClose: () => void; onA
       }
     >
       <div className="grid gap-x-4 sm:grid-cols-[120px_minmax(0,1fr)]">
-        <Field label="รหัส" required hint="ใช้เป็นตัวนำหน้าเลขใบเสนอราคาด้วย">
+        <Field label="รหัส" required>
           <input
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
@@ -129,9 +129,6 @@ export function IssuerAddDialog({ onClose, onAdded }: { onClose: () => void; onA
           {problem}
         </p>
       )}
-      <p className="mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        ผู้ดูแลระบบแก้รายละเอียดอื่น (โทร อีเมล เอกสารแนบ) ได้ที่หน้า “ข้อมูลบริษัท”
-      </p>
     </Sheet>
   );
 }

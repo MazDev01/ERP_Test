@@ -154,7 +154,6 @@ export function AdminHolidaysPage() {
       <section className="glass overflow-hidden rounded-[18px]">
         <div className="border-b border-border px-4 py-3.5 sm:px-5">
           <h2 className="text-[14.5px] font-bold">ปฏิทินปี พ.ศ. {ly + 543}</h2>
-          <p className="mt-0.5 text-[12.5px] text-muted-foreground">กดวันที่เพื่อเพิ่มหรือแก้ไขวันหยุด</p>
         </div>
 
         <div className="grid gap-3.5 px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3 xl:grid-cols-4">
@@ -242,7 +241,7 @@ export function AdminHolidaysPage() {
 
         {yearList.length === 0 ? (
           <p className="py-8 text-center text-[13px] text-muted-foreground">
-            ปี พ.ศ. {ly + 543} ยังไม่มีวันหยุด กดเพิ่มวันหยุด หรือคัดลอกจากปีก่อน
+            ปี พ.ศ. {ly + 543} ยังไม่มีวันหยุด
           </p>
         ) : (
           <div className="grid gap-x-6 px-4 py-2 sm:px-5 lg:grid-cols-2 xl:grid-cols-3">

@@ -15,7 +15,7 @@ import { AdminOptionsPage } from "./admin-options-page";
 import { AdminPositionsPage } from "./admin-positions-page";
 import { AdminLeavePage } from "./admin-leave-page";
 import { AdminHolidaysPage } from "./admin-holidays-page";
-import { AdminAttendancePage } from "./admin-attendance-page";
+import { AdminAttendancePage, PayAndLate } from "./admin-attendance-page";
 import { AdminRatesPage } from "./admin-rates-page";
 import { AdminCompanyPage } from "./admin-company-page";
 
@@ -27,8 +27,6 @@ function Section({ sec }: { sec: SecKey }) {
       return <AdminOptionsPage />;
     case "positions":
       return <AdminPositionsPage />;
-    case "services":
-      return <AdminOptionsPage only="services" />;
     case "leave":
       return <AdminLeavePage />;
     case "holidays":
@@ -36,9 +34,17 @@ function Section({ sec }: { sec: SecKey }) {
     case "attendance":
       return <AdminAttendancePage />;
     case "payroll":
-      return <AdminRatesPage />;
+      /* รอบเงินเดือน เริ่มนับโอที การหักมาสาย อยู่ท้ายหน้านี้ — ย้ายมาจากเวลาทำงานและจุดลงเวลา (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+      return (
+        <div className="space-y-4">
+          <AdminRatesPage />
+          <PayAndLate />
+        </div>
+      );
     case "wht":
-      return <AdminOptionsPage only="whtTypes" />;
+      /* เมนู "ภาษี" — อัตรา VAT/หัก ณ ที่จ่าย ย้ายมาจากการคำนวณเงินเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+      /* ไม่มีตารางประเภทเงินได้และตัวอย่างการหัก (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+      return <AdminRatesPage taxOnly />;
     case "issuer":
       return <AdminCompanyPage />;
   }

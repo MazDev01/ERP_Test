@@ -30,6 +30,16 @@
   .exm-chip.pending { background: #fdedd6; color: #94500a; }
   .exm-chip.approved { background: #ddf2e6; color: #0f7049; }
   .exm-chip.rejected { background: #fce3e7; color: #b0101f; }
+  /* ใบที่ผู้ยื่นยกเลิกเอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  .exm-chip.cancelled { background: #efebec; color: #5e5255; }
+  /* แถบกรองสถานะเหนือรายการใบเบิก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  .exm-filter { display: flex; gap: 6px; overflow-x: auto; margin: 2px 0 12px; padding-bottom: 2px; }
+  .exm-filter button {
+    flex: none; border: 0; border-radius: 999px; padding: 6px 12px;
+    background: #fff; color: #5e5255; font: inherit; font-size: 12.5px; font-weight: 600;
+  }
+  .exm-filter button.on { background: #2a1f22; color: #fff; }
+  .exm-filter b { margin-left: 4px; font-weight: 700; }
   .exm-empty { margin: 30px 0; text-align: center; color: #9a8e91; font-size: 14px; }
 
   .exm-fab {

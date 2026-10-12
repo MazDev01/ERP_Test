@@ -63,12 +63,11 @@ export type SubItem = {
 export const SETTINGS_SECTIONS = [
   { key: "master", label: "ข้อมูลหลัก", group: "ข้อมูลองค์กร" },
   { key: "positions", label: "ตำแหน่งและสายอนุมัติ", group: "ข้อมูลองค์กร" },
-  { key: "services", label: "บริการ", group: "ข้อมูลองค์กร" },
   { key: "leave", label: "ประเภทการลา", group: "การลาและเวลา" },
   { key: "holidays", label: "วันหยุดบริษัท", group: "การลาและเวลา" },
   { key: "attendance", label: "เวลาทำงานและจุดลงเวลา", group: "การลาและเวลา" },
   { key: "payroll", label: "การคำนวณเงินเดือน", group: "เงินและเอกสาร" },
-  { key: "wht", label: "หัก ณ ที่จ่าย", group: "เงินและเอกสาร" },
+  { key: "wht", label: "ภาษี", group: "เงินและเอกสาร" },
   { key: "issuer", label: "ข้อมูลผู้ออกเอกสาร", group: "เงินและเอกสาร" },
 ] as const;
 export type SettingsKey = (typeof SETTINGS_SECTIONS)[number]["key"];
@@ -90,7 +89,6 @@ const SETTINGS_SUB: SubItem[] = [
   /* บทบาทและสิทธิ์ย้ายไปเป็นแท็บใน "ตำแหน่งและสายอนุมัติ" แล้ว (?s=positions&t= · ผู้ใช้สั่ง 5 ต.ค. 2569) */
   { label: "เลขที่เอกสาร", href: "/admin/doc-numbers", caption: "ระบบ" },
   { label: "ประวัติการตั้งค่า", href: "/admin/log" },
-  { label: "ข้อมูลตัวอย่าง", href: "/admin/data" },
 ];
 
 /*
@@ -101,7 +99,8 @@ const SETTINGS_SUB: SubItem[] = [
 const PAY_STEPS = ["/hr/timesheet", "/hr/payroll", "/hr/payslip", "/hr/cycles"];
 const PAY_SUB: SubItem[] = [
   {
-    label: "พนักงาน",
+    /* "พนักงานทั่วไป" ไม่ใช่ "พนักงาน" — ชื่อซ้ำกับเมนูข้อมูลพนักงาน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+    label: "พนักงานทั่วไป",
     href: "/hr/timesheet?g=month",
     on: (p, q) => PAY_STEPS.includes(p) && q.get("g") !== "daily",
   },
@@ -188,7 +187,6 @@ const PM: NavItem[] = [
   { group: "โปรเจค", label: "งานเข้าใหม่", icon: "inbox", href: "/pm/inbox" },
   { group: "โปรเจค", label: "โปรเจค", icon: "project", href: "/pm/projects" },
   /* งานที่ทีมส่งกลับมาให้ตรวจ — คู่กับหน้า "งานที่ได้รับ" ของทีมงาน */
-  { group: "โปรเจค", label: "งานรอตรวจ", icon: "tasks", href: "/pm/reviews" },
   /* ปฏิทินนัดหมายของ PM — คนละเรื่องกับงานย่อยในโปรเจค */
   { group: "โปรเจค", label: "ตารางงาน", icon: "leave", href: "/pm/schedule" },
   /* Proposal · PM Site Map กำหนดให้ PM มีเมนูนี้ด้วย (เดิมมีแต่ GM) */
@@ -208,8 +206,10 @@ const STAFF: NavItem[] = [
 
 const ACC: NavItem[] = [
   { group: "บัญชี", label: "แดชบอร์ด", icon: "accboard", href: "/acc/dashboard" },
+  /* ใบเสนอราคาของลูกค้าจริง ต้นแบบ acc-quotations.html (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  { group: "บัญชี", label: "ใบเสนอราคา", icon: "quotation", href: "/acc/quotations" },
   { group: "บัญชี", label: "วางบิล", icon: "billing", href: "/acc/billing" },
-  { group: "บัญชี", label: "ใบเสร็จรับเงิน", icon: "receipt", href: "/acc/receipts" },
+  /* ใบเสร็จรวมเข้าหน้าวางบิลแล้ว ไม่มีเมนูแยก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   { group: "บัญชี", label: "หัก ณ ที่จ่าย", icon: "tax", href: "/acc/wht" },
 ];
 
@@ -219,7 +219,6 @@ const HR: NavItem[] = [
   /* ต้นแบบมีรายการเดียวคือ "รอบเงินเดือน" แล้วข้ามขั้นด้วยแถบขั้นตอนในหน้า (dose-erp-maz/hr-*.html)
      มีเมนูย่อย "พนักงาน" | "ทดลองงาน" แยกกลุ่มการจ่าย (PAY_SUB · ผู้ใช้สั่ง 5 ต.ค. 2569) */
   { group: "ฝ่ายบุคคล", label: "รอบเงินเดือน", icon: "clock", href: "/hr/timesheet", sub: PAY_SUB },
-  { group: "ฝ่ายบุคคล", label: "รายงาน", icon: "chart", href: "/hr/report" },
   { group: "ฝ่ายบุคคล", label: "จัดการบัญชีผู้ใช้", icon: "user", href: "/hr/accounts" },
 
   /*
@@ -253,7 +252,6 @@ const GM: NavItem[] = [
   { group: "ผู้จัดการทั่วไป", label: "แดชบอร์ด", icon: "chart", href: "/gm/dashboard" },
   { group: "ผู้จัดการทั่วไป", label: "งานเข้าใหม่", icon: "inbox", href: "/pm/inbox" },
   { group: "ผู้จัดการทั่วไป", label: "โปรเจค", icon: "project", href: "/pm/projects" },
-  { group: "ผู้จัดการทั่วไป", label: "งานรอตรวจ", icon: "tasks", href: "/pm/reviews" },
   { group: "ผู้จัดการทั่วไป", label: "ตารางงาน", icon: "leave", href: "/gm/calendar" },
   { group: "ผู้จัดการทั่วไป", label: "โฆษณาและรายงาน", icon: "ads", href: "/pm/ads" },
 ];
@@ -337,7 +335,20 @@ export function useMenuAccess() {
 
 /** เมนูที่ผู้ดูแลระบบเปิด/ปิดได้ของบทบาทนี้ — ไม่รวมรายการรออนุมัติ เพราะขึ้นกับสายอนุมัติ */
 export function configurableItems(role: Role): NavItem[] {
-  return NO_MINE.includes(role) ? BY_ROLE[role].work : [...BY_ROLE[role].work, ...MINE];
+  /* กลุ่ม "ของฉัน" ไม่ผูกกับบทบาท — ขึ้นตามประเภทพนักงาน (mineItems) จึงเปิด/ปิดที่นี่ไม่ได้ (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+  return BY_ROLE[role].work.filter((i) => i.group !== "ของฉัน");
+}
+
+/**
+ * เมนู "ของฉัน" ตามประเภทพนักงานของคนที่ล็อกอิน ไม่ใช่ตามบทบาท (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ *   full   — พนักงานประจำ/ทดลองงาน: เวลาทำงาน · ลา · โอที · เบิกค่าใช้จ่าย · สลิป
+ *   intern — ฝึกงาน: ลงเวลา · ลา (ไม่มีค่าจ้าง)
+ *   maid   — แม่บ้าน: ไม่มีโอที (ผู้ใช้สั่ง 2 ต.ค. 2569)
+ *   none   — ผู้บริหาร
+ */
+export type MineKind = "full" | "intern" | "maid" | "none";
+export function mineItems(kind: MineKind): NavItem[] {
+  return kind === "full" ? MINE : kind === "intern" ? INTERN : kind === "maid" ? MAID : [];
 }
 
 export function setMenuOpen(role: Role, href: string, open: boolean) {
@@ -369,14 +380,18 @@ export function navItems(
   access: MenuAccess = accessStore.get(),
   route?: ApprovalRoute,
 ): NavItem[] {
-  const hidden = new Set(access[role] ?? []);
+  /* หน้าตั้งค่า "เมนูที่ใช้ได้" เอาออกแล้ว (ผู้ใช้สั่ง 6 ต.ค. 2569) — เมนูกำหนดจากงานที่รับผิดชอบของบัญชี
+     ค่าที่เคยปิดค้างในเครื่องไม่มีที่ให้เปิดกลับ จึงไม่อ่านแล้ว */
+  void access;
+  const hidden = new Set<string>();
   const { work: all, group, approvalsAfter } = BY_ROLE[role];
   /* ตำแหน่งที่แทรก "รายการรออนุมัติ" — นับจากเมนูเต็ม เมนูที่ถูกปิดไม่ทำให้ตำแหน่งเลื่อน */
   const at = approvalsAfter ? all.findIndex((i) => i.href === approvalsAfter) + 1 : all.length;
-  const shown = (i: NavItem) => !hidden.has(i.href);
+  /* "ของฉัน" ปิดจากหน้าตั้งค่าไม่ได้แล้ว — ค่าที่เคยปิดค้างไว้ไม่มีผล */
+  const shown = (i: NavItem) => i.group === "ของฉัน" || !hidden.has(i.href);
   const approves = role !== "ceo" && approvesFor(role, route).length > 0;
   const approvals: NavItem[] = approves ? [{ ...APPROVALS_ITEM, group }] : [];
-  const mine = NO_MINE.includes(role) ? [] : MINE.filter(shown);
+  const mine = NO_MINE.includes(role) ? [] : MINE;
   return [...all.slice(0, at || all.length).filter(shown), ...approvals, ...all.slice(at || all.length).filter(shown), ...mine];
 }
 
@@ -388,11 +403,14 @@ export function navItemsOf(
   roles: Role[],
   access: MenuAccess = accessStore.get(),
   route?: ApprovalRoute,
+  /** เมนู "ของฉัน" ตามประเภทพนักงาน (mineItems) — ไม่ส่ง = ตามบทบาทแบบเดิม */
+  mine?: NavItem[],
 ): NavItem[] {
   const seen = new Set<string>();
-  return roles
-    .flatMap((r) => navItems(r, access, route))
-    .filter((i) => (seen.has(i.href) ? false : seen.add(i.href)));
+  const work = roles.flatMap((r) => navItems(r, access, route));
+  return (mine ? [...work.filter((i) => i.group !== "ของฉัน"), ...mine] : work).filter((i) =>
+    seen.has(i.href) ? false : seen.add(i.href),
+  );
 }
 
 /** กลุ่มเมนูของทุกบทบาทที่ควบอยู่ — "ของฉัน" มีชุดเดียวและอยู่ท้ายสุดเสมอ */
@@ -452,8 +470,8 @@ const BOTTOM_HREFS: Record<Role, string[]> = {
   sales: ["/", "/leads", "/quotations", "/leave"],
   ps: ["/", "/presales-work", "/my-tasks", "/presales-schedule"],
   pm: ["/", "/pm/dashboard", "/pm/inbox", "/pm/projects"],
-  acc: ["/", "/acc/dashboard", "/acc/billing", "/acc/receipts"],
-  hr: ["/", "/hr/employees", "/hr/timesheet", "/hr/report"],
+  acc: ["/", "/acc/dashboard", "/acc/billing", "/acc/quotations"],
+  hr: ["/", "/hr/employees", "/hr/timesheet", "/approvals"],
   staff: ["/", "/my-tasks", "/my-schedule", "/leave"],
   gm: ["/", "/gm/dashboard", "/pm/inbox", "/approvals"],
   ceo: ["/ceo/home", "/ceo/dashboard", "/ceo/approvals"],
@@ -578,7 +596,13 @@ function matchIn(items: NavItem[], pathname: string) {
  * /admin/roles รวมเข้า /admin/settings?s=positions แล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569)
  * ใครเปิดตั้งค่าระบบได้ (รวมฝ่ายบุคคล) ก็เปิดลิงก์เก่าได้ แล้วถูกพาต่อไปแท็บที่ตรงกัน
  */
-const MOVED: Record<string, string> = { "/admin/roles": "/admin/settings" };
+const MOVED: Record<string, string> = { "/admin/roles": "/admin/settings", "/acc/receipts": "/acc/billing" };
+
+/* หน้าเอกสารใบเสร็จ /acc/receipts/<เลขที่> ถือสิทธิ์และชื่อหน้าตามเมนูวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function moved(pathname: string) {
+  if (pathname.startsWith("/acc/receipts/")) return "/acc/billing/receipt/" + pathname.slice("/acc/receipts/".length);
+  return MOVED[pathname] ?? pathname;
+}
 
 /** หน้าที่ทุกบทบาทเปิดได้ นอกจากเมนูของตัวเอง */
 const SHARED_PAGES = ["/profile"];
@@ -608,7 +632,7 @@ export function canVisit(
   access?: MenuAccess,
   route?: ApprovalRoute,
 ): boolean {
-  pathname = MOVED[pathname] ?? pathname;
+  pathname = moved(pathname);
   if (SHARED_PAGES.includes(pathname)) return true;
   const owner = EXTRA_OWNER[pathname];
   if (owner) return Array.isArray(owner) ? owner.includes(role) : owner === role;
@@ -620,7 +644,7 @@ export function canVisit(
  * หน้าที่ถูกปิดยังต้องมีชื่อบนแถบบน ตอนขึ้นหน้าแจ้งว่าเข้าไม่ได้
  */
 export function findItem(pathname: string, role: Role): NavItem | undefined {
-  pathname = MOVED[pathname] ?? pathname;
+  pathname = moved(pathname);
   const own = [...configurableItems(role), { ...APPROVALS_ITEM, group: BY_ROLE[role].group }];
   const everyRole = Object.values(BY_ROLE).flatMap((r) => r.work);
   return (

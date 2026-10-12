@@ -1,7 +1,7 @@
 "use client";
 import { bkkStamp, nextDocNo } from "./format";
 
-import { OT_RECORDS, type OtRecord } from "./ot-data";
+import { OT_RECORDS, addMissingOt, type OtRecord } from "./ot-data";
 import type { Role } from "./role";
 import { createRoleStore } from "./role-store";
 
@@ -10,6 +10,8 @@ const store = createRoleStore<OtRecord[]>(
   "maz-erp.ot.v2",
   OT_RECORDS,
   (v): v is OtRecord[] => Array.isArray(v),
+  undefined,
+  addMissingOt,
 );
 
 export function useOtRecords() {

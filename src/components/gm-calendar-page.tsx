@@ -4,7 +4,7 @@
  * ปฏิทินของผู้จัดการทั่วไป (GM) — ใช้ปฏิทินชุดเดียวกับทุกบทบาท (schedule-board.tsx)
  *
  * เจ้าของสั่ง 24 ก.ย. 2569 ว่าหน้าตารางงานต้องหน้าตาเหมือนกันทุกอัน
- * ต่างกันแค่ว่าในปฏิทินมีอะไร และหน้านี้เพิ่มนัดได้ (กดที่ช่องวันหรือปุ่มบนหัวเรื่อง)
+ * ต่างกันแค่ว่าในปฏิทินมีอะไร และหน้านี้เพิ่มนัดได้ (ดับเบิลคลิกช่องวัน · ผู้ใช้สั่ง 9 ต.ค. 2569)
  *
  * เป็นปฏิทินของทั้งบริษัท
  *   กำหนดส่งมอบโปรเจค (แดง)  — โปรเจคที่กำลังทำ กดแล้วเปิดหน้าโปรเจคใบนั้น (ดูอย่างเดียวตาม pm-readonly)
@@ -12,7 +12,7 @@
  *   ลา รออนุมัติ (ส้ม)       — ใบที่ยังไม่ตัดสิน · ใบที่ GM เป็นผู้อนุมัติกดไปหน้ารายการรออนุมัติได้
  *   นัดหมาย (ม่วง)          — พร้อมรายชื่อผู้เข้าร่วม
  *
- * GM สร้างนัดหมายได้ (ปุ่ม + เพิ่มนัดหมาย บนแถบหัวปฏิทิน)
+ * GM สร้างนัดหมายได้ (ดับเบิลคลิกช่องวันในปฏิทิน)
  * เจ้าของสั่งไว้ว่า **สร้างนัดได้เฉพาะ PM กับ GM** เพราะสองคนนี้เป็นคนจัดคิวงานและจัดคนอยู่แล้ว
  * ถ้าใครก็ใส่นัดในปฏิทินคนอื่นได้ ปฏิทินจะเต็มไปด้วยนัดที่อีกฝ่ายไม่เคยตกลงและไม่มีใครรับผิดชอบ
  * จึงต้องเลือกผู้เข้าร่วมอย่างน้อยหนึ่งคนเสมอ — นัดที่ไม่มีใครเข้าร่วมไม่ใช่นัด
@@ -28,28 +28,23 @@ import { useMemo, useState } from "react";
 import { useHr } from "@/lib/hr-store";
 import { useTeamLeave } from "@/lib/gm-data";
 import { USERS } from "@/lib/mock-data";
-import {
-  KIND_COLOR,
-  eventKinds,
-  endOf,
-  type EventKind,
-  type PmEvent,
-} from "@/lib/pm-schedule-data";
+import { endOf, type EventColor, type EventKind, type PmEvent } from "@/lib/pm-schedule-data";
 import { addEvent, cancelEvent, editEvent, useSchedule } from "@/lib/pm-schedule-store";
 import { usePm } from "@/lib/pm-store";
 import { projectHref } from "@/lib/pm-data";
 import { AppointmentSheet } from "./appointment-sheet";
-import { PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import {
+  ColorPick,
   ScheduleBoard,
+  colPaint,
   tintPaint,
   useBoardNav,
   type BoardEvent,
   type BoardKind,
 } from "./schedule-board";
 import { ThaiDatePicker } from "./thai-date-picker";
-import { Field, Input, Select } from "./ui";
+import { Field, Input } from "./ui";
 import { todayIso } from "@/lib/format";
 
 const KINDS: BoardKind[] = [
@@ -62,13 +57,11 @@ const KINDS: BoardKind[] = [
 const COLOR = Object.fromEntries(KINDS.map((k) => [k.key, k.color])) as Record<string, string>;
 const paintOf = (kind: string) => ({ dot: COLOR[kind], paint: tintPaint(COLOR[kind]) });
 
-const eventKindList = () => eventKinds();
-
 /*
  * เหตุผลตอนยกเลิกเป็นของบังคับ (เจ้าของสั่ง 24 ก.ย. 2569)
  * คนที่กันเวลาไว้แล้วได้รับแจ้งว่า "ยกเลิก" เฉย ๆ ก็ต้องเดินมาถามอยู่ดี
  */
-const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน — ผู้เข้าร่วมจะเห็นข้อความนี้ในแจ้งเตือน";
+const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน";
 
 export function GmCalendarPage() {
   const pm = usePm();
@@ -137,7 +130,8 @@ export function GmCalendarPage() {
         sub: [e.place, e.who.map(nameOf).join(" · ")].filter(Boolean).join(" · "),
         cancelled: Boolean(e.cancel),
         cancelWhy: e.cancel?.why,
-        ...paintOf("meet"),
+        /* สีที่เลือกเองมาก่อนสีของกลุ่มนัดหมาย เหมือนตารางงาน PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+        ...(e.col ? colPaint(e.col) : paintOf("meet")),
         data: e,
       });
 
@@ -146,30 +140,16 @@ export function GmCalendarPage() {
 
   return (
     <div className="space-y-4">
-      <div className="bar">
-        <div>
-          <h1>ตารางงาน</h1>
-          <p>ปฏิทินของทั้งบริษัท · วันลาทุกคน กำหนดส่งมอบโปรเจค และนัดหมาย</p>
-        </div>
-        <div className="tools">
-          {/* มือถือใช้ปุ่ม "+ เพิ่มนัดหมาย" ในการ์ดนัดของวันที่เลือก (schedule-board) จึงซ่อนปุ่มนี้
-              ซ่อนที่ตัวครอบ ไม่ใช่ที่ปุ่ม เพราะ .btn ใน globals.css ตั้ง display ไว้นอก @layer */}
-          <span className="max-sm:hidden">
-            <button type="button" className="btn solid btn-solid" onClick={() => setEditing({ day: nav.sel })}>
-              <PlusIcon className="size-3.5" strokeWidth={2.4} />
-              เพิ่มนัดหมาย
-            </button>
-          </span>
-        </div>
-      </div>
+      {/* หน้าตาเดียวกับตารางงาน PM — ไม่มีหัวข้อหน้าและปุ่มเพิ่มนัดหมาย ดับเบิลคลิกช่องวันเพื่อเพิ่ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <h1 className="sr-only">ตารางงาน</h1>
 
       <ScheduleBoard
         nav={nav}
         events={events}
         kinds={KINDS}
-        hint="วันลาและกำหนดส่งมอบมาจากใบจริงของแต่ละฝ่าย · กดที่ช่องวันเพื่อเพิ่มนัดของวันนั้น · แก้หรือยกเลิกได้เฉพาะนัดที่คุณตั้งเอง"
         onOpen={(e) => e.data && openEvent(e.data)}
         onAdd={(day) => setEditing({ day })}
+        noKinds
       />
 
       {editing && (
@@ -190,7 +170,7 @@ export function GmCalendarPage() {
 // ─── กล่องเพิ่ม / แก้ / ยกเลิกนัดหมายของ GM ────────────────────────
 
 /*
- * ช่องกรอกตามโครงหน้า: หัวข้อ · ประเภท · วันที่ · เวลาเริ่ม–สิ้นสุด · สถานที่หรือลิงก์ · ผู้เข้าร่วม
+ * ช่องกรอกตามโครงหน้า: หัวข้อ · สีของนัด · วันที่ · เวลาเริ่ม–สิ้นสุด · สถานที่หรือลิงก์ · ผู้เข้าร่วม
  * ไม่มีนัดข้ามวันและไม่มีการผูกโปรเจคแบบของ PM เพราะ GM ตั้งนัดคนเป็นหลัก ไม่ได้จัดคิวงาน
  * ผู้เข้าร่วมติกจากพนักงานที่ยังทำงานอยู่ และต้องเลือกอย่างน้อยหนึ่งคน
  *
@@ -214,7 +194,10 @@ function GmEventForm({
   /* คนที่พ้นสภาพแล้วไม่ขึ้นให้เลือก — ไม่มีประโยชน์ที่จะเชิญเข้าประชุม */
   const staff = useHr().emp.filter((e) => e.status === "active");
   const [title, setTitle] = useState(event?.title ?? "");
-  const [kind, setKind] = useState<EventKind>(event?.kind ?? "meeting");
+  /* ประเภทไม่ให้เลือกแล้ว เก็บค่าเดิมไว้ข้างใน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const kind: EventKind = event?.kind ?? "meeting";
+  /* ใบใหม่ตั้งต้นสีม่วง ตรงกับสีนัดหมายที่เห็นในปฏิทินนี้อยู่แล้ว */
+  const [col, setCol] = useState<EventColor>(event?.col ?? "purple");
   const [date, setDate] = useState(event?.date ?? day ?? todayIso());
   const [from, setFrom] = useState(event?.from ?? "10:00");
   const [to, setTo] = useState(event?.to ?? "11:00");
@@ -251,7 +234,7 @@ function GmEventForm({
       pj: event?.pj ?? "",
       who,
       note,
-      col: event?.col ?? KIND_COLOR[kind],
+      col,
       by: "gm" as const,
     };
     /* แก้แล้วบันทึกว่าใครแก้ ไว้ให้แจ้งเตือนบอกผู้เข้าร่วมว่าวันเวลาหรือรายชื่อเปลี่ยนไปอย่างไร */
@@ -328,15 +311,8 @@ function GmEventForm({
           />
         </Field>
 
-        <Field label="ประเภท">
-          <Select value={kind} onChange={(e) => setKind(e.target.value as EventKind)}>
-            {eventKindList().map((k) => (
-              <option key={k.key} value={k.key}>
-                {k.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {/* ไม่มีช่องประเภท — สีของนัดแยกนัดแทน เหมือนตารางงาน PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+        <ColorPick value={col} onChange={setCol} />
 
         {/* จอแคบให้วันที่กินเต็มแถวบน แล้วเวลาเริ่ม–ถึงอยู่แถวล่าง
             สามช่องเรียงกันที่ 390px ทำให้ช่องเวลาแคบจนอ่านค่าไม่ครบ */}
@@ -370,7 +346,7 @@ function GmEventForm({
           />
         </Field>
 
-        <Field label="ผู้เข้าร่วม" hint="เลือกอย่างน้อย 1 คน — ทุกคนที่เลือกจะเห็นนัดนี้ในตารางงานของตัวเอง">
+        <Field label="ผู้เข้าร่วม" hint="เลือกอย่างน้อย 1 คน">
           {/* สองคอลัมน์ตามโครงหน้า · จอแคบเหลือคอลัมน์เดียว รายชื่อจะได้ไม่ถูกตัด */}
           <span className="grid max-h-[210px] grid-cols-1 gap-x-3 overflow-y-auto sm:grid-cols-2">
             {staff.map((m) => {
@@ -409,8 +385,7 @@ function GmEventForm({
         )}
 
         <p className="text-[11.5px] leading-[1.7] text-muted-foreground">
-          ผู้ตั้งนัด {USERS.gm.name} · ผู้เข้าร่วมทุกคนจะได้รับแจ้งเตือนและเห็นนัดนี้ในปฏิทินของตัวเอง
-          {event ? " · เปลี่ยนวัน เวลา หรือรายชื่อ ทุกคนที่เกี่ยวข้องจะได้รับแจ้ง รวมถึงคนที่ถูกถอดออก" : ""}
+          ผู้ตั้งนัด {USERS.gm.name}
         </p>
       </div>
     </Sheet>

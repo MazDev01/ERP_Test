@@ -212,21 +212,16 @@ export function ClientSendSheet({
         }
       >
         <p className="flex items-center gap-2 text-[13.5px] font-semibold text-[var(--success)]">
-          <CheckIcon className="size-4" /> สร้างลิงก์แล้ว · งานเปลี่ยนเป็น “รอลูกค้าตรวจ”
+          <CheckIcon className="size-4" /> สร้างลิงก์แล้ว
         </p>
         <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-          ส่งลิงก์นี้ให้ {contact || "ลูกค้า"} ทางอีเมลหรือไลน์ · ลูกค้าเปิดได้โดยไม่ต้องล็อกอิน
-        </p>
+          ส่งลิงก์นี้ให้ {contact || "ลูกค้า"}        </p>
         <div className="mt-3 flex items-center gap-2 rounded-[12px] border border-border bg-muted px-3 py-2.5">
           <code className="min-w-0 flex-1 truncate text-[12.5px]">{url}</code>
           <button type="button" className="btn glass-thin btn-mini flex-none" onClick={() => copy(url)}>
             {copied ? "คัดลอกแล้ว" : "คัดลอก"}
           </button>
         </div>
-        <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-          ระยะนี้ยังไม่มีระบบหลังบ้าน — ลิงก์เปิดได้เฉพาะในเบราว์เซอร์เครื่องนี้ และไฟล์ที่เลือกจากเครื่องเปิดดูได้จนกว่าจะปิดแท็บนี้
-          การอัปโหลดไฟล์จริงและลิงก์ที่ส่งให้ลูกค้าภายนอกได้มากับระบบหลังบ้าน
-        </p>
       </Sheet>
     );
   }
@@ -252,7 +247,7 @@ export function ClientSendSheet({
 
       <p className="mt-4 mb-1.5 text-[12.5px] font-semibold">ไฟล์ที่ให้ลูกค้าตรวจ</p>
       {list.length === 0 && locals.length === 0 && (
-        <p className="text-[12.5px] text-muted-foreground">งานนี้ยังไม่มีไฟล์ · เลือกไฟล์จากเครื่องด้านล่าง</p>
+        <p className="text-[12.5px] text-muted-foreground">งานนี้ยังไม่มีไฟล์</p>
       )}
       <ul className="flex flex-col gap-1.5">
         {list.map((x) => (
@@ -313,7 +308,7 @@ export function ClientSendSheet({
         />
       </label>
       <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-        รูป วิดีโอ หรือ PDF · ยังไม่ได้อัปโหลดจริง เปิดดูได้ระหว่างที่แท็บนี้ยังเปิดอยู่ (อัปโหลดจริงมากับระบบหลังบ้าน)
+        รูป วิดีโอ หรือ PDF
       </p>
       {err && <p className="mt-2 text-[12.5px] font-semibold text-destructive">เลือกอย่างน้อยหนึ่งไฟล์</p>}
 
@@ -598,11 +593,6 @@ export function ClientFeedbackSheet({ token, onClose }: { token: string; onClose
       </h3>
       <ClientCommentList round={r} onToggle={ro ? undefined : (id) => toggleCommentDone(r.token, id)} />
 
-      {canForward && (
-        <p className="mt-3 text-[11.5px] text-muted-foreground">
-          “ส่งให้ทีมแก้” ส่งเฉพาะจุดที่ยังไม่ได้ติ๊กแก้แล้ว — ทีมเห็นในกล่อง “สิ่งที่ต้องแก้” ของงานนี้
-        </p>
-      )}
       {r.forwardedAt && (
         <p className="mt-3 text-[12px] text-muted-foreground">
           ส่งให้ทีมแก้เมื่อ {thaiStamp(r.forwardedAt)} น.

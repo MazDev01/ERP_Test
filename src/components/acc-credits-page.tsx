@@ -137,9 +137,6 @@ export function AccCreditsPage() {
       <div className="bar">
         <div>
           <h1>ใบลดหนี้ / คืนเงิน</h1>
-          <p>
-            ใบลดหนี้ลดยอดวางบิลและยอดค้างชำระ · การคืนเงินคือเงินที่ออกจากบริษัทจริง แยกกันคนละรายการ
-          </p>
         </div>
         {!readOnly && (
           <div className="tools w-full sm:w-auto">
@@ -157,7 +154,7 @@ export function AccCreditsPage() {
 
       {readOnly && (
         <p className="rounded-[10px] bg-muted px-3.5 py-[9px] text-[12.5px] font-semibold text-muted-foreground">
-          ดูอย่างเดียว · ฝ่ายบัญชีเป็นผู้ออกใบลดหนี้ ใบเพิ่มหนี้ และบันทึกการคืนเงิน
+          ดูอย่างเดียว
         </p>
       )}
 
@@ -945,10 +942,6 @@ function CreditDialog({
         </p>
       )}
       {bad && !blocked && <p className="mt-3 text-[12.5px] font-semibold text-destructive">{bad}</p>}
-      <p className="mt-3 rounded-[11px] border border-[rgba(180,99,11,.25)] bg-[var(--warning-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed text-[var(--warning)]">
-        ผู้บริหารอนุมัติก่อนจึงจะออกเลขที่ {creditKind(ISSUER_VAT)} ได้ · ออกแล้วยกเลิกไม่ได้และแก้ยอดไม่ได้
-        ถ้าออกผิดต้องออก{debitKind(ISSUER_VAT)}มาแก้
-      </p>
     </Sheet>
   );
 }
@@ -1107,11 +1100,6 @@ function DebitDialog({
         className="field-control mt-1.5 w-full rounded-[11px] px-3 py-2.5 text-[13.5px]"
       />
       {bad && <p className="mt-3 text-[12.5px] font-semibold text-destructive">{bad}</p>}
-      <p className="mt-3 rounded-[11px] border border-[rgba(180,99,11,.25)] bg-[var(--warning-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed text-[var(--warning)]">
-        ผู้บริหารอนุมัติก่อนจึงจะออกเลขที่ {debitKind(ISSUER_VAT)} ได้ — ใบนี้เรียกเก็บลูกค้าเพิ่ม
-        หลังเอกสารภาษีออกไปแล้ว · ใบลดหนี้ {credit.no} ยังอยู่ครบพร้อมเลขที่เดิม
-        เอกสารที่ออกเลขแล้วยกเลิกย้อนหลังไม่ได้
-      </p>
     </Sheet>
   );
 }
@@ -1286,10 +1274,6 @@ function RefundDialog({
         />
       </Field>
       {bad && <p className="mt-3 text-[12.5px] font-semibold text-destructive">{bad}</p>}
-      <p className="mt-3 rounded-[11px] bg-muted px-3.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-        ยังไม่ต้องโอนตอนนี้ · ผู้บริหารอนุมัติก่อน ระบบจึงออกเลขที่รายการ แล้วคนที่โอนจริงกลับมาบันทึก
-        วันที่โอนและหลักฐานที่ปุ่ม &ldquo;บันทึกการโอน&rdquo; · ใบเสร็จและเงินที่รับมาแล้วไม่ถูกแก้ (AC-BR-18)
-      </p>
     </Sheet>
   );
 }

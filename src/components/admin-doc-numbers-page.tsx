@@ -69,14 +69,13 @@ export function AdminDocNumbersPage() {
     <div className="space-y-4">
       <AdminHead title="เลขที่เอกสาร" desc="ตัวนำหน้าของเลขที่เอกสารแต่ละชนิด ปีและลำดับระบบออกให้เองเพื่อกันเลขซ้ำ" />
 
-      <Card title="ตัวนำหน้า" note="เปลี่ยนแล้วเลขลำดับของตัวนำหน้าใหม่เริ่มนับ 1 · เอกสารที่ออกเลขไปแล้วคงเลขเดิม · เลขใบเสนอราคาตั้งแยกตามผู้ออกเอกสารที่หน้าข้อมูลบริษัท">
+      <Card title="ตัวนำหน้า">
         {/* มือถือ: แถวละเอกสาร ชื่อกับตัวอย่างเลขอยู่ซ้าย ช่องตัวนำหน้าอยู่ขวา */}
         <ul className="divide-y divide-border rounded-[14px] border border-border bg-card sm:hidden">
           {list.map((r) => (
             <li key={r.key} className="flex items-center gap-3 px-3.5 py-3">
               <span className="min-w-0 flex-1">
                 <b className="block text-[14px] font-semibold">{r.label}</b>
-                <span className="block text-[12px] text-muted-foreground">{r.who}</span>
                 <span className="num mt-0.5 block text-[12.5px] text-muted-foreground">
                   ถัดไป {r.sample(d.draft[r.key] || "—")}
                 </span>
@@ -99,7 +98,6 @@ export function AdminDocNumbersPage() {
                 <tr key={r.key}>
                   <td data-label="เอกสาร">
                     <b className="font-semibold">{r.label}</b>
-                    <span className="why">{r.who}</span>
                   </td>
                   <td data-label="ตัวนำหน้า">
                     {prefixInput(r, "h-9 text-[14px]")}

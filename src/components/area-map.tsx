@@ -172,11 +172,6 @@ export function AreaMap({
       <span className="pointer-events-none absolute right-0 bottom-0 bg-white/80 px-1.5 py-0.5 text-[10px] text-[#333]">
         © OpenStreetMap contributors
       </span>
-      {onPick && (
-        <span className="pointer-events-none absolute bottom-0 left-0 bg-white/85 px-2 py-0.5 text-[11px] text-[#333]">
-          คลิกบนแผนที่เพื่อย้ายจุดกลาง
-        </span>
-      )}
     </div>
   );
 }

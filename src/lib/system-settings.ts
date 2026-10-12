@@ -241,7 +241,16 @@ export type SystemSettings = {
   attHistory: AttChange[];
   ssCeiling: SsCeiling[];
   whtHistory: WhtChange[];
+  /** รุ่นของชุดประเภทการลา — ต่ำกว่า LEAVE_REV แปลว่ายังเป็นชุดเก่า ต้องปรับครั้งเดียว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  leaveRev?: number;
+  /** รุ่นของประเภทค่าใช้จ่าย — ต่ำกว่า EXPENSE_KIND_REV ต้องเติมค่าคอมมิชชั่นครั้งเดียว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  expenseKindRev?: number;
 };
+
+/* ชุดประเภทการลาสามประเภท ลากิจ 3 · ลาพักร้อน 6 · ลาป่วย 30 (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+const LEAVE_REV = 1;
+/* เพิ่มค่าคอมมิชชั่นในประเภทค่าใช้จ่าย ให้เลือกจากปุ่มขอเบิกได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+const EXPENSE_KIND_REV = 1;
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   schedule: {
@@ -280,12 +289,12 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   /* สิทธิ์วันลาของรอบปีปัจจุบัน — ประเภทตั้งต้นตาม LEAVE_TYPES ใน leave-data.ts · ผู้ดูแลเพิ่มประเภทต่อท้ายได้
      สามประเภทหลักตาม ERD (leave_quota, HR-BR-13): ลากิจ 3 · ลาพักร้อน 6 · ลาป่วย 30 วันต่อปี ไม่สะสมข้ามปี */
   leave: [
+    { type: "ลากิจ", days: 3 },
     { type: "ลาพักร้อน", days: 6 },
     { type: "ลาป่วย", days: 30 },
-    { type: "ลากิจ", days: 3 },
-    { type: "ลาคลอด", days: 0 },
-    { type: "ลาไม่รับค่าจ้าง", days: 15 },
   ],
+  leaveRev: LEAVE_REV,
+  expenseKindRev: EXPENSE_KIND_REV,
   company: {
     name: "บริษัท ไอเมซเมกเกอร์ จำกัด (สำนักงานใหญ่)",
     taxId: "0505559001339",
@@ -336,7 +345,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     collectChannel: ["โทรศัพท์", "อีเมล", "ไลน์", "เข้าพบ"],
     adPlatform: ["Google", "Facebook", "Instagram", "TikTok", "YouTube", "Line"],
     eduLevel: ["มัธยมศึกษาตอนปลาย / ปวช.", "ปวส. / อนุปริญญา", "ปริญญาตรี", "ปริญญาโท"],
-    expenseKind: ["ค่าเดินทาง", "ค่ารับรองลูกค้า", "ค่าอุปกรณ์และวัสดุ", "ค่าที่พัก", "อื่นๆ"],
+    expenseKind: ["ค่าเดินทาง", "ค่าคอมมิชชั่น", "ค่ารับรองลูกค้า", "ค่าอุปกรณ์และวัสดุ", "ค่าที่พัก", "อื่นๆ"],
     sex: ["ชาย", "หญิง", "ไม่ระบุ"],
   },
   optionsOff: {},
@@ -408,17 +417,35 @@ function isSettings(v: unknown): v is SystemSettings {
   );
 }
 
+/** เครื่องที่บันทึกไว้ก่อน — เติมค่าเดินทาง/ค่าคอมมิชชั่นที่ยังไม่มีครั้งเดียว ไม่ทับที่ผู้ดูแลลบทีหลัง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function withExpenseKinds(o: Record<OptionKey, string[]>, rev: number): Record<OptionKey, string[]> {
+  if (rev >= EXPENSE_KIND_REV) return o;
+  const list = o.expenseKind ?? [];
+  const add = ["ค่าเดินทาง", "ค่าคอมมิชชั่น"].filter((k) => !list.includes(k));
+  return add.length ? { ...o, expenseKind: [...add, ...list] } : o;
+}
+
 /** เติมช่องที่เพิ่มเข้ามาทีหลังจากค่าตั้งต้น โดยไม่ทับค่าที่ผู้ดูแลตั้งไว้ */
 function fill(v: SystemSettings): SystemSettings {
   return {
     schedule: { ...DEFAULT_SETTINGS.schedule, ...v.schedule },
     holidays: v.holidays,
-    leave: Array.isArray(v.leave) ? v.leave : DEFAULT_SETTINGS.leave,
+    /* เครื่องที่บันทึกไว้ก่อนเลิกลาคลอด/ลาไม่รับค่าจ้าง — ตัดประเภทอื่นทิ้ง และตั้งสิทธิ์เป็น 3/6/30 ครั้งเดียว
+       หลังจากนั้นค่าที่ผู้ดูแลแก้เองไม่ถูกทับ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+    leave:
+      Array.isArray(v.leave) && (v.leaveRev ?? 0) >= LEAVE_REV
+        ? v.leave
+        : DEFAULT_SETTINGS.leave.map((q) => {
+            const had = Array.isArray(v.leave) ? v.leave.find((x) => x.type === q.type) : undefined;
+            return had?.note ? { ...q, note: had.note } : q;
+          }),
+    leaveRev: LEAVE_REV,
     company: { ...DEFAULT_SETTINGS.company, ...v.company },
     rates: { ...DEFAULT_SETTINGS.rates, ...v.rates },
     docs: { ...DEFAULT_SETTINGS.docs, ...v.docs },
     /* หมวดนี้เพิ่มทีหลัง — เครื่องที่บันทึกไว้ก่อนยังไม่มี เติมจากค่าตั้งต้นทีละรายการ */
-    options: { ...DEFAULT_SETTINGS.options, ...(v.options ?? {}) },
+    options: withExpenseKinds({ ...DEFAULT_SETTINGS.options, ...(v.options ?? {}) }, v.expenseKindRev ?? 0),
+    expenseKindRev: EXPENSE_KIND_REV,
     optionsOff: v.optionsOff ?? {},
     catalog: v.catalog ?? {},
     /* เครื่องที่บันทึกไว้ก่อนมีรายการผู้ออกเอกสาร — สร้างจากข้อมูลบริษัทและเลขเอกสารเดิม */

@@ -117,7 +117,7 @@ export function GmDashboardPage() {
         </Card>
       </div>
 
-      <Card title="โปรเจคที่กำลังดำเนินการ" note="ดูอย่างเดียว PM เป็นผู้วางแผน">
+      <Card title="โปรเจคที่กำลังดำเนินการ">
         {running.length === 0 ? (
           <None>ไม่มีโปรเจคที่กำลังดำเนินการ</None>
         ) : (

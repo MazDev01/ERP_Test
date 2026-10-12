@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useState, type CSSProperties } from "react";
 import { bkkNow, thaiDate, toIsoDate, todayIso } from "@/lib/format";
 import { holidays, holidaysBetween } from "@/lib/holidays";
-import { dayDiff } from "@/lib/pm-schedule-data";
+import { PM_COLORS, colorOf, dayDiff, type EventColor } from "@/lib/pm-schedule-data";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 
@@ -34,7 +34,8 @@ const VIEWS: { key: View; label: string }[] = [
 ];
 
 /** แถบในหนึ่งสัปดาห์ซ้อนกันได้กี่ชั้นก่อนยุบเป็น "อีก N นัด" — มุมมองสัปดาห์มีที่มากกว่า */
-const MAX_LANES = { month: 3, week: 12 };
+/* เดือนละ 2 ชั้น ปฏิทินทั้งเดือนจะพอดีหนึ่งหน้าจอไม่ต้องเลื่อน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+const MAX_LANES = { month: 2, week: 12 };
 
 
 const DW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
@@ -108,6 +109,35 @@ export function tintPaint(color: string): BoardEvent["paint"] {
   return { style: { background: `color-mix(in srgb, ${color} 15%, transparent)`, color } };
 }
 
+/** จุดและแถบจากสีที่เลือกเองของนัด — สีเดียวกับตารางงาน PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function colPaint(c: EventColor): { dot: string; paint: BoardEvent["paint"] } {
+  const x = colorOf(c);
+  return { dot: x.fg, paint: { style: { background: x.bg, color: x.fg } } };
+}
+
+/** ช่องเลือกสีของนัด แทนช่องประเภท — ชุดเดียวกับฟอร์มของ PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function ColorPick({ value, onChange }: { value: EventColor; onChange: (c: EventColor) => void }) {
+  return (
+    <div>
+      <p className="mb-2 block text-[0.8rem] font-medium">สีของนัด</p>
+      <span className="flex flex-wrap gap-[9px] pt-1 pl-1">
+        {PM_COLORS.map((c) => (
+          <button
+            key={c.c}
+            type="button"
+            className="cpick"
+            aria-pressed={value === c.c}
+            aria-label={`สี${c.name}`}
+            title={c.name}
+            style={{ background: c.bg, color: c.fg }}
+            onClick={() => onChange(c.c)}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
 /**
  * สถานะของปฏิทิน — มุมมอง เดือนที่ดู และวันที่เลือก
  * แยกเป็นฮุกให้หน้าที่เรียกถือไว้ จะสั่งย้ายวันเองได้ (เช่น หลังบันทึกนัด)
@@ -169,7 +199,8 @@ export function ScheduleBoard<T>({
   hint,
   onOpen,
   onAdd,
-  noToday = false,
+  noToday = true,
+  noKinds = false,
 }: {
   nav: BoardNav;
   /** นัดทั้งหมดของหน้านี้ (ยังไม่กรองประเภท) — จำนวนบนป้ายประเภทนับจากชุดนี้ */
@@ -182,8 +213,10 @@ export function ScheduleBoard<T>({
   onOpen?: (e: BoardEvent<T>) => void;
   /** ไม่ส่งมา = เพิ่มนัดไม่ได้ ช่องวันกดได้แค่เลือกวัน */
   onAdd?: (day: string) => void;
-  /** ไม่มีปุ่ม "วันนี้" — ตารางงานฝ่ายขาย (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+  /** ไม่มีปุ่ม "วันนี้" — ทุกตารางงาน (ผู้ใช้สั่ง 5 และ 8 ต.ค. 2569) */
   noToday?: boolean;
+  /** ไม่ใช้ประเภทนัด — สีที่เลือกเองแยกนัดแทน ไม่มีกล่องประเภทและป้ายประเภท (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+  noKinds?: boolean;
 }) {
   const { view, cursor, sel, todayKey } = nav;
   /* ประเภทที่ถูกปิดไว้ด้วยตัวกรอง — เก็บเฉพาะที่ปิด จะได้ไม่ต้องตั้งค่าตั้งต้นครบทุกประเภท */
@@ -278,8 +311,8 @@ export function ScheduleBoard<T>({
                 </b>
                 <em className="mt-0.5 block text-[11px] text-muted-foreground not-italic">
                   {e.cancelled ? `ยกเลิกแล้ว${e.cancelWhy ? ` (${e.cancelWhy})` : ""} · ` : ""}
-                  {dotOf[e.kind]?.label}
-                  {e.sub ? ` · ${e.sub}` : ""}
+                  {noKinds ? "" : dotOf[e.kind]?.label}
+                  {e.sub ? `${noKinds ? "" : " · "}${e.sub}` : ""}
                   {multi && ` · ${thaiDate(e.start)} – ${thaiDate(e.end)} (${dayDiff(e.start, e.end) + 1} วัน)`}
                 </em>
               </span>
@@ -295,7 +328,7 @@ export function ScheduleBoard<T>({
               ) : e.inert || !onOpen ? (
                 <div className={cls}>{inner}</div>
               ) : (
-                <button type="button" onClick={() => onOpen(e)} className={cls}>
+                <button type="button" onDoubleClick={() => onOpen(e)} title="ดับเบิลคลิกเพื่อเปิดนัด" className={cls}>
                   {inner}
                 </button>
               )}
@@ -309,11 +342,12 @@ export function ScheduleBoard<T>({
 
   return (
     /* โครงสองคอลัมน์ 290px / ปฏิทิน — จอ ≤1100px เหลือคอลัมน์เดียว ปฏิทินขึ้นก่อน (โครง 24 ก.ย. 2569) */
-    <div className="grid items-start gap-4 min-[1100px]:grid-cols-[290px_minmax(0,1fr)]">
-      <aside className="order-2 flex min-w-0 flex-col gap-3.5 min-[1100px]:order-none">
+    <div className="grid items-start gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_290px]">
+      {/* ปฏิทินอยู่ซ้าย รายการนัดอยู่ขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <aside className="order-2 flex min-w-0 flex-col gap-3.5 min-[1100px]:order-2">
         {/* จอแคบ: กดวันแล้วต้องเห็นรายการของวันนั้นทันที ป้ายอธิบายประเภทจึงลงไปอยู่ล่างสุด
             (เจ้าของแจ้ง 25 ก.ย. 2569 ว่ากดในปฏิทินแล้วไม่เห็นรายละเอียด) */}
-        <section className="glass order-2 rounded-[16px] p-[16px_18px] min-[1100px]:order-none">
+        {!noKinds && <section className="glass order-2 rounded-[16px] p-[16px_18px] min-[1100px]:order-none">
           <h2 className="mb-2.5 text-[13.5px] font-bold">ประเภทนัดหมาย</h2>
           {/* คำอธิบายการทำงานของระบบไม่โชว์ให้ผู้ใช้เห็นทุกหน้าตารางงาน (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
           <div className="flex flex-wrap gap-[7px]">
@@ -337,7 +371,7 @@ export function ScheduleBoard<T>({
               );
             })}
           </div>
-        </section>
+        </section>}
 
         {/* จอแคบใช้ป็อปอัพแทน การ์ดนี้จึงขึ้นเฉพาะจอกว้างที่มีคอลัมน์ซ้าย */}
         <section
@@ -396,7 +430,7 @@ export function ScheduleBoard<T>({
         </Sheet>
       )}
 
-      <section className="glass order-1 min-w-0 rounded-[16px] p-[18px_20px] max-sm:p-[14px_12px] min-[1100px]:order-none">
+      <section className="glass order-1 min-w-0 rounded-[16px] p-[18px_20px] max-sm:p-[14px_12px] min-[1100px]:order-1">
         {/* ชื่อเดือนอยู่กลางปฏิทิน ปุ่มวันนี้ชิดซ้าย มุมมองชิดขวา (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3.5 sm:grid sm:grid-cols-[1fr_auto_1fr]">
           {/* สูง 34px เท่า .seg และ .iconbtn ในแถวเดียวกัน (.btn ปกติ 36px จะสูงกว่าเพื่อน) */}
@@ -621,12 +655,14 @@ function WeekRow<T>({
             <button
               key={day}
               type="button"
-              onClick={() => (onAdd ? onAdd(day) : onPickDay(day))}
+              /* คลิกเดียว = เลือกวันดูนัด · ดับเบิลคลิก = เพิ่มนัดวันนั้น (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+              onClick={() => onPickDay(day)}
+              onDoubleClick={onAdd ? () => onAdd(day) : undefined}
               className={[month !== null && d.getMonth() !== month ? "off" : "", day === sel ? "on" : ""]
                 .filter(Boolean)
                 .join(" ")}
               aria-label={onAdd ? `เพิ่มนัดหมายวันที่ ${thaiDate(day)}` : `เลือกวันที่ ${thaiDate(day)}`}
-              title={onAdd ? `กดเพื่อเพิ่มนัดหมายวันที่ ${thaiDate(day)}` : `กดเพื่อดูนัดหมายของวันที่ ${thaiDate(day)}`}
+              title={onAdd ? `ดับเบิลคลิกเพื่อเพิ่มนัดหมายวันที่ ${thaiDate(day)}` : `กดเพื่อดูนัดหมายของวันที่ ${thaiDate(day)}`}
             />
           );
         })}
@@ -648,7 +684,9 @@ function WeekRow<T>({
             key={day}
             type="button"
             /* ตัวเลขวันที่ทำงานเหมือนพื้นหลังของช่อง จะได้ไม่งงว่ากดตรงไหนได้ตรงไหนไม่ได้ */
-            onClick={() => (onAdd ? onAdd(day) : onPickDay(day))}
+            /* คลิกเดียว = เลือกวันดูนัด · ดับเบิลคลิก = เพิ่มนัดวันนั้น (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+              onClick={() => onPickDay(day)}
+              onDoubleClick={onAdd ? () => onAdd(day) : undefined}
             aria-label={onAdd ? `เพิ่มนัดหมายวันที่ ${thaiDate(day)}` : `ดูนัดหมายวันที่ ${thaiDate(day)}`}
             className={cls}
             /* ไม่ใส่กรอบรอบตัวเลขซ้ำ — ช่องที่เลือกมีกรอบอยู่แล้วที่พื้นหลังช่อง (.lines button.on)
@@ -699,7 +737,9 @@ function WeekRow<T>({
           <button
             key={s.key}
             type="button"
-            onClick={() => (e.inert || !onOpen ? onPickDay(toIsoDate(shift(start, c1))) : onOpen(e))}
+            /* คลิกเดียว = เลือกวันของนัดนั้น · ดับเบิลคลิก = เปิดนัด (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+            onClick={() => onPickDay(toIsoDate(shift(start, c1)))}
+            onDoubleClick={e.inert || !onOpen ? undefined : () => onOpen(e)}
             title={tip}
             style={style}
             className={cls}

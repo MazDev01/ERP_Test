@@ -4,8 +4,9 @@
  * วางบิล — ต้นแบบ dose-erp-maz/billing.html
  *
  * รอวางบิล: ดีลที่ยังมีงวดไม่ได้ออกใบแจ้งหนี้ (หรือยังไม่แบ่งงวด) · กดแถวเพื่อกางงวดที่รอออกใบ
- * ใบแจ้งหนี้: เฉพาะใบที่ยังไม่ชำระ (ชำระ = ออกใบเสร็จแล้วที่หน้าใบเสร็จ AC-BR-05) · กดแถวเปิดเอกสาร
+ * ใบแจ้งหนี้: เฉพาะใบที่ยังไม่ชำระ (ชำระ = ออกใบเสร็จแล้ว AC-BR-05) · กดแถวเปิดเอกสาร
  * ค้างชำระ: ใบที่เลยวันครบกำหนด พร้อมบันทึกการติดตามหนี้
+ * ใบเสร็จ: รวมหน้าใบเสร็จเข้ามา — ออกใบเสร็จจากแถวงวด/ใบแจ้งหนี้ได้เลย (ผู้ใช้สั่ง 9 ต.ค. 2569)
  */
 
 import { ADD_VALUE, useAddOption } from "./add-option";
@@ -13,10 +14,9 @@ import { optionsOf } from "@/lib/options";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import type { AccDeal, Installment, Invoice } from "@/lib/acc-data";
-import { INVOICE_STATUS, ISSUER_VAT, parseTermsPct, planFromPct } from "@/lib/acc-data";
-import { customerOfDeal, useCrm } from "@/lib/crm-store";
-import { taxInvoiceBuyer } from "@/lib/crm-data";
+import type { AccDeal, Installment, Invoice, Receipt } from "@/lib/acc-data";
+import { INVOICE_STATUS, parseTermsPct, planFromPct } from "@/lib/acc-data";
+import { useCrm } from "@/lib/crm-store";
 import {
   canBill,
   dealPaid,
@@ -26,7 +26,6 @@ import {
   issueInvoice,
   logCollection,
   markDealsSeen,
-  receiptOf,
   receiptsOf,
   savePlan,
   seqLocked,
@@ -35,7 +34,6 @@ import {
   useAcc,
   type AccState,
 } from "@/lib/acc-store";
-import { issueReceiptFlow } from "@/lib/flow";
 import { lockScroll } from "@/lib/scroll-lock";
 import {
   TH_MONTHS_FULL,
@@ -60,15 +58,17 @@ import {
   PlusIcon,
   SearchIcon,
   TrashIcon,
+  EyeIcon,
+  ReceiptIcon,
 } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { AccFilters, MonthNav, NewDot, useAccFilter } from "./acc-ui";
 import { Field, Textarea } from "./ui";
-import { receiptHref } from "./acc-receipts-page";
+import { IssueReceiptDialog, ReceiptGroupsTable, receiptGroups, receiptHref } from "./acc-receipts-page";
 
 import { DateField } from "./thai-date-picker";
 import { CancelDealDialog } from "./cancel-deal-dialog";
-type TabKey = "todo" | "inv" | "due";
+type TabKey = "todo" | "inv" | "due" | "rc";
 
 /** ที่อยู่หน้าเอกสารใบแจ้งหนี้ — อยู่ใต้เมนูวางบิล สิทธิ์เข้าหน้าจึงตามเมนูนี้ */
 export function invoiceHref(no: string) {
@@ -96,9 +96,10 @@ export function AccBillingPage() {
       const inv = acc.invoices.some(
         (v) => v.status !== "paid" && v.status !== "cancelled" && `${v.no} ${v.cus} ${v.deal}`.includes(find),
       );
-      return inv ? "inv" : "todo";
+      if (inv) return "inv";
+      return acc.receipts.some((r) => `${r.no} ${r.inv} ${r.cus}`.includes(find)) ? "rc" : "todo";
     }
-    return wanted === "inv" || wanted === "due" ? wanted : "todo";
+    return wanted === "inv" || wanted === "due" || wanted === "rc" ? wanted : "todo";
   });
   const [view, setView] = useState(() => bkkNow());
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -110,6 +111,8 @@ export function AccBillingPage() {
   /* ดีลที่รับเงินแล้ว ฝ่ายบัญชีเป็นคนยกเลิก (ก่อนรับเงินฝ่ายขายยกเลิกที่หน้าดีล) */
   const [cancelling, setCancelling] = useState<AccDeal | null>(null);
   const [collecting, setCollecting] = useState<Invoice | null>(null);
+  /* ออกใบเสร็จจากหน้านี้ ใช้กล่องเดียวกับหน้าใบเสร็จเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const [issuing, setIssuing] = useState<Invoice | null>(null);
   /* จุดแดงที่แท็บใบแจ้งหนี้หลังออกใบใหม่ — หายเมื่อเปิดแท็บนั้น */
   const [invDot, setInvDot] = useState(false);
   const today = todayIso();
@@ -119,14 +122,14 @@ export function AccBillingPage() {
     return Boolean(d && !d.cancelled && dealPaid(acc, dealNo));
   };
 
-  /* ดีลอยู่ในแท็บนี้จนทุกงวดออกใบแจ้งหนี้ครบ งวดที่ยังออกไม่ได้แสดงว่ารอชำระงวดก่อนหน้า
-     กรองด้วยวันที่ส่งใบเสนอราคา */
+  /* ดีลอยู่ในแท็บนี้จนทุกงวดชำระครบ (ออกใบเสร็จจากแถวงวดได้ (ผู้ใช้สั่ง 9 ต.ค. 2569))
+     งวดที่ยังออกไม่ได้แสดงว่ารอชำระงวดก่อนหน้า · กรองด้วยวันที่ส่งใบเสนอราคา */
   const todo = acc.deals.filter(
     (d) =>
       !d.cancelled &&
       hit(d.cus, d.quo, d.no) &&
       inRange(d.quoDate) &&
-      (d.plan.length === 0 || d.plan.some((p) => seqStatus(acc, d.no, p.seq) === "pending")),
+      (d.plan.length === 0 || d.plan.some((p) => seqStatus(acc, d.no, p.seq) !== "paid")),
   );
   /* ใบแจ้งหนี้ที่ยังต้องเก็บเงิน — เงื่อนไขชุดเดียวกับ awaitingReceipt ในสโตร์ กรองด้วยวันที่วางบิล */
   const invoices = acc.invoices
@@ -142,6 +145,9 @@ export function AccBillingPage() {
       hit(v.no, v.cus, v.deal) &&
       inRange(v.due),
   );
+  /* ใบเสร็จที่ออกแล้ว — กรองด้วยวันที่ออกใบเสร็จ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const receipts = acc.receipts.filter((r) => hit(r.no, r.inv, r.cus) && inRange(r.date));
+  const rcGroups = receiptGroups(receipts);
 
   /* ดีลใหม่ที่ยังไม่ได้เปิดดู (AC-BR-01) — เปิดแท็บรอวางบิลอยู่ ให้จุดแดงค้างไว้ครู่หนึ่งพอให้เห็น แล้วถือว่าเปิดดูแล้ว */
   const newDeals = unseenDeals(acc).filter((d) => todo.some((t) => t.no === d.no)).length;
@@ -186,29 +192,6 @@ export function AccBillingPage() {
     if (d && canCancel(dealNo)) setCancelling(d);
   }
 
-  /*
-   * มือถือ: ออกใบเสร็จจากการ์ดดีลเลย ด้วยค่าตั้งต้นชุดเดียวกับกล่องออกใบเสร็จที่หน้าใบเสร็จ
-   * (รับเต็มยอดค้าง หักภาษี ณ ที่จ่ายตามใบเสนอราคาเฉพาะใบเสร็จใบแรกของใบแจ้งหนี้)
-   * ข้อมูลผู้ซื้อไม่ครบออกใบกำกับภาษีไม่ได้ — บอกแล้วไม่ออก ให้ไปแก้ข้อมูลลูกค้าก่อน
-   * รับเงินไม่ครบหรือยอดหักต่างจากที่ตกลง ต้องไปออกที่หน้าใบเสร็จซึ่งกรอกยอดเองได้
-   */
-  function quickReceipt(v: Invoice, d: AccDeal) {
-    const buyer = taxInvoiceBuyer(customerOfDeal(crm, d.no, d.quo, v.cus));
-    if (ISSUER_VAT && buyer.missing.length > 0) {
-      window.alert(`ออกใบเสร็จไม่ได้ — ข้อมูลผู้ซื้อไม่ครบ: ${buyer.missing.join(", ")}`);
-      return;
-    }
-    const due = invoiceDue(v);
-    const wht = receiptsOf(acc, v.no).length === 0 ? v.wht : 0;
-    const got = round2(due - wht);
-    const msg =
-      `ออกใบเสร็จของใบแจ้งหนี้ ${v.no}\nรับชำระ ${baht(got)} บาท` +
-      (wht > 0 ? `\nภาษีหัก ณ ที่จ่าย ${baht(wht)} บาท` : "") +
-      `\n\nยืนยันออกใบเสร็จ?`;
-    if (!window.confirm(msg)) return;
-    issueReceiptFlow(v.no, today, got, wht);
-  }
-
   return (
     <div className="space-y-4">
       {/* จอคอม (md ขึ้นไป) — แท็บสามแท็บ ตาราง และยอดรวมท้ายตาราง · มือถือใช้รายการเดียวด้านล่างแทน */}
@@ -233,6 +216,9 @@ export function AccBillingPage() {
             <Tab on={tab === "due"} onClick={() => pickTab("due")} count={overdue.length}>
               ค้างชำระ
             </Tab>
+            <Tab on={tab === "rc"} onClick={() => pickTab("rc")} count={receipts.length}>
+              ใบเสร็จ
+            </Tab>
           </div>
           <AccFilters filter={filter} />
         </div>
@@ -243,16 +229,18 @@ export function AccBillingPage() {
               <thead>
                 <tr>
                   <th style={{ width: 190 }}>ลูกค้า</th>
-                  <th style={{ width: 170 }}>ใบเสนอราคาล่าสุด</th>
+                  <th style={{ width: 160 }}>ใบเสนอราคาล่าสุด</th>
+                  {/* วันที่ส่งมาวางบิลแยกคอลัมน์ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                  <th style={{ width: 140 }}>วันที่ส่งมาวางบิล</th>
                   <th className="r" style={{ width: 190 }}>ยอดสุทธิตามใบเสนอราคา (บาท)</th>
                   <th style={{ width: 270 }}>งวดชำระ</th>
-                  <th className="c">จัดการ</th>
+                  <th className="c" style={{ width: 200 }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
                 {todo.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
                       ไม่มีดีลที่รอวางบิล
                     </td>
                   </tr>
@@ -260,7 +248,6 @@ export function AccBillingPage() {
                   todo.map((d) => {
                     const has = d.plan.length > 0;
                     const isOpen = Boolean(open[d.no]);
-                    const waiting = d.plan.filter((p) => seqStatus(acc, d.no, p.seq) === "pending").length;
                     return (
                       <Fragment key={d.no}>
                         <tr
@@ -271,23 +258,16 @@ export function AccBillingPage() {
                           <td data-label="ลูกค้า" className="font-semibold">{d.cus}</td>
                           <td data-label="ใบเสนอราคาล่าสุด" className="muted">
                             <span className="num">{d.quo}</span>
-                            <span className="why">ส่ง {thaiDate(d.quoDate)}</span>
                           </td>
+                          <td data-label="วันที่ส่งมาวางบิล" className="muted num">{thaiDate(d.quoDate)}</td>
                           <td data-label="ยอดสุทธิตามใบเสนอราคา (บาท)" className="r num font-semibold">{baht(d.net)}</td>
-                          <td data-label="งวดชำระ" className="muted">
-                            {has ? (
-                              <>
-                                <span className="clip">รอออกใบแจ้งหนี้ {waiting} งวด</span>
-                                <span className="why">
-                                  {isOpen ? "กดแถวเพื่อย่อ" : "กดแถวเพื่อดูงวดและออกใบแจ้งหนี้"}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="why">ยังไม่ได้แบ่งงวด</span>
-                            )}
+                          {/* สถานะเป็นป้าย ไม่ใช่ข้อความ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                          <td data-label="งวดชำระ">
+                            <PlanTag has={has} />
                           </td>
                           <td data-label="จัดการ" className="c">
-                            <span className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                            {/* ปุ่มอยู่ตำแหน่งเดิมทุกแถว ไม่ขยับตามข้อมูล (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                            <span className="inline-grid items-center gap-x-3" style={{ gridTemplateColumns: "72px 72px" }}>
                               <button
                                 type="button"
                                 className="lnk"
@@ -299,7 +279,7 @@ export function AccBillingPage() {
                               >
                                 {has ? "แก้งวด" : "แบ่งงวด"}
                               </button>
-                              {canCancel(d.no) && (
+                              {canCancel(d.no) ? (
                                 <button
                                   type="button"
                                   className="lnk quiet text-destructive"
@@ -311,17 +291,20 @@ export function AccBillingPage() {
                                 >
                                   ยกเลิกดีล
                                 </button>
+                              ) : (
+                                <span aria-hidden="true" />
                               )}
                             </span>
                           </td>
                         </tr>
                         {isOpen && has && (
                           <tr className="sub">
-                            <td colSpan={5}>
+                            <td colSpan={6}>
                               <PlanRows
                                 acc={acc}
                                 deal={d}
                                 onBill={(item) => setBilling({ deal: d, item })}
+                                onReceipt={setIssuing}
                               />
                             </td>
                           </tr>
@@ -335,7 +318,7 @@ export function AccBillingPage() {
           )}
 
           {tab === "inv" && (
-            <table className="data-table cards-sm min-w-[1110px]">
+            <table className="data-table cards-sm min-w-[1140px]">
               <thead>
                 <tr>
                   <th style={{ width: 150 }}>เลขที่ใบแจ้งหนี้</th>
@@ -345,7 +328,7 @@ export function AccBillingPage() {
                   <th className="c" style={{ width: 130 }}>ยอดที่ต้องชำระ (บาท)</th>
                   <th className="c" style={{ width: 130 }}>ยอดคงเหลือ (บาท)</th>
                   <th style={{ width: 120 }}>สถานะ</th>
-                  <th className="c" style={{ width: 120 }}>จัดการ</th>
+                  <th className="c" style={{ width: 170 }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -387,8 +370,20 @@ export function AccBillingPage() {
                         <InvoiceTag acc={acc} invoice={v} />
                       </td>
                       <td data-label="จัดการ" className="c">
-                        <span className="inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                          {invoiceDue(v) > 0 && canCancel(v.deal) && (
+                        {/* ออกใบเสร็จจากแถวใบแจ้งหนี้ · ปุ่มอยู่ช่องเดิมทุกแถว (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                        <span className="inline-grid items-center gap-x-3" style={{ gridTemplateColumns: "72px 72px" }}>
+                          <button
+                            type="button"
+                            className="lnk"
+                            data-ceo-hide
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIssuing(v);
+                            }}
+                          >
+                            ออกใบเสร็จ
+                          </button>
+                          {invoiceDue(v) > 0 && canCancel(v.deal) ? (
                             <button
                               type="button"
                               className="lnk quiet text-destructive"
@@ -400,6 +395,8 @@ export function AccBillingPage() {
                             >
                               ยกเลิกดีล
                             </button>
+                          ) : (
+                            <span aria-hidden="true" />
                           )}
                         </span>
                       </td>
@@ -411,7 +408,7 @@ export function AccBillingPage() {
           )}
 
           {tab === "due" && (
-            <table className="data-table cards-sm min-w-[1040px]">
+            <table className="data-table cards-sm min-w-[1100px]">
               <thead>
                 <tr>
                   <th style={{ width: 150 }}>เลขที่ใบแจ้งหนี้</th>
@@ -420,7 +417,7 @@ export function AccBillingPage() {
                   <th className="c" style={{ width: 100 }}>เกินกำหนด</th>
                   <th className="c" style={{ width: 130 }}>ยอดคงเหลือ (บาท)</th>
                   <th>ติดตามล่าสุด</th>
-                  <th className="c" style={{ width: 130 }}>จัดการ</th>
+                  <th className="c" style={{ width: 190 }}>จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -460,9 +457,15 @@ export function AccBillingPage() {
                           )}
                         </td>
                         <td data-label="จัดการ" className="c">
-                          <button type="button" className="lnk" data-ceo-hide onClick={() => setCollecting(v)}>
-                            บันทึกติดตาม
-                          </button>
+                          <span className="inline-grid items-center gap-x-3" style={{ gridTemplateColumns: "84px 72px" }}>
+                            <button type="button" className="lnk" data-ceo-hide onClick={() => setCollecting(v)}>
+                              บันทึกติดตาม
+                            </button>
+                            {/* (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                            <button type="button" className="lnk" data-ceo-hide onClick={() => setIssuing(v)}>
+                              ออกใบเสร็จ
+                            </button>
+                          </span>
                         </td>
                       </tr>
                     );
@@ -471,10 +474,13 @@ export function AccBillingPage() {
               </tbody>
             </table>
           )}
+
+          {/* ใบเสร็จที่ออกแล้ว — ตารางเดียวกับหน้าใบเสร็จเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+          {tab === "rc" && <ReceiptGroupsTable acc={acc} groups={rcGroups} />}
         </div>
 
         <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
-          <Foot tab={tab} acc={acc} invoices={invoices} todo={todo} overdue={overdue} />
+          <Foot tab={tab} acc={acc} invoices={invoices} todo={todo} overdue={overdue} receipts={receipts} customers={rcGroups.length} />
         </div>
       </section>
 
@@ -542,7 +548,7 @@ export function AccBillingPage() {
                 }}
                 onBill={(item) => setBilling({ deal: d, item })}
                 onCancel={canCancel(d.no) ? () => openCancel(d.no) : undefined}
-                onReceipt={(v) => quickReceipt(v, d)}
+                onReceipt={setIssuing}
               />
             ))
           )}
@@ -593,6 +599,16 @@ export function AccBillingPage() {
             setOpen((o) => ({ ...o, [billing.deal.no]: true }));
             if (tab !== "inv") setInvDot(true);
             setBilling(null);
+          }}
+        />
+      )}
+      {issuing && (
+        <IssueReceiptDialog
+          invoice={issuing}
+          onClose={() => setIssuing(null)}
+          onDone={() => {
+            setOpen((o) => ({ ...o, [issuing.deal]: true }));
+            setIssuing(null);
           }}
         />
       )}
@@ -675,12 +691,16 @@ function Foot({
   invoices,
   todo,
   overdue,
+  receipts,
+  customers,
 }: {
   tab: TabKey;
   acc: AccState;
   invoices: Invoice[];
   todo: AccDeal[];
   overdue: Invoice[];
+  receipts: Receipt[];
+  customers: number;
 }) {
   if (tab === "todo") {
     /*
@@ -701,7 +721,7 @@ function Foot({
         <span>แสดง {todo.length} ดีล</span>
         {unsplit.length > 0 && (
           <span className="text-muted-foreground">
-            ยังไม่ได้แบ่งงวด {unsplit.length} ดีล · <span className="num">{baht(unsplitSum)}</span> บาท
+            รอแบ่งงวด {unsplit.length} ดีล · <span className="num">{baht(unsplitSum)}</span> บาท
           </span>
         )}
         <span className="sum sm:ml-auto">
@@ -717,6 +737,18 @@ function Foot({
         <span>แสดง {invoices.length} ใบแจ้งหนี้</span>
         <span className="sum sm:ml-auto">
           ยอดคงเหลือรวม<b>{baht(left)}</b> บาท
+        </span>
+      </>
+    );
+  }
+  if (tab === "rc") {
+    return (
+      <>
+        <span>
+          แสดง {customers} ลูกค้า {receipts.length} ใบเสร็จ
+        </span>
+        <span className="sum sm:ml-auto">
+          ยอดรวมตามใบเสร็จ<b>{baht(receipts.reduce((a, r) => a + r.total, 0))}</b> บาท
         </span>
       </>
     );
@@ -756,19 +788,33 @@ function DueBadge({ invoice, today }: { invoice: Invoice; today: string }) {
   return <span className="why">เหลืออีก {-n} วัน</span>;
 }
 
+/** สถานะงวดชำระของดีล — รอแบ่งงวด / แบ่งงวดแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function PlanTag({ has }: { has: boolean }) {
+  return (
+    <span className={`tag ${has ? "t-info" : "t-miss"}`}>
+      <i />
+      {has ? "แบ่งงวดแล้ว" : "รอแบ่งงวด"}
+    </span>
+  );
+}
+
 /**
  * งวดชำระใต้แถวดีล — ออกใบแจ้งหนี้ได้เฉพาะงวดที่งวดก่อนหน้าออกใบเสร็จแล้ว (AC-BR-04)
  * งวดที่ออกใบแล้วยังอยู่ในรายการเสมอ ขึ้นสถานะและเลขที่ใบให้กดเปิดดูได้ ไม่หายไปจนไม่เหลือร่องรอย
+ * ออกใบเสร็จของงวดจากแถวนี้ได้เลย · ปุ่มอยู่ช่องคงที่ ไม่ขยับระหว่างแถว (ผู้ใช้สั่ง 9 ต.ค. 2569)
  */
 function PlanRows({
   acc,
   deal,
   onBill,
+  onReceipt,
 }: {
   acc: AccState;
   deal: AccDeal;
   onBill: (item: Installment) => void;
+  onReceipt: (v: Invoice) => void;
 }) {
+  const icon = "iconbtn glass-thin";
   return (
     <div className="subwrap">
       <table className="inner">
@@ -776,28 +822,85 @@ function PlanRows({
           <col style={{ width: 90 }} />
           <col style={{ width: 80 }} />
           <col style={{ width: 130 }} />
-          <col style={{ width: 190 }} />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 200 }} />
         </colgroup>
         <tbody>
           {deal.plan.map((p, i) => {
             const inv = invoiceOf(acc, deal.no, p.seq);
+            const st = seqStatus(acc, deal.no, p.seq);
+            /* ใบเสร็จล่าสุดของงวด — ทยอยจ่ายได้หลายใบ */
+            const rcs = inv ? receiptsOf(acc, inv.no) : [];
+            const rc = rcs[rcs.length - 1];
+            const owed = inv ? invoiceDue(inv) > 0 && invoiceStatus(acc, inv) !== "cancelled" : false;
             return (
-              <tr key={p.seq}>
+              /* เส้นคั่นระหว่างงวดชัดขึ้น · เปิดใบแจ้งหนี้เป็นปุ่มรูปตาในคอลัมน์จัดการ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+              <tr key={p.seq} style={i ? { borderTop: "1px solid var(--border)" } : undefined}>
                 <td data-label="งวดที่" className="c num">งวดที่ {p.seq}</td>
                 <td data-label="สัดส่วน" className="c num">{p.pct}%</td>
                 <td data-label="จำนวนเงิน" className="r num">{baht(p.amount)}</td>
-                <td data-label="จัดการ" className="c">
-                  {seqStatus(acc, deal.no, p.seq) === "pending" ? (
-                    canBill(acc, deal, i) ? (
-                      <button type="button" className="lnk" data-ceo-hide onClick={() => onBill(p)}>
-                        ออกใบแจ้งหนี้
-                      </button>
-                    ) : (
-                      <span className="why">ต้องออกใบเสร็จงวดก่อนหน้าก่อน</span>
-                    )
+                <td data-label="สถานะ" className="c">
+                  {st === "pending" ? (
+                    <span className="tag t-miss">
+                      <i />
+                      รอออกใบแจ้งหนี้
+                    </span>
                   ) : (
-                    <SeqBilled acc={acc} deal={deal.no} seq={p.seq} no={inv?.no ?? ""} />
+                    <span className={`tag ${st === "paid" ? "t-ok" : "t-early"}`}>
+                      <i />
+                      {st === "paid" ? "ชำระแล้ว" : "วางบิลแล้ว"}
+                    </span>
                   )}
+                </td>
+                <td data-label="จัดการ" className="c">
+                  {/* ช่องคงที่: ใบแจ้งหนี้ · ใบเสร็จ · ปุ่มข้อความ */}
+                  <span className="inline-grid items-center gap-x-2" style={{ gridTemplateColumns: "30px 30px 96px" }}>
+                    {st === "pending" && !canBill(acc, deal, i) ? (
+                      <span className="why" style={{ gridColumn: "1 / -1" }}>
+                        รอชำระงวดก่อนหน้า
+                      </span>
+                    ) : (
+                      <>
+                        {inv?.no ? (
+                          <Link
+                            href={invoiceHref(inv.no)}
+                            className={icon}
+                            style={{ width: 30, height: 30 }}
+                            title={`เปิดใบแจ้งหนี้ ${inv.no}`}
+                            aria-label={`เปิดใบแจ้งหนี้ ${inv.no}`}
+                          >
+                            <EyeIcon className="size-3.5" strokeWidth={2} />
+                          </Link>
+                        ) : (
+                          <span aria-hidden="true" />
+                        )}
+                        {rc ? (
+                          <Link
+                            href={receiptHref(rc.no)}
+                            className={icon}
+                            style={{ width: 30, height: 30 }}
+                            title={`เปิดใบเสร็จ ${rc.no}`}
+                            aria-label={`เปิดใบเสร็จ ${rc.no}`}
+                          >
+                            <ReceiptIcon className="size-3.5" strokeWidth={2} />
+                          </Link>
+                        ) : (
+                          <span aria-hidden="true" />
+                        )}
+                        {st === "pending" ? (
+                          <button type="button" className="lnk" data-ceo-hide onClick={() => onBill(p)}>
+                            ออกใบแจ้งหนี้
+                          </button>
+                        ) : owed && inv ? (
+                          <button type="button" className="lnk" data-ceo-hide onClick={() => onReceipt(inv)}>
+                            ออกใบเสร็จ
+                          </button>
+                        ) : (
+                          <span aria-hidden="true" />
+                        )}
+                      </>
+                    )}
+                  </span>
                 </td>
               </tr>
             );
@@ -805,27 +908,6 @@ function PlanRows({
         </tbody>
       </table>
     </div>
-  );
-}
-
-/**
- * งวดที่ออกใบแจ้งหนี้ไปแล้ว — บอกสถานะพร้อมเลขที่ใบซึ่งกดเปิดเอกสารได้
- * ออกใบเสร็จแล้วถือว่าลูกค้าชำระงวดนั้นแล้ว (AC-BR-05) จึงแยกข้อความคนละคำ
- */
-function SeqBilled({ acc, deal, seq, no }: { acc: AccState; deal: string; seq: number; no: string }) {
-  const paid = seqStatus(acc, deal, seq) === "paid";
-  return (
-    <span className="inline-flex flex-col items-center gap-0.5">
-      <span className={`tag ${paid ? "t-ok" : "t-early"}`}>
-        <i />
-        {paid ? "ชำระแล้ว" : "วางบิลแล้ว"}
-      </span>
-      {no && (
-        <Link className="lnk num" href={invoiceHref(no)} title="เปิดใบแจ้งหนี้">
-          {no}
-        </Link>
-      )}
-    </span>
   );
 }
 
@@ -924,9 +1006,10 @@ function PhoneDeal({
         <div className="rounded-[14px] bg-[#FBF7F7] px-[11px] pt-[9px] pb-[13px] text-[13.5px] [grid-area:plan]">
           {has ? (
             <>
-              <p className="font-semibold">
+              {/* สถานะเป็นป้ายเหมือนจอคอม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
                 แบ่ง {d.plan.length} งวด
-                {waiting > 0 && <span className="text-[#C8102E]"> · รอออกใบแจ้งหนี้ {waiting} งวด</span>}
+                <PlanTag has />
               </p>
               <p className="mt-0.5 text-[12.5px] text-[#6E6164]">
                 {unpaid > 0
@@ -937,8 +1020,8 @@ function PhoneDeal({
               </p>
             </>
           ) : (
-            /* ข้อความเดียวในกล่อง จึงแสดงคำแนะนำ */
-            <p className="text-[#6E6164]">ยังไม่ได้แบ่งงวด · กดแบ่งงวดเพื่อเริ่มวางบิล</p>
+            /* ใช้ป้ายเดียวกับจอคอม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+            <PlanTag has={false} />
           )}
         </div>
         {!isOpen && (
@@ -1032,7 +1115,8 @@ function PhoneSeq({
   const router = useRouter();
   const pending = seqStatus(acc, deal.no, p.seq) === "pending";
   const inv = pending ? null : invoiceOf(acc, deal.no, p.seq);
-  const rc = inv ? receiptOf(acc, inv.no) : null;
+  /* ใบเสร็จล่าสุดของงวด — ทยอยจ่ายได้หลายใบ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const rc = inv ? (receiptsOf(acc, inv.no).at(-1) ?? null) : null;
   const owed = inv ? invoiceDue(inv) > 0 && invoiceStatus(acc, inv) !== "cancelled" : false;
   const docBtn =
     "inline-flex h-9 items-center justify-center gap-1.5 rounded-[10px] text-[12.5px] font-semibold";
@@ -1394,13 +1478,6 @@ function PlanDialog({
         ) : (
           <p className="mt-0.5 text-muted-foreground">ใบเสนอราคาไม่ได้ระบุเงื่อนไขชำระเงิน</p>
         )}
-        {deal.plan.length === 0 && (
-          <p className="mt-1 text-[11.5px] text-muted-foreground">
-            {prefilled
-              ? "ตั้งงวดตามเงื่อนไขนี้ให้แล้ว แก้ได้ถ้าตกลงกับลูกค้าเป็นอย่างอื่น"
-              : "อ่านเป็นสัดส่วนงวดไม่ได้แน่ชัด จึงไม่เดาตัวเลขให้ กรุณากรอกตามเงื่อนไขข้างบน"}
-          </p>
-        )}
       </div>
 
       {/* มือถือ: งวดละการ์ด ช่องใหญ่พอให้นิ้วกด · งวดที่ออกใบแล้วล็อกไว้ */}
@@ -1723,10 +1800,6 @@ function BillDialog({
           />
         </Field>
       </div>
-
-      <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-        เอกสารออกเลขแล้วห้ามลบและห้ามยกเลิกเพื่อออกใหม่ หากผิดต้องแก้ในใบเดิม
-      </p>
     </Sheet>
   );
 }

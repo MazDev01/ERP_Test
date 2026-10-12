@@ -21,30 +21,22 @@ import {
   type EmpAccount,
   type Employee,
 } from "@/lib/hr-data";
-import { createAccount, resetAccount, setAccountStatus, useHr } from "@/lib/hr-store";
+import { createAccount, resetAccount, setAccountRoles, setAccountStatus, useHr } from "@/lib/hr-store";
+import { jobLabel, PassBox, RolePicker, tempPass } from "./account-parts";
+import { roleLabel, type Role } from "@/lib/role";
 import { Sheet } from "./lead-dialogs";
 import { Field, Input, Select } from "./ui";
 import { SearchBox } from "./sales-ui";
 import { PhoneCard, PhoneList } from "./acchr-phone";
 
-type Filter = "all" | "active" | "suspended" | "none";
+type Filter = "all" | "active" | "suspended";
 
 const FILTER_LABEL: Record<Filter, string> = {
   all: "ทั้งหมด",
   active: "ใช้งานอยู่",
   suspended: "ถูกระงับ",
-  none: "ยังไม่มีบัญชี",
 };
 
-/** รหัสชั่วคราว — ตัดตัวอักษรที่อ่านสลับกันง่าย (O 0 I l 1) ออก จะได้อ่านทางโทรศัพท์ได้ */
-function tempPass() {
-  const up = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const low = "abcdefghijkmnpqrstuvwxyz";
-  const num = "23456789";
-  const sym = "#@!";
-  const pick = (s: string) => s.charAt(Math.floor(Math.random() * s.length));
-  return pick(up) + pick(low) + pick(low) + pick(low) + pick(num) + pick(num) + pick(sym);
-}
 
 export function HrAccountsPage() {
   const hr = useHr();
@@ -53,13 +45,15 @@ export function HrAccountsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   /* กล่องเดียวใช้ทั้งสร้างบัญชีและตั้งรหัสใหม่ — ต่างกันแค่ว่ามีบัญชีอยู่แล้วหรือยัง */
   const [editing, setEditing] = useState<{ id: string; reset: boolean } | null>(null);
+  /** กล่องเมนูที่ใช้ได้ (บทบาทของบัญชี) — ต้นแบบ hr-accounts.html mVeil */
+  const [menuOf, setMenuOf] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return hr.emp.filter((e) => {
-      if (e.status !== "active") return false;
-      const st: Filter = e.account ? e.account.status : "none";
-      if (filter !== "all" && st !== filter) return false;
+      /* พนักงาน 1 คนมีบัญชี 1 บัญชี สร้างพร้อมข้อมูลพนักงาน — ตารางนี้จึงมีแต่คนที่มีบัญชี */
+      if (e.status !== "active" || !e.account) return false;
+      if (filter !== "all" && e.account.status !== filter) return false;
       if (q && !`${e.name} ${e.account?.user ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -100,16 +94,17 @@ export function HrAccountsPage() {
             <thead>
               <tr>
                 <th>พนักงาน</th>
-                <th style={{ width: 190 }}>ชื่อผู้ใช้</th>
-                <th style={{ width: 150 }}>สถานะบัญชี</th>
-                <th style={{ width: 150 }}>สร้างเมื่อ</th>
-                <th className="c" style={{ width: 240 }} aria-label="จัดการ" />
+                <th style={{ width: 150 }}>ชื่อผู้ใช้</th>
+                <th style={{ width: 170 }}>งานที่รับผิดชอบ</th>
+                <th style={{ width: 120 }}>สถานะบัญชี</th>
+                <th style={{ width: 120 }}>สร้างเมื่อ</th>
+                <th className="c" style={{ width: 330 }} aria-label="จัดการ" />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
                     ไม่พบรายการ
                   </td>
                 </tr>
@@ -118,7 +113,7 @@ export function HrAccountsPage() {
                   <AccountRow
                     key={e.id}
                     emp={e}
-                    onNew={() => setEditing({ id: e.id, reset: false })}
+                    onMenu={() => setMenuOf(e.id)}
                     onReset={() => setEditing({ id: e.id, reset: true })}
                     onToggle={() =>
                       setAccountStatus(e.id, e.account?.status === "active" ? "suspended" : "active")
@@ -157,6 +152,7 @@ export function HrAccountsPage() {
                   a
                     ? [
                         { label: "ชื่อผู้ใช้", value: a.user },
+                        { label: "งานที่รับผิดชอบ", value: roleLine(a.roles) },
                         { label: "สร้างเมื่อ", value: thaiDate(a.createdAt) },
                       ]
                     : undefined
@@ -164,6 +160,9 @@ export function HrAccountsPage() {
                 actions={
                   a ? (
                     <>
+                      <button type="button" className="btn glass-thin" onClick={() => setMenuOf(e.id)}>
+                        งานที่รับผิดชอบ
+                      </button>
                       <button
                         type="button"
                         className="btn glass-thin"
@@ -197,6 +196,10 @@ export function HrAccountsPage() {
         </PhoneList>
       </section>
 
+      {menuOf && hr.emp.find((x) => x.id === menuOf) && (
+        <MenuDialog emp={hr.emp.find((x) => x.id === menuOf)!} onClose={() => setMenuOf(null)} />
+      )}
+
       {target && editing && (
         <AccountDialog
           key={`${target.id}-${editing.reset}`}
@@ -216,12 +219,12 @@ export function HrAccountsPage() {
 
 function AccountRow({
   emp,
-  onNew,
+  onMenu,
   onReset,
   onToggle,
 }: {
   emp: Employee;
-  onNew: () => void;
+  onMenu: () => void;
   onReset: () => void;
   onToggle: () => void;
 }) {
@@ -236,6 +239,17 @@ function AccountRow({
       </td>
       <td data-label="ชื่อผู้ใช้" className="num">
         {a ? a.user : <span className="muted">ยังไม่มีบัญชี</span>}
+      </td>
+      <td data-label="งานที่รับผิดชอบ">
+        {a?.roles?.length ? (
+          a.roles.map((r) => (
+            <span key={r} className="block leading-relaxed whitespace-nowrap">
+              {jobLabel(r)}
+            </span>
+          ))
+        ) : (
+          <span className="muted">—</span>
+        )}
       </td>
       <td data-label="สถานะบัญชี">
         {st ? (
@@ -252,7 +266,10 @@ function AccountRow({
       </td>
       <td data-label="จัดการ" className="c">
         {a ? (
-          <span className="flex flex-wrap justify-center gap-1.5">
+          <span className="flex flex-wrap justify-end gap-1.5">
+            <button type="button" className="btn glass-thin btn-mini" onClick={onMenu}>
+              งานที่รับผิดชอบ
+            </button>
             <button type="button" className="btn glass-thin btn-mini" onClick={onReset}>
               รีเซ็ตรหัสผ่าน
             </button>
@@ -260,11 +277,7 @@ function AccountRow({
               {a.status === "active" ? "ระงับบัญชี" : "คืนสิทธิ์"}
             </button>
           </span>
-        ) : (
-          <button type="button" className="btn solid btn-solid btn-mini" onClick={onNew}>
-            สร้างบัญชี
-          </button>
-        )}
+        ) : null}
       </td>
     </tr>
   );
@@ -288,9 +301,9 @@ function AccountDialog({
     reset ? (emp.account?.user ?? "") : suggestUser(emp.name, taken),
   );
   const [pass, setPass] = useState(tempPass);
-  /* ต้นแบบไม่มีตัวเลือกบทบาทในกล่องนี้ — บทบาทของบัญชีกำหนดที่ /admin/settings?s=positions&t=accounts (แท็บ "บทบาทของบัญชีผู้ใช้")
-     รีเซ็ตรหัสคงบทบาทเดิมไว้ · บัญชีใหม่ยังไม่มีบทบาทจนกว่าผู้ดูแลระบบจะกำหนด */
-  const roles = accountRoles(emp.account);
+  /* บัญชีใหม่: ฝ่ายบุคคลติกบทบาทเองตอนสร้าง (ผู้ใช้สั่ง 6 ต.ค. 2569)
+     ลำดับที่ติกคือลำดับเมนูที่ผู้ใช้เห็น — ติกก่อนขึ้นก่อน · รีเซ็ตรหัสคงบทบาทเดิมไว้ */
+  const [roles, setRoles] = useState<Role[]>(() => accountRoles(emp.account));
   const [warn, setWarn] = useState("");
 
   function save() {
@@ -341,28 +354,20 @@ function AccountDialog({
           />
         </Field>
         <Field label="รหัสผ่านชั่วคราว">
-          <span className="flex items-center gap-2">
-            <span className="num flex h-9 flex-1 items-center rounded-[10px] border border-border bg-muted/60 px-3 text-[14px] font-bold tracking-wide">
-              {pass}
-            </span>
-            <button
-              type="button"
-              className="btn glass-thin btn-mini"
-              onClick={() => setPass(tempPass())}
-            >
-              สุ่มใหม่
-            </button>
-          </span>
+          <PassBox pass={pass} onNew={() => setPass(tempPass())} />
         </Field>
       </div>
 
-      <p className="mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed">
-        ส่งชื่อผู้ใช้และรหัสผ่านนี้ให้พนักงาน เมื่อเข้าระบบครั้งแรกจะให้ตั้งรหัสใหม่เอง
-      </p>
-      <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-        ระบบยังไม่มีฐานข้อมูล จึงเก็บเฉพาะชื่อผู้ใช้กับสถานะ ไม่ได้เก็บรหัสผ่านไว้
-        ต้องคัดลอกรหัสนี้ไปให้พนักงานก่อนปิดกล่อง
-      </p>
+      {!reset && (
+        <fieldset className="mt-4">
+          <legend className="mb-2 text-[12.5px] font-semibold text-muted-foreground">
+            งานที่รับผิดชอบ
+          </legend>
+          <RolePicker roles={roles} onChange={setRoles} onWarn={setWarn} />
+        </fieldset>
+      )}
+
+      {/* ไม่มีข้อความอธิบายการทำงานของระบบในกล่องนี้ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
 
       {warn && (
         <p className="mt-3 rounded-[11px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-3.5 py-2.5 text-[12.5px] text-destructive">
@@ -374,3 +379,51 @@ function AccountDialog({
 }
 
 export type { EmpAccount };
+
+/** บทบาทของบัญชีเป็นข้อความบรรทัดเดียว — การ์ดมือถือ */
+function roleLine(roles?: Role[]) {
+  return roles?.length ? roles.map(jobLabel).join(" · ") : "—";
+}
+
+/**
+ * เมนูที่ใช้ได้ของบัญชีหนึ่ง = บทบาทของบัญชี เรียงตามลำดับที่ติก (ต้นแบบ hr-accounts.html mVeil)
+ * เมนู "ของฉัน" ขึ้นตามประเภทพนักงานอยู่แล้ว ไม่อยู่ในรายการนี้
+ */
+function MenuDialog({ emp, onClose }: { emp: Employee; onClose: () => void }) {
+  const [roles, setRoles] = useState<Role[]>(() => accountRoles(emp.account));
+  const [warn, setWarn] = useState("");
+  return (
+    <Sheet
+      title="งานที่รับผิดชอบ"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn glass-thin" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="btn solid btn-solid"
+            onClick={() => {
+              setAccountRoles(emp.id, roles);
+              onClose();
+            }}
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <p className="mb-3.5">
+        <b className="block text-[14px] font-semibold">{emp.name}</b>
+        <em className="mt-0.5 block text-[12px] text-muted-foreground not-italic">{hrPos(emp.pos).label}</em>
+      </p>
+      <RolePicker roles={roles} onChange={setRoles} onWarn={setWarn} />
+      {warn && (
+        <p className="mt-3 rounded-[11px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-3.5 py-2.5 text-[12.5px] text-destructive">
+          {warn}
+        </p>
+      )}
+    </Sheet>
+  );
+}

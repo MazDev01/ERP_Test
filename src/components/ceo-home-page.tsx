@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { mobileHomeOf, navItemsOf, useMenuAccess, type NavItem } from "@/lib/nav";
-import { ROLE_EMPLOYEE, useMyRoles } from "@/lib/hr-link";
+import { ROLE_EMPLOYEE, useMyMine, useMyRoles } from "@/lib/hr-link";
 import { useHydrated } from "@/lib/pwa";
 import { useProfile } from "@/lib/profile-data";
 import { useProfilePhoto } from "@/lib/profile-store";
@@ -35,7 +35,7 @@ import {
 import { NotificationMenu } from "./notification-menu";
 import { awaitingReceipt, invoiceDue, seqStatus, useAcc } from "@/lib/acc-store";
 import { useHr } from "@/lib/hr-store";
-import { inPeriod, isDaily, probEnd } from "@/lib/hr-data";
+import { inPeriod, inRange, isDaily, probEnd, rangeLabel } from "@/lib/hr-data";
 import { usePm } from "@/lib/pm-store";
 import { useCrm } from "@/lib/crm-store";
 import { buildReport } from "@/lib/sales-report";
@@ -80,7 +80,8 @@ export function RoleHomePage() {
   /* การ์ดตรงกับเมนูข้างเสมอ ไม่กรองทิ้งรายการไหน — มือถือกับจอกว้างจะได้เห็นหน้าชุดเดียวกัน
      (เดิมตัดโอทีกับสลิปเงินเดือนของทีมงานออกตามต้นแบบ my-home.html ที่มีแค่ห้าการ์ด
       แต่ต้นแบบนั้นไม่มีสองเมนูนี้ในเมนูข้างด้วย พอระบบจริงมี คนที่ใช้แต่มือถือจึงหาสลิปของตัวเองไม่เจอ) */
-  const menu = navItemsOf(roles, access, route);
+  const mine = useMyMine();
+  const menu = navItemsOf(roles, access, route, mine);
   /* บนจอกว้างไปเมนูแรกที่เป็นงานของบทบาท — ข้ามหน้าตอกบัตรเพราะมีแถบข้างอยู่แล้ว */
   const first = menu.find((i) => i.href !== "/")?.href ?? "/";
   /* การ์ดหน้าหลัก (มือถือ) รวม "ผู้สนใจ" กับ "ใบเสนอราคา" เป็นการ์ดเดียว (ผู้ใช้สั่ง 29 ก.ย. 2569)
@@ -371,7 +372,8 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
         .reduce((a, p) => a + p.received + p.wht, 0);
       const owe = awaitingReceipt(acc).reduce((a, v) => a + invoiceDue(v), 0);
       const active = hr.emp.filter((e) => e.status === "active");
-      if (has("/acc/receipts")) stats.push({ value: shortNum(got), unit: "฿", label: "รับชำระแล้ว", href: "/acc/receipts" });
+      /* ใบเสร็จรวมเข้าหน้าวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+      if (has("/acc/billing")) stats.push({ value: shortNum(got), unit: "฿", label: "รับชำระแล้ว", href: "/acc/billing?tab=rc" });
       if (has("/acc/billing")) stats.push({ value: shortNum(owe), unit: "฿", label: "ลูกหนี้คงเหลือ", href: "/acc/billing" });
       if (has("/hr/employees")) stats.push({ value: `${active.length}`, unit: "คน", label: "พนักงาน", href: "/hr/employees" });
       /* วันลาคงเหลือ = ลากิจ + ลาพักร้อน (ไม่รวมลาป่วย) — ตัวคำนวณเดียวกับกล่อง "วันนี้ของฉัน" */
@@ -480,13 +482,20 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
       const myId = ROLE_EMPLOYEE[role];
       const emp = myId ? hr.emp.find((e) => e.id === myId) : undefined;
       if (emp && emp.type !== "intern") {
-        const daily = isDaily(emp);
-        const month = hr.slips
-          .filter((s) => (daily ? s.dayPublished : s.published) && inPeriod(emp, s.month))
-          .map((s) => s.month)
-          .sort()
-          .at(-1);
-        payslip = month ? `รอบ${thaiMonth(month)}` : "ยังไม่มีสลิปที่เผยแพร่";
+        /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+        const label = isDaily(emp)
+          ? [...hr.dailyRounds]
+              .filter((r) => r.published && inRange(emp, r))
+              .sort((a, b) => a.to.localeCompare(b.to))
+              .map((r) => ` ${rangeLabel(r)}`)
+              .at(-1)
+          : hr.slips
+              .filter((s) => s.published && inPeriod(emp, s.month))
+              .map((s) => s.month)
+              .sort()
+              .map((m) => thaiMonth(m))
+              .at(-1);
+        payslip = label ? `รอบ${label}` : "ยังไม่มีสลิปที่เผยแพร่";
       }
     }
 

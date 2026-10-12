@@ -28,10 +28,9 @@ import { parseIsoDate, TH_MONTHS_SHORT } from "@/lib/format";
 import { useLeaveRecords } from "@/lib/leave-store";
 import { USERS } from "@/lib/mock-data";
 import {
-  KIND_COLOR,
-  eventKinds,
   invitedEvents,
   isPsEvent,
+  type EventColor,
   type EventKind,
   type PmEvent,
 } from "@/lib/pm-schedule-data";
@@ -43,7 +42,9 @@ import { Sheet } from "./lead-dialogs";
 import { ThaiDatePicker } from "./thai-date-picker";
 import { Field, Input, Select } from "./ui";
 import {
+  ColorPick,
   ScheduleBoard,
+  colPaint,
   tintPaint,
   useBoardNav,
   type BoardEvent,
@@ -62,7 +63,7 @@ const KINDS: BoardKind[] = [
 ];
 
 /* เหตุผลตอนยกเลิกเป็นของบังคับ — ข้อความนี้คือสิ่งที่ผู้เข้าร่วมได้รับในแจ้งเตือน */
-const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน — ผู้เข้าร่วมจะเห็นข้อความนี้ในแจ้งเตือน";
+const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน";
 
 const COLOR = Object.fromEntries(KINDS.map((k) => [k.key, k.color])) as Record<string, string>;
 const paintOf = (kind: string) => ({ dot: COLOR[kind], paint: tintPaint(COLOR[kind]) });
@@ -146,7 +147,8 @@ export function PresalesSchedulePage() {
         /* นัดที่ถูกยกเลิกยังอยู่ในรายการแบบขีดฆ่า ไม่หายเงียบ (เจ้าของสั่ง 24 ก.ย. 2569) */
         cancelled: Boolean(e.cancel),
         cancelWhy: e.cancel?.why,
-        ...paintOf(isPsEvent(e) ? "mine" : "meet"),
+        /* สีที่เลือกเองมาก่อนสีของกลุ่ม เฉพาะนัดที่ตั้งเอง — นัดที่ถูกเชิญคงสีม่วงเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+        ...(isPsEvent(e) && e.col ? colPaint(e.col) : paintOf(isPsEvent(e) ? "mine" : "meet")),
         data: e,
       });
     return out;
@@ -154,12 +156,8 @@ export function PresalesSchedulePage() {
 
   return (
     <div className="space-y-4">
-      <div className="bar">
-        <div>
-          <h1>ตารางงาน</h1>
-          <p>{ME.full} · กำหนดส่งข้อเสนอ งานในโปรเจค และวันลา</p>
-        </div>
-      </div>
+      {/* หน้าตาเดียวกับตารางงาน PM — ไม่มีหัวข้อหน้า ดับเบิลคลิกช่องวันเพื่อเพิ่มนัด (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <h1 className="sr-only">ตารางงาน</h1>
 
       <ScheduleBoard
         nav={nav}
@@ -174,6 +172,7 @@ export function PresalesSchedulePage() {
           if (isPsEvent(e.data) && !e.data.cancel) setForm({ day: e.data.date, event: e.data });
           else setOpen(e.data);
         }}
+        noKinds
       />
 
       {open && (
@@ -232,7 +231,10 @@ function PsEventForm({
   );
   const [ps, setPs] = useState(event?.ps ?? requests[0]?.no ?? "");
   const [title, setTitle] = useState(event?.title ?? "");
-  const [kind, setKind] = useState<EventKind>(event?.kind ?? "client");
+  /* ประเภทไม่ให้เลือกแล้ว เก็บค่าเดิมไว้ข้างใน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const kind: EventKind = event?.kind ?? "client";
+  /* ใบใหม่ตั้งต้นสีเขียวน้ำทะเล ตรงกับสีนัดที่ตั้งเองที่เห็นในปฏิทินนี้อยู่แล้ว */
+  const [col, setCol] = useState<EventColor>(event?.col ?? "teal");
   const [date, setDate] = useState(event?.date ?? day);
   const [from, setFrom] = useState(event?.from ?? "10:00");
   const [to, setTo] = useState(event?.to ?? "11:00");
@@ -269,7 +271,7 @@ function PsEventForm({
       /* ตัวเองอยู่ในนัดเสมอ — เป็นคนตั้งและเป็นคนไป */
       who: [ME.employeeId, ...who],
       note: detail,
-      col: KIND_COLOR[kind],
+      col,
       by: "ps" as const,
       ps,
     };
@@ -314,9 +316,8 @@ function PsEventForm({
           role="alert"
           className="mb-3.5 rounded-[11px] bg-[var(--destructive-soft)] px-3 py-2.5 text-xs leading-[1.6] font-semibold text-destructive"
         >
-          ยกเลิกแล้วใบจะยังอยู่ในปฏิทินของผู้เข้าร่วมแบบขีดฆ่า ไม่หายไป · ทุกคนจะได้รับแจ้งพร้อมเหตุผล
           <Input
-            className="mt-2 bg-white"
+            className="bg-white"
             value={why}
             aria-label="เหตุผลที่ยกเลิก"
             onChange={(e) => {
@@ -332,10 +333,10 @@ function PsEventForm({
       <div className="space-y-3.5" onClick={() => setPick(false)}>
         {requests.length === 0 ? (
           <p className="rounded-[11px] bg-[var(--warning-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed font-semibold text-[var(--warning)]">
-            ยังไม่มีคำขอก่อนการขายที่คุณรับผิดชอบอยู่ · นัดของทีมก่อนการขายต้องผูกกับคำขอเสมอ
+            ยังไม่มีคำขอก่อนการขายที่คุณรับผิดชอบอยู่
           </p>
         ) : (
-          <Field label="คำขอก่อนการขาย" hint="นัดนี้เป็นงานของคำขอใบไหน — เลือกได้เฉพาะใบที่คุณรับผิดชอบ">
+          <Field label="คำขอก่อนการขาย">
             <Select
               value={ps}
               onChange={(e) => {
@@ -363,15 +364,8 @@ function PsEventForm({
           />
         </Field>
 
-        <Field label="ประเภท">
-          <Select value={kind} onChange={(e) => setKind(e.target.value as EventKind)}>
-            {eventKinds().map((k) => (
-              <option key={k.key} value={k.key}>
-                {k.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {/* ไม่มีช่องประเภท — สีของนัดแยกนัดแทน เหมือนตารางงาน PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+        <ColorPick value={col} onChange={setCol} />
 
         <div className="grid grid-cols-2 items-end gap-2.5 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <Field label="วันที่" className="col-span-2 sm:col-span-1">
@@ -405,7 +399,6 @@ function PsEventForm({
 
         <Field
           label="ชวนใครไปด้วย"
-          hint="ไม่เลือกก็ได้ — คนที่เลือกจะเห็นนัดนี้ในตารางงานของตัวเองแบบดูอย่างเดียว · ผู้จัดการโครงการไม่อยู่ในรายการ เพราะงานช่วงนี้ยังไม่ใช่งานของโปรเจค"
         >
           <span className="grid max-h-[180px] grid-cols-1 gap-x-3 overflow-y-auto sm:grid-cols-2">
             {team.map((m) => {
@@ -447,10 +440,6 @@ function PsEventForm({
           </p>
         )}
 
-        <p className="text-[11.5px] leading-[1.7] text-muted-foreground">
-          ผู้ตั้งนัด {ME.full} · นัดนี้เห็นได้ที่ตารางงานของคุณ ปฏิทินของคนที่ชวนไป ปฏิทินของผู้จัดการทั่วไป
-          และหน้าคำขอก่อนการขายของพนักงานขายเจ้าของผู้สนใจรายนั้น
-        </p>
       </div>
     </Sheet>
   );

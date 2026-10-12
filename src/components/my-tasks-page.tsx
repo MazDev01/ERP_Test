@@ -22,7 +22,7 @@ import { SearchBox } from "./sales-ui";
 import { TalkList } from "./pm-project-page";
 import { ProjectChat } from "./project-chat";
 import { ClientCommentList } from "./client-review-pm";
-import { useClientReviews } from "@/lib/client-review-store";
+import { roundsOfTask, useClientReviews, type ReviewRound } from "@/lib/client-review-store";
 import {
   CalendarIcon,
   CheckCircleIcon,
@@ -440,14 +440,14 @@ function TaskCard({
       )}
       {/* เดิมเป็นลิงก์ "คุยกับ PM เรื่องงานนี้" — เปลี่ยนเป็นปุ่มแชทกลุ่มของโปรเจค (ผู้ใช้สั่ง 5 ต.ค. 2569)
           ข้อความทวงของ PM ยังอยู่ในสายของงานใบนั้น จึงเหลือ "ตอบ PM" ไว้เฉพาะตอนถูกทวง */}
-      <span className="relative z-[2] col-span-2 flex flex-wrap items-center gap-2.5 justify-self-start">
-        <ChatButton onClick={onChat} />
-        {nudge && (
+      {/* ปุ่มแชทโปรเจคย้ายไปชิดซ้ายของปุ่มส่งงานในแถวล่าง (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      {nudge && (
+        <span className="relative z-[2] col-span-2 flex flex-wrap items-center gap-2.5 justify-self-start">
           <button type="button" onClick={onTalk} className="text-[12.5px] font-semibold text-[#C8102E]">
             ตอบ PM{talks.length > 0 ? ` (${talks.length})` : ""}
           </button>
-        )}
-      </span>
+        </span>
+      )}
 
       <hr className="col-span-2 mt-2 mb-1 border-0 border-t-[1.5px] border-dashed border-[#ECE3E5]" />
       <div className="col-span-2 flex items-center justify-between gap-3">
@@ -462,19 +462,29 @@ function TaskCard({
           />
           {whenText(t, stage, today)}
         </p>
-        {canSend && (
-          <button
-            type="button"
-            onClick={onSend}
-            className="relative z-[2] h-[34px] flex-none rounded-[10px] bg-[#C8102E] px-4 text-[13px] font-semibold text-white"
-          >
-            {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
-          </button>
-        )}
+        <span className="relative z-[2] flex flex-none items-center gap-2">
+          <ChatButton onClick={onChat} />
+          {canSend && (
+            <button
+              type="button"
+              onClick={onSend}
+              className="h-[34px] flex-none rounded-[10px] bg-[#C8102E] px-4 text-[13px] font-semibold text-white"
+            >
+              {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
+            </button>
+          )}
+        </span>
       </div>
     </article>
 
-    <article className="glass-thin rounded-[16px] px-4 py-4 max-md:hidden sm:px-5">
+    {/* ทั้งการ์ดกดเปิดรายละเอียด (งานที่อนุมัติแล้วดูประวัติการส่ง) — ยกเว้นตอนกดปุ่มในการ์ด (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+    <article
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        onOpen();
+      }}
+      className="glass-thin cursor-pointer rounded-[16px] px-4 py-4 transition-colors hover:border-primary max-md:hidden sm:px-5"
+    >
       <div className="flex gap-3 sm:gap-4">
         <span
           className={`grid size-11 flex-none place-items-center rounded-[13px] sm:size-[58px] sm:rounded-[14px] ${look.tone}`}
@@ -547,24 +557,25 @@ function TaskCard({
             </p>
             {/* ตอบ PM ได้จากหน้าของตัวเอง ไม่ต้องเข้าหน้าโปรเจคของ PM ซึ่งบทบาททีมงานเปิดไม่ได้ */}
             {/* ปุ่มแชทกลุ่มของโปรเจค แทนลิงก์ "คุยกับ PM เรื่องงานนี้" (ผู้ใช้สั่ง 5 ต.ค. 2569) · "ตอบ PM" เหลือเฉพาะตอนถูกทวง */}
-            <span className="flex flex-wrap items-center gap-2.5 max-sm:w-full">
-              <ChatButton onClick={onChat} />
+            {/* ชิดขวาเป็นกลุ่มเดียว [แชทโปรเจค][ส่งงาน] (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+            <span className="ml-auto flex flex-wrap items-center justify-end gap-2.5 max-sm:w-full">
               {nudge && (
                 <button type="button" onClick={onTalk} className="text-[12.5px] font-semibold text-primary hover:underline">
                   ตอบ PM{talks.length > 0 ? ` (${talks.length})` : ""}
                 </button>
               )}
+              <ChatButton onClick={onChat} />
+              {canSend && (
+                <button
+                  type="button"
+                  onClick={onSend}
+                  /* มือถือขยายปุ่มเต็มแถว นิ้วกดง่าย */
+                  className="btn solid btn-solid btn-mini max-sm:h-10! max-sm:w-full max-sm:justify-center max-sm:text-[13.5px]!"
+                >
+                  {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
+                </button>
+              )}
             </span>
-            {canSend && (
-              <button
-                type="button"
-                onClick={onSend}
-                /* มือถือขยายปุ่มเต็มแถว นิ้วกดง่าย */
-                className="btn solid btn-solid btn-mini max-sm:h-10! max-sm:w-full max-sm:justify-center max-sm:text-[13.5px]!"
-              >
-                {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -664,30 +675,126 @@ function DetailDialog({
         </div>
       )}
 
-      {stage === "done" && (
-        <ul className="mt-5 divide-y divide-border">
-          {subs.map((sb, i) => (
-            <li key={`${sb.at}-${i}`} className="py-3.5 first:pt-0 last:pb-0">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <b className="text-[13px] font-bold">ครั้งที่ {subs.length - i}</b>
-                <span className="num text-[12.5px] text-muted-foreground">{stamp(sb.at)}</span>
-                <span className={`tag ${i === 0 ? "t-ok" : "t-miss"}`}>
-                  <i />
-                  {i === 0 ? "ผ่านแล้ว" : "ตีกลับให้แก้"}
-                </span>
-                <DownloadLink className="ml-auto" />
-              </div>
-              <p className="num mt-1 text-[12.5px] text-muted-foreground">
-                {sb.files.join(" · ") || "ไม่ได้แนบไฟล์"}
-              </p>
-            </li>
-          ))}
-          {subs.length === 0 && (
-            <li className="py-3 text-[13px] text-muted-foreground">ไม่มีประวัติการส่งงาน</li>
-          )}
-        </ul>
-      )}
+      {/* งานที่อนุมัติแล้ว — ไล่ประวัติทุกรอบตั้งแต่ส่งครั้งแรกจนปิดงาน (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      {stage === "done" && <SubmitHistory p={p} t={t} />}
     </Sheet>
+  );
+}
+
+// ─── ประวัติการส่งงาน (ผู้ใช้สั่ง 9 ต.ค. 2569) ─────────────────────
+
+/** ผลตรวจหนึ่งขั้นใต้รอบที่ส่ง */
+type HistStep = {
+  at?: string;
+  label: string;
+  tone: "ok" | "miss" | "info";
+  why?: string;
+  round?: ReviewRound;
+};
+
+/*
+ * เรียงจากรอบแรกไปรอบล่าสุด — แต่ละรอบ = สิ่งที่ส่ง แล้วตามด้วยผลตรวจของ PM และรอบตรวจของลูกค้า (ถ้ามี)
+ * สโตร์เก็บเหตุผลตีกลับไว้แค่รอบล่าสุด รอบก่อนหน้าจึงดึงเวลาจากกิจกรรมโปรเจค และเหตุผลจากความเห็นลูกค้าที่ส่งต่อมา
+ */
+function SubmitHistory({ p, t }: { p: Project; t: ProjectTask }) {
+  const reviews = useClientReviews();
+  const subs = t.subs ?? [];
+  const client = roundsOfTask(reviews, p.pj, t.name);
+  const backActs = p.acts
+    .filter((a) => a.tx === `ส่งกลับให้แก้ ${t.name}`)
+    .map((a) => a.at)
+    .sort();
+  const passActs = p.acts
+    .filter((a) => a.tx === `ตรวจผ่าน ${t.name}`)
+    .map((a) => a.at)
+    .sort();
+
+  if (subs.length === 0) {
+    return (
+      <div className="mt-5">
+        <p className="mb-2 text-[11.5px] text-muted-foreground">ประวัติการส่งงาน</p>
+        <p className="text-[13px] text-muted-foreground">ไม่มีประวัติการส่งงาน</p>
+        {t.doneAt && <p className="num mt-2 text-[12.5px]">อนุมัติ {stamp(t.doneAt)}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5">
+      <p className="mb-3 text-[11.5px] text-muted-foreground">ประวัติการส่งงาน</p>
+      <ol className="relative flex flex-col gap-4 border-l-2 border-border pl-4">
+        {subs.map((sb, i) => {
+          const from = sb.at;
+          const to = subs[i + 1]?.at;
+          const last = i === subs.length - 1;
+          const inWin = (at?: string) => !!at && at >= from && (!to || at < to);
+          const steps: HistStep[] = [];
+          const rounds = client.filter((r) => inWin(r.createdAt));
+
+          if (rounds.length > 0) {
+            steps.push({ at: rounds[0].createdAt, label: "PM ตรวจผ่าน", tone: "ok" });
+            for (const r of rounds) {
+              steps.push({ at: r.createdAt, label: `ส่งให้ลูกค้าตรวจ รอบที่ ${r.round}`, tone: "info" });
+              if (r.status === "approved") {
+                steps.push({ at: r.submittedAt, label: "ลูกค้าอนุมัติ", tone: "ok" });
+              } else if (r.forwardedAt) {
+                steps.push({ at: r.forwardedAt, label: "ส่งกลับให้แก้ตามความเห็นลูกค้า", tone: "miss", round: r });
+              } else if (r.submittedAt) {
+                steps.push({ at: r.submittedAt, label: "ลูกค้าส่งความเห็น", tone: "info", round: r });
+              }
+            }
+          } else if (!last) {
+            const at = backActs.find(inWin);
+            const why = t.back && inWin(t.back.at) ? t.back.why : undefined;
+            steps.push({ at, label: "PM ส่งกลับให้แก้", tone: "miss", why });
+          } else {
+            steps.push({ at: t.doneAt ?? passActs.find(inWin), label: "PM ตรวจผ่าน · อนุมัติ", tone: "ok" });
+          }
+          if (last && rounds.length > 0 && t.doneAt) steps.push({ at: t.doneAt, label: "อนุมัติ · ปิดงาน", tone: "ok" });
+
+          return (
+            <li key={`${sb.at}-${i}`} className="relative">
+              <span
+                aria-hidden="true"
+                className="absolute top-1 size-2.5 rounded-full bg-primary"
+                style={{ left: -22 }}
+              />
+              <div className="flex flex-wrap items-center gap-2.5">
+                <b className="text-[13px] font-bold">รอบที่ {i + 1}</b>
+                <span className="num text-[12.5px] text-muted-foreground">ส่ง {stamp(sb.at)}</span>
+                {sb.by && <span className="text-[12px] text-muted-foreground">{memberName(sb.by)}</span>}
+              </div>
+              <div className="mt-2">
+                <FileList names={sb.files.map((n) => ({ n }))} empty="ไม่ได้แนบไฟล์" />
+              </div>
+              {sb.note && <p className="mt-2 text-[13px] leading-relaxed whitespace-pre-line">{sb.note}</p>}
+
+              <ul className="mt-2.5 flex flex-col gap-2">
+                {steps.map((st, k) => (
+                  <li key={k} className="rounded-[12px] bg-muted/60 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`tag ${st.tone === "ok" ? "t-ok" : st.tone === "miss" ? "t-late" : "t-info"}`}>
+                        <i />
+                        {st.label}
+                      </span>
+                      {st.at && <span className="num text-[12px] text-muted-foreground">{stamp(st.at)}</span>}
+                    </div>
+                    {st.why && (
+                      <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line text-destructive">{st.why}</p>
+                    )}
+                    {st.round && st.round.comments.length > 0 && (
+                      <div className="mt-2 rounded-[10px] bg-card p-2.5">
+                        <ClientCommentList round={st.round} />
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -803,9 +910,6 @@ function SubmitDialog({
             <Kv k="กำหนดส่ง" v={thaiDate(t.due)} />
             {t.assignedAt && <Kv k="มอบหมายเมื่อ" v={`${thaiStamp(t.assignedAt)} น.`} />}
           </dl>
-          <p className="mt-5 text-[12.5px] text-muted-foreground">
-            สิ่งที่กรอกไว้ยังอยู่ กดกลับไปกรอกฟอร์มได้เลย
-          </p>
         </div>
       )}
 
@@ -964,7 +1068,7 @@ function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string;
       {round && (
         <div className="mt-3 rounded-[12px] bg-card p-3">
           <p className="mb-2 text-[12px] font-semibold text-muted-foreground">
-            คอมเมนต์ของลูกค้า รอบที่ {round.round} (ดูอย่างเดียว)
+            คอมเมนต์ของลูกค้า รอบที่ {round.round}
           </p>
           <ClientCommentList round={round} />
         </div>

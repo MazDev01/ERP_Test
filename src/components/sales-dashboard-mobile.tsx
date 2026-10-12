@@ -17,10 +17,8 @@ import {
   type RangeKey,
   type SalesReport,
 } from "@/lib/sales-report";
-import { DownloadIcon } from "./icons";
 
 const RANGES: RangeKey[] = ["m", "q", "y"];
-const RANGE_WORD: Record<RangeKey, string> = { m: "เดือนนี้", q: "ไตรมาสนี้", y: "ปีนี้" };
 const DOW = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
 /* ลายเส้นไอคอนชุดเดียวกับต้นแบบ (G) — วาดใน viewBox 24 */
@@ -84,7 +82,6 @@ export function SalesDashboardMobile({
   today,
   hello,
   dealsHref,
-  onExport,
 }: {
   d: SalesReport;
   range: RangeKey;
@@ -93,7 +90,6 @@ export function SalesDashboardMobile({
   today: string;
   hello: string;
   dealsHref: string;
-  onExport: () => void;
 }) {
   /* แถบสัปดาห์เริ่มวันอาทิตย์ของสัปดาห์นี้ · วันที่เลือกเริ่มที่วันนี้ */
   const [wStart, setWStart] = useState(() => addDays(today, -parseIsoDate(today).getDay()));
@@ -254,11 +250,7 @@ export function SalesDashboardMobile({
         )}
       </div>
 
-      {/* ต้นแบบมือถือไม่มีปุ่มนี้ แต่แดชบอร์ดเดิมบนมือถือมีให้ส่งออกรายงาน — เก็บไว้ท้ายหน้า ไม่ให้ฟีเจอร์หาย */}
-      <button type="button" className="btn glass-thin w-full justify-center" data-ceo-hide onClick={onExport}>
-        <DownloadIcon className="size-3.5" strokeWidth={2} />
-        ส่งออก Excel ({RANGE_WORD[range]})
-      </button>
+      {/* ไม่มีปุ่มส่งออก Excel (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
     </section>
   );
 }

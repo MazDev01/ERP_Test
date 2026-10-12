@@ -29,7 +29,7 @@ import { bkkOf, parseIsoDate, pad2, toIsoDate, thaiMonth, TH_MONTHS_FULL } from 
 import { leavesOnDate, useLeaveRecords } from "@/lib/leave-store";
 import { useRole } from "@/lib/role";
 import { expectedInMinutes, expectedOutMinutes, formatMinutes, formatMinutesOfDay, leaveWindowOf, looksForgotten, minutesOfTime, requiredMinutes } from "@/lib/work-schedule";
-import { areaSettings, freshFix, judge, locate, meters, useLiveGeo, type LiveGeo, type PunchGeo } from "@/lib/work-area";
+import { areaSettings, freshFix, judge, locate, meters, setGeoDemo, useGeoDemo, useLiveGeo, type GeoDemo, type LiveGeo, type PunchGeo } from "@/lib/work-area";
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, LoginIcon, LogoutIcon, PinIcon, PlusIcon, PowerIcon } from "./icons";
 import "@/styles/mobile/checkin.css";
 
@@ -41,7 +41,9 @@ const DOW_SHORT = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 type Check =
   | { phase: "locating" }
   /* อยู่นอกพื้นที่ หรือหาพิกัดไม่ได้ — error มีค่าเมื่อหาพิกัดไม่ได้ */
-  | { phase: "outside"; geo: PunchGeo; error?: string };
+  | { phase: "outside"; geo: PunchGeo; error?: string }
+  /* อยู่ในพื้นที่แล้ว รอกดยืนยันเข้างาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+  | { phase: "confirm"; geo: PunchGeo };
 
 export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const records = useSyncExternalStore(
@@ -217,9 +219,10 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
    */
   function homeNote() {
     if (requiredMin === 0 && leaveWindow)
-      return "วันนี้คุณลาทั้งวัน ไม่ต้องตอกบัตร — ถ้าเข้ามาทำงานก็ตอกได้ตามปกติ";
-    if (checkedOut)
-      return "ออกงานแล้ววันนี้ — ถ้ากลับเข้ามาทำงานต่อ กดเข้างานได้อีก";
+      /* ลาทั้งวัน — ไม่มีข้อความ ปุ่มตอกบัตรกดไม่ได้แทน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+      return "";
+    /* ป้ายด้านบนบอก "ออกงานแล้ว" อยู่แล้ว ไม่ต้องซ้ำ (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+    if (checkedOut) return "";
     if (isWorking) return `เลิกงานเวลา ${formatMinutesOfDay(expectOut)} น.`;
     return leaveWindow ? `${leaveText} · เริ่มงาน ${formatMinutesOfDay(expectIn)} น.` : "";
   }
@@ -243,8 +246,8 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
     }
     const geo = judge(got.fix, rules);
     if (geo.status === "inside") {
-      setCheck(null);
-      confirm(geo);
+      /* ถามยืนยันก่อนเหมือนตอนออกงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+      setCheck({ phase: "confirm", geo });
       return;
     }
     setCheck({ phase: "outside", geo });
@@ -301,7 +304,8 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
     <div
       className={
         embedded
-          ? ""
+          ? /* จอกว้าง: กล่องอยู่กลางหน้าแนวตั้ง ไม่ชิดบน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+            "md:flex md:min-h-[calc(100dvh-210px)] md:items-center md:justify-center"
           : "flex min-h-dvh items-center justify-center p-0 sm:p-8"
       }
     >
@@ -553,7 +557,7 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
               )}
               <button
                 type="button"
-                disabled={!now}
+                disabled={!now || (requiredMin === 0 && Boolean(leaveWindow) && !isWorking)}
                 onClick={() => setPopOpen(true)}
                 className={`h-[52px] w-full rounded-[16px] text-[15px] font-bold transition-transform active:scale-[0.98] disabled:opacity-50 ${
                   beforeEnd > 0
@@ -623,7 +627,7 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
 
           <button
               type="button"
-              disabled={!now}
+              disabled={!now || (requiredMin === 0 && Boolean(leaveWindow) && !isWorking)}
               onClick={() => {
                 /*
                  * เข้างาน = กดแล้วบันทึกเลย ไม่ต้องถามยืนยัน (ยกเว้นอยู่นอกพื้นที่)
@@ -658,6 +662,8 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
               value={lastOut ? formatClock(new Date(lastOut.at)) : null}
             />
           </div>
+
+          <GeoDemoSwitch />
 
           {!embedded && !punchOnly && (
             <Link href="/records" className="btn glass-thin btn-mini mt-6">
@@ -704,7 +710,9 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
                   </svg>
                 </div>
                 <h2 className="mt-3.5 text-2xl font-semibold">{done.title}</h2>
-                <p className="mt-2 text-[14.5px] text-muted-foreground">{done.note}</p>
+                <p className="mt-2 text-[14.5px] text-muted-foreground">
+                  <Lines text={done.note} />
+                </p>
               </div>
             ) : check?.phase === "locating" ? (
               <div className="flex flex-col items-center pt-7" aria-live="polite">
@@ -715,9 +723,6 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
                 <h2 id="pop-title" className="mt-4 text-xl font-semibold">
                   กำลังตรวจพื้นที่
                 </h2>
-                <p className="mt-2 text-[14px] text-muted-foreground">
-                  ขอตำแหน่งจากเครื่องเพื่อยืนยันว่าอยู่ในพื้นที่ทำงาน
-                </p>
                 <button
                   type="button"
                   onClick={closePop}
@@ -726,6 +731,35 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
                   ยกเลิก
                 </button>
               </div>
+            ) : check?.phase === "confirm" ? (
+              <>
+                {/* หน้าการ์ตูนชุดเดียวกับกล่องออกงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+                <div className="-mt-14 flex justify-center">
+                  <FaceIn />
+                </div>
+                <h2 id="pop-title" className="mt-1.5 text-2xl font-semibold">
+                  เข้างาน
+                </h2>
+                <p className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground">
+                  <Lines text={`เวลา ${popAt ? formatClock(popAt) : ""} น. · อยู่ในพื้นที่ทำงาน`} />
+                </p>
+                <div className="mt-[26px] flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closePop}
+                    className="h-[54px] flex-1 rounded-[27px] bg-secondary text-base font-semibold text-muted-foreground transition-transform active:scale-95"
+                  >
+                    ยังไม่ใช่ตอนนี้
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirm(check.geo)}
+                    className="btn-solid h-[54px] flex-1 rounded-[27px] text-base font-semibold transition-transform active:scale-95"
+                  >
+                    เช็คอิน
+                  </button>
+                </div>
+              </>
             ) : check?.phase === "outside" ? (
               <OutsidePanel check={check} onRetry={() => void checkIn()} onCancel={closePop} />
             ) : popMode === "in" ? (
@@ -740,9 +774,13 @@ export function CheckinScreen({ embedded = false }: { embedded?: boolean } = {})
                   {popEarly > 0 ? "ออกก่อนเวลา" : "เลิกงานแล้ว"}
                 </h2>
                 <p className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground">
-                  {popEarly > 0
-                    ? `ออกเวลา ${formatClock(popAt)} น. · เร็วกว่ากำหนด ${formatMinutes(popEarly)}`
-                    : "ขอบคุณสำหรับวันนี้ พักผ่อนเยอะ ๆ นะ"}
+                  <Lines
+                    text={
+                      popEarly > 0
+                        ? `ออกเวลา ${formatClock(popAt)} น. · เร็วกว่ากำหนด ${formatMinutes(popEarly)}`
+                        : "ขอบคุณสำหรับวันนี้ พักผ่อนเยอะ ๆ นะ"
+                    }
+                  />
                 </p>
 
                 <div className="mt-[26px] flex gap-3">
@@ -852,10 +890,12 @@ function OutsidePanel({
       <h2 id="pop-title" className="mt-4 text-center text-xl font-semibold">
         {title}
       </h2>
-      <p className="mt-2 text-center text-[14px] leading-relaxed text-muted-foreground">{detail}</p>
+      <p className="mt-2 text-center text-[14px] leading-relaxed text-muted-foreground">
+        <Lines text={detail} />
+      </p>
 
       <p className="mt-4 rounded-[12px] bg-[var(--destructive-soft)] px-3.5 py-2.5 text-center text-[13px] text-destructive">
-        ต้องอยู่ในพื้นที่ทำงานจึงจะเข้างานได้ · ติดต่อหัวหน้าหากทำงานนอกสถานที่
+        <Lines text="ต้องอยู่ในพื้นที่ทำงานจึงจะเข้างานได้ · ติดต่อหัวหน้าหากทำงานนอกสถานที่" />
       </p>
 
       <div className="mt-5 flex gap-2.5">
@@ -873,6 +913,52 @@ function OutsidePanel({
         >
           ตรวจใหม่
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** ข้อความหลัง · หรือ — ขึ้นบรรทัดใหม่ (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+function Lines({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/s*[·—]s*/).map((t, i) => (
+        <span key={i} className="block">
+          {t}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/*
+ * ตัวสลับตำแหน่งจำลอง — ไว้ทดสอบ/นำเสนอเข้างาน-ออกงาน ทั้งในและนอกพื้นที่ โดยไม่ต้องเดินไปที่จริง
+ * (ผู้ใช้สั่ง 8 ต.ค. 2569) · TODO: เอาออกก่อนใช้งานจริง
+ */
+const GEO_DEMO: { key: GeoDemo; label: string }[] = [
+  { key: "real", label: "ตำแหน่งจริง" },
+  { key: "inside", label: "ในพื้นที่" },
+  { key: "outside", label: "นอกพื้นที่" },
+];
+function GeoDemoSwitch() {
+  const mode = useGeoDemo();
+  return (
+    <div className="mt-5 flex flex-col items-center gap-1.5">
+      <span className="text-[11px] font-semibold text-muted-foreground">ทดสอบตำแหน่ง</span>
+      <div className="inline-flex rounded-full bg-secondary p-1" role="group" aria-label="ทดสอบตำแหน่ง">
+        {GEO_DEMO.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={mode === o.key}
+            onClick={() => setGeoDemo(o.key)}
+            className={`h-8 rounded-full px-3.5 text-[12.5px] font-semibold transition-colors ${
+              mode === o.key ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -913,6 +999,26 @@ function Dots() {
       <circle className="bob" cx="152" cy="116" r="7" fill="#F5A8B2" />
       <circle cx="88" cy="80" r="48" fill="#FBE6E9" />
     </>
+  );
+}
+
+/** หน้ายิ้มสดใสตอนเข้างาน — คู่กับ FaceOut */
+function FaceIn() {
+  return (
+    <svg width="176" height="150" viewBox="0 0 176 150" role="img" aria-label="หน้ายิ้มสดใส">
+      <Dots />
+      <g className="bow">
+        <circle cx="88" cy="80" r="42" fill="#F5B21B" />
+        <circle cx="74" cy="72" r="4.6" fill="#3B3B4F" />
+        <circle cx="102" cy="72" r="4.6" fill="#3B3B4F" />
+        <circle cx="75.6" cy="70.4" r="1.4" fill="#fff" />
+        <circle cx="103.6" cy="70.4" r="1.4" fill="#fff" />
+        <ellipse cx="63" cy="88" rx="8" ry="5" fill="#E06A6A" opacity=".5" />
+        <ellipse cx="113" cy="88" rx="8" ry="5" fill="#E06A6A" opacity=".5" />
+        <path d="M72 90 Q88 108 104 90 Z" fill="#3B3B4F" />
+        <path d="M72 90 Q88 108 104 90" fill="none" stroke="#3B3B4F" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    </svg>
   );
 }
 

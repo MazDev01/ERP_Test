@@ -6,6 +6,7 @@ import {
   periodRange,
   entitlements,
   fixLeaveStatuses,
+  addMissingLeave,
   leavePeriodOf,
   LEAVE_RECORDS,
   type LeaveRecord,
@@ -29,6 +30,7 @@ const store = createRoleStore<LeaveRecord[]>(
   LEAVE_RECORDS,
   (v): v is LeaveRecord[] => Array.isArray(v),
   fixLeaveStatuses,
+  addMissingLeave,
 );
 
 export function useLeaveRecords() {

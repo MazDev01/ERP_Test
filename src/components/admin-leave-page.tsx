@@ -15,7 +15,7 @@
  */
 
 import { useState } from "react";
-import { LEAVE_TYPES, currentPeriod, isBuiltinLeave, leaveNote } from "@/lib/leave-data";
+import { LEAVE_TYPES, currentPeriod, isBuiltinLeave, leaveLabel, leaveNote } from "@/lib/leave-data";
 import type { LeaveQuota, RateSettings } from "@/lib/system-settings";
 import { thaiDate } from "@/lib/format";
 import { AdminHead, Card, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
@@ -114,9 +114,6 @@ export function AdminLeavePage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
           <div>
             <h2 className="text-[14.5px] font-bold">สิทธิ์วันลา</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              รอบปี {thaiDate(from)} – {thaiDate(to)} · ตั้ง 0 วัน = ไม่มีสิทธิ์ลาประเภทนี้
-            </p>
           </div>
           <button type="button" className="btn solid btn-solid" onClick={() => setEditing("")}>
             <PlusIcon className="size-4" strokeWidth={2.4} />
@@ -126,11 +123,10 @@ export function AdminLeavePage() {
 
         <div className="px-4 pt-3 pb-4 sm:px-5">
           {/* หัวตารางแบบเดียวกับหน้าข้อมูลหลัก (ต้นแบบ HR-12) */}
-          <div className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground sm:grid-cols-[26px_minmax(0,1fr)_150px_120px_58px_84px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground sm:grid-cols-[26px_minmax(0,1fr)_150px_58px_84px]">
             <span className="text-center max-sm:hidden">#</span>
             <span>ชื่อ</span>
             <span className="text-right sm:text-left">สิทธิ์ต่อปี</span>
-            <span className="max-sm:hidden">การใช้งาน</span>
             <span className="text-center">เปิดใช้</span>
             <span />
           </div>
@@ -142,12 +138,12 @@ export function AdminLeavePage() {
             return (
               <div
                 key={q.type}
-                className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border py-2 last:border-b-0 hover:bg-muted/40 sm:grid-cols-[26px_minmax(0,1fr)_150px_120px_58px_84px]"
+                className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border py-2 last:border-b-0 hover:bg-muted/40 sm:grid-cols-[26px_minmax(0,1fr)_150px_58px_84px]"
               >
                 <span className="num text-center text-[12px] text-muted-foreground max-sm:hidden">{i + 1}</span>
                 <span className="min-w-0">
                   <b className={`block text-[13.5px] ${q.off ? "font-medium text-muted-foreground" : "font-semibold"}`}>
-                    {q.type}
+                    {leaveLabel(q.type)}
                     {q.off && (
                       <em className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground not-italic">
                         ปิดใช้งาน
@@ -177,7 +173,6 @@ export function AdminLeavePage() {
                   />
                   <span className="text-[12px] whitespace-nowrap text-muted-foreground">วัน/ปี</span>
                 </span>
-                <span className="text-[12px] text-muted-foreground max-sm:hidden">{used || "ยังไม่ถูกใช้"}</span>
                 <span className="flex justify-center">
                   <Switch
                     on={!q.off}
@@ -194,16 +189,17 @@ export function AdminLeavePage() {
                   >
                     <PencilIcon className="size-4" strokeWidth={1.9} />
                   </button>
-                  <button
-                    type="button"
-                    aria-label={`ลบประเภท ${q.type}`}
-                    disabled={builtin || Boolean(used)}
-                    title={builtin ? "ประเภทตั้งต้นของระบบลบไม่ได้ — ปิดใช้งานแทน" : used ? `ลบไม่ได้ — ${used}` : undefined}
-                    onClick={() => remove(q.type)}
-                    className="btn glass-thin btn-mini disabled:opacity-40"
-                  >
-                    <TrashIcon className="size-4" strokeWidth={1.9} />
-                  </button>
+                  {/* ลบไม่ได้ก็ไม่ต้องมีปุ่มลบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+                  {!builtin && !used && (
+                    <button
+                      type="button"
+                      aria-label={`ลบประเภท ${q.type}`}
+                      onClick={() => remove(q.type)}
+                      className="btn glass-thin btn-mini"
+                    >
+                      <TrashIcon className="size-4" strokeWidth={1.9} />
+                    </button>
+                  )}
                 </span>
               </div>
             );
@@ -211,10 +207,8 @@ export function AdminLeavePage() {
         </div>
       </section>
 
-      <Card
-        title="รอบปีการลา"
-        note="รอบปีขึ้นใหม่เองทุกปีในวันที่เลือก · วันลาที่ใช้ไปเริ่มนับใหม่ และได้สิทธิ์เต็มตามที่ตั้งไว้ด้านบน"
-      >
+      {/* ไม่มีข้อความอธิบายการทำงานของระบบ และไม่มีช่องยกยอดลาพักร้อน (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+      <Card title="รอบปีการลา">
         <p className="mb-1.5 text-[12.5px] font-semibold text-muted-foreground">วันเริ่มรอบปีการลา</p>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted-foreground">ทุกวันที่</span>
@@ -247,60 +241,8 @@ export function AdminLeavePage() {
             ))}
           </select>
         </div>
-        <p className="mt-2 mb-4 text-[12px] leading-relaxed text-muted-foreground">
-          {c.draft.leaveYearStart === c.saved.leaveYearStart
-            ? `รอบปัจจุบัน ${thaiDate(from)} – ${thaiDate(to)}`
-            : `บันทึกแล้วรอบปีจะเริ่มทุกวันที่ ${startText(c.draft.leaveYearStart)} · ใบลาที่ยื่นไว้แล้วนับเข้ารอบใหม่ตามวันที่ลา`}
-        </p>
-
-        <p className="mb-1.5 text-[12.5px] font-semibold text-muted-foreground">ยกยอดลาพักร้อนข้ามปี</p>
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={customCarry ? "custom" : String(carry)}
-            onChange={(e) => {
-              if (e.target.value === "custom") return setCustomCarry(true);
-              setCustomCarry(false);
-              c.setDraft({ ...c.draft, vacationCarryMax: Number(e.target.value) });
-            }}
-            className={`${inputCls} max-w-[260px] cursor-pointer`}
-            aria-label="เพดานยกยอดลาพักร้อน"
-          >
-            {CARRY_CHOICES.map((n) => (
-              <option key={n} value={n}>
-                {n > 0 ? `ยกได้ไม่เกิน ${n} วัน` : "ไม่ยกยอด — หมดสิ้นปี"}
-              </option>
-            ))}
-            <option value="custom">กำหนดเอง…</option>
-          </select>
-          {customCarry && (
-            <span className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={365}
-                step={1}
-                value={carry}
-                onChange={(e) => c.setDraft({ ...c.draft, vacationCarryMax: Number(e.target.value) })}
-                className={`${inputCls} num max-w-[100px] text-right`}
-                aria-label="จำนวนวันที่ยกได้สูงสุด"
-              />
-              <span className="text-[13px] text-muted-foreground">วัน</span>
-            </span>
-          )}
-        </div>
-        <p className="mt-2.5 text-[12px] leading-relaxed text-muted-foreground">
-          {badCarry
-            ? "จำนวนวันต้องเป็นจำนวนเต็ม 0 ถึง 365"
-            : carry > 0
-              ? `ตัวอย่าง: สิทธิ์ลาพักร้อนปีละ ${list.find((q) => q.type === "ลาพักร้อน")?.days ?? 0} วัน ใช้ไป 2 วัน เหลือ ${Math.max(0, (list.find((q) => q.type === "ลาพักร้อน")?.days ?? 0) - 2)} วัน → ปีหน้ายกไปได้ ${Math.min(carry, Math.max(0, (list.find((q) => q.type === "ลาพักร้อน")?.days ?? 0) - 2))} วัน · วันที่ยกมาแล้วไม่ยกต่ออีกปี`
-              : "วันลาพักร้อนที่ไม่ได้ใช้หมดไปเมื่อสิ้นปี ปีใหม่ได้สิทธิ์เต็มตามที่ตั้งไว้"}
-        </p>
       </Card>
 
-      <p className="text-[12px] leading-relaxed text-muted-foreground">
-        ลดสิทธิ์ลงต่ำกว่าวันที่พนักงานใช้ไปแล้ว วันคงเหลือจะเป็นศูนย์ ไม่ติดลบ · สิทธิ์ของรอบปีก่อน ๆ ไม่เปลี่ยน ·
-        ลบประเภทที่เพิ่มเองแล้ว ใบลาที่ยื่นไปแล้วยังอยู่ครบ
-      </p>
 
       {editing !== null && (
         <TypeDialog
@@ -422,11 +364,6 @@ function TypeDialog({
           />
         </Input2>
       </div>
-      <p className="mt-3.5 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {renamed
-          ? "เปลี่ยนชื่อแล้ว ใบลาที่ยื่นไปแล้วยังใช้ชื่อเดิม และไม่ถูกนับเข้าสิทธิ์ของชื่อใหม่"
-          : "ประเภทใหม่ขึ้นให้พนักงานเลือกในใบลาทันทีที่กดบันทึกที่แถบล่าง"}
-      </p>
     </Sheet>
   );
 }

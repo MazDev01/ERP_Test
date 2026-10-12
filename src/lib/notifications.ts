@@ -22,9 +22,13 @@ import {
   empOf,
   hrDocs,
   inPeriod,
+  inRange,
   isDaily,
   payApproval,
+  payKeyLabel,
+  isDailyRoundKey,
   probEnd,
+  rangeLabel,
   type PayGroup,
 } from "./hr-data";
 import type { HrState } from "./hr-store";
@@ -170,7 +174,7 @@ export function buildNotices(input: {
         id: `ceopay-${key}-${a.sentAt ?? ""}`,
         level: "soon",
         group: "ยอดเงินเดือนรออนุมัติ",
-        title: `รอบ ${thaiMonth(month)} · ${GROUP_LABEL[group]}`,
+        title: `รอบ ${payKeyLabel(month, thaiMonth)} · ${GROUP_LABEL[group]}`,
         detail: `${a.people ?? 0} คน · ยอดจ่ายสุทธิ ${baht(a.net ?? 0)} บาท`,
         href: "/ceo/approvals?k=pay",
         date: (a.sentAt ?? today).slice(0, 10),
@@ -686,10 +690,10 @@ export function buildNotices(input: {
         id: `hrpayrej-${key}-${ap.at ?? ""}`,
         level: "late",
         group: "CEO ตีกลับยอดเงินเดือน",
-        title: `รอบ ${thaiMonth(m)} · ${GROUP_LABEL[g]}`,
+        title: `รอบ ${payKeyLabel(m, thaiMonth)} · ${GROUP_LABEL[g]}`,
         detail: `เหตุผล: ${ap.reason || "—"} · แก้แล้วส่งใหม่`,
         /* เปิดตรงเมนูย่อยของกลุ่มที่ถูกตีกลับ พร้อมรอบนั้น (ผู้ใช้สั่ง 5 ต.ค. 2569) */
-        href: `/hr/payroll?g=${g === "day" ? "daily" : "month"}&m=${m}`,
+        href: isDailyRoundKey(m) ? `/hr/payroll?g=daily&r=${m}` : `/hr/payroll?g=${g === "day" ? "daily" : "month"}&m=${m}`,
         date: (ap.at ?? today).slice(0, 10),
       });
     }
@@ -1095,14 +1099,42 @@ export function buildNotices(input: {
   }
 
   /* ═══ สลิปเงินเดือนของเรา (กติกากลาง) ═══════════════════════════
-     เดิมเงียบทั้งสองทาง — ฝ่ายบุคคลเผยแพร่ก็ไม่รู้ ถอนกลับเพราะเปิดรอบใหม่ก็ไม่รู้
+     เดิมเงียบทั้งสองทาง — ฝ่ายบุคคลเผยแพร่ก็ไม่รู้ ยกเลิกการเผยแพร่ก็ไม่รู้
      คนที่เปิดสลิปไว้แล้วจึงเจอว่าหายไปเฉย ๆ โดยไม่มีใครบอกว่าทำไม
      อ่านกลุ่มจ่ายของตัวเอง (รายเดือน/รายวัน) เหมือนหน้าสลิปของฉัน ไม่งั้นเด้งผิดกลุ่ม */
   if (input.hr && input.meId) {
     const me = input.hr.emp.find((e) => e.id === input.meId);
     if (me && me.type !== "intern") {
       const day = isDaily(me);
-      for (const sp of input.hr.slips) {
+      /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+      for (const r of day ? input.hr.dailyRounds : []) {
+        if (!inRange(me, r)) continue;
+        const title = `รอบ ${rangeLabel(r)}`;
+        if (r.published && r.publishedAt && daysBetween(r.publishedAt.slice(0, 10), today) <= RECENT_DAYS) {
+          out.push({
+            id: `slip-${r.id}-day`,
+            level: "info",
+            group: "สลิปเงินเดือนออกแล้ว",
+            title,
+            detail: "ฝ่ายบุคคลเผยแพร่สลิปแล้ว เปิดดูและดาวน์โหลดได้",
+            href: "/payslip",
+            date: r.publishedAt.slice(0, 10),
+          });
+          continue;
+        }
+        const back = r.unpublished[r.unpublished.length - 1];
+        if (!r.published && back && daysBetween(back.at.slice(0, 10), today) <= RECENT_DAYS)
+          out.push({
+            id: `slipoff-${r.id}-day-${back.at}`,
+            level: "soon",
+            group: "สลิปเงินเดือนถูกถอนกลับ",
+            title,
+            detail: `${back.why || "ฝ่ายบุคคลยกเลิกการเผยแพร่เพื่อแก้ไข"} · รอเผยแพร่ใหม่`,
+            href: "/payslip",
+            date: back.at.slice(0, 10),
+          });
+      }
+      for (const sp of day ? [] : input.hr.slips) {
         if (!inPeriod(me, sp.month)) continue;
         const published = day ? sp.dayPublished : sp.published;
         const at = day ? sp.dayPublishedAt : sp.publishedAt;
@@ -1127,7 +1159,7 @@ export function buildNotices(input: {
             level: "soon",
             group: "สลิปเงินเดือนถูกถอนกลับ",
             title: `รอบ ${thaiMonth(sp.month)}`,
-            detail: `${back.why || "ฝ่ายบุคคลเปิดรอบกลับเพื่อแก้ไข"} · รอเผยแพร่ใหม่`,
+            detail: `${back.why || "ฝ่ายบุคคลยกเลิกการเผยแพร่เพื่อแก้ไข"} · รอเผยแพร่ใหม่`,
             href: "/payslip",
             date: back.at.slice(0, 10),
           });

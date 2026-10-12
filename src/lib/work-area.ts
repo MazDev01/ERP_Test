@@ -237,6 +237,7 @@ export function useLiveGeo(enabled: boolean): LiveGeo {
   const s = useAreaSettings();
   const [live, setLive] = useState<LiveGeo>({ phase: "locating" });
   const hydrated = useHydrated();
+  const demo = useGeoDemo();
 
   useEffect(() => {
     if (!enabled) return;
@@ -254,6 +255,9 @@ export function useLiveGeo(enabled: boolean): LiveGeo {
 
   /* ตรวจว่าเครื่องรองรับหลัง hydrate เท่านั้น — Node มี navigator แต่ไม่มี geolocation
      ถ้าตรวจตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์จะได้ข้อความคนละแบบกับเบราว์เซอร์ */
+  /* โหมดจำลองตำแหน่ง — ไม่สนใจ GPS จริง */
+  const fake = hydrated ? demoFix(demo) : null;
+  if (fake) return { phase: "ready", fix: fake, at: Date.now(), geo: judge(fake, s) };
   if (hydrated && insecure()) return { phase: "error", error: INSECURE };
   if (hydrated && !navigator.geolocation) {
     return { phase: "error", error: "เครื่องหรือเบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง" };
@@ -263,9 +267,37 @@ export function useLiveGeo(enabled: boolean): LiveGeo {
   return live;
 }
 
+/*
+ * ตัวจำลองตำแหน่งสำหรับทดสอบ/นำเสนอ (ผู้ใช้สั่ง 8 ต.ค. 2569)
+ * real = ใช้ GPS จริง · inside = อยู่กลางที่ทำงาน · outside = ห่างที่ทำงานราว 2 กม.
+ * TODO: ปิดหรือซ่อนก่อนใช้งานจริง ไม่งั้นพนักงานเลือก "ในพื้นที่" เองได้
+ */
+export type GeoDemo = "real" | "inside" | "outside";
+const geoDemoStore = createPersistedStore<GeoDemo>(
+  "maz-erp.geo-demo.v1",
+  "real",
+  (v): v is GeoDemo => v === "real" || v === "inside" || v === "outside",
+);
+export function setGeoDemo(v: GeoDemo) {
+  geoDemoStore.set(v);
+}
+export function useGeoDemo(): GeoDemo {
+  return useSyncExternalStore(geoDemoStore.subscribe, geoDemoStore.get, geoDemoStore.getServer);
+}
+function demoFix(mode: GeoDemo): Fix | null {
+  if (mode === "real") return null;
+  const w = workplaceOf(areaSettings());
+  return mode === "inside" ? { lat: w.lat, lng: w.lng, acc: 8 } : { lat: w.lat + 0.018, lng: w.lng + 0.008, acc: 8 };
+}
+
 /** ขอพิกัดจากเครื่อง — ไม่ได้คืน null พร้อมเหตุผลที่อ่านได้ */
 export function locate(): Promise<{ fix: Fix } | { error: string }> {
   return new Promise((resolve) => {
+    const fake = demoFix(geoDemoStore.get());
+    if (fake) {
+      resolve({ fix: fake });
+      return;
+    }
     if (insecure()) {
       resolve({ error: INSECURE });
       return;

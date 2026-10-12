@@ -12,7 +12,8 @@
  * เมื่อต่อ backend ต้องบันทึกอัตรา ณ วันที่ออกเอกสารไว้กับเอกสาร
  */
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { createPersistedStore } from "@/lib/persisted-store";
 import {
   DEFAULT_SETTINGS,
   ratesOn,
@@ -59,7 +60,24 @@ function describeSs(a: SsCeiling[], b: SsCeiling[]) {
   return out;
 }
 
-export function AdminRatesPage() {
+/**
+ * taxOnly = หน้า "ภาษี" — ภาษีมูลค่าเพิ่มกับหัก ณ ที่จ่ายใช้ในใบเสนอราคา ไม่ใช่เงินเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * ไม่ส่ง = หน้าการคำนวณเงินเดือน (โอที ประกันสังคม ฯลฯ)
+ */
+/**
+ * ภาษีรายการอื่นที่ฝ่ายบุคคลเพิ่มเอง (ผู้ใช้สั่ง 6 ต.ค. 2569) — ยังไม่ได้ผูกกับเอกสาร ใช้เก็บอัตราไว้ก่อน
+ * TODO: ต่อ backend แล้วย้ายไปตาราง tax_rate และให้ใบเสนอราคาเลือกใช้ได้
+ */
+type ExtraTax = { id: string; label: string; rate: number; hint: string };
+const extraTaxStore = createPersistedStore<ExtraTax[]>("maz-erp.extra-taxes.v1", [], (v): v is ExtraTax[] => Array.isArray(v));
+function useExtraTaxes() {
+  return useSyncExternalStore(extraTaxStore.subscribe, extraTaxStore.get, extraTaxStore.getServer);
+}
+
+export function AdminRatesPage({ taxOnly = false }: { taxOnly?: boolean } = {}) {
+  const extras = useExtraTaxes();
+  /** กล่องเพิ่ม/แก้ภาษีรายการอื่น — "new" = เพิ่มใหม่ */
+  const [taxEdit, setTaxEdit] = useState<ExtraTax | "new" | null>(null);
   const saved = useSystemSettings();
   const today = todayIso();
   /* เพดานประกันสังคมเก็บเป็นช่วงปี บันทึกล่วงหน้าได้ (Full Proposal · M5) */
@@ -69,7 +87,7 @@ export function AdminRatesPage() {
   const [openHist, setOpenHist] = useState<string[]>([]);
 
   const rates = ratesOn(today, saved);
-  const fields = [...TAX, ...PAY];
+  const fields = taxOnly ? TAX : PAY;
   const history = [...saved.rateHistory].sort((a, b) => b.at.localeCompare(a.at));
   /* ค่าที่ตั้งไว้ล่วงหน้า — ชุดแรกที่วันเริ่มใช้ยังไม่ถึง */
   const nextSet = [...saved.rateHistory].sort((a, b) => a.at.localeCompare(b.at)).find((h) => h.at > today);
@@ -103,13 +121,20 @@ export function AdminRatesPage() {
   return (
     <div className="space-y-4">
       <AdminHead
-        title="การคำนวณเงินเดือน"
-        desc="ค่าที่ใช้คำนวณเงินเดือนและค่าจ้างรายวัน · ค่าใหม่มีวันเริ่มใช้ ค่าเดิมเก็บเป็นประวัติ"
-      />
+        title={taxOnly ? "ภาษี" : "การคำนวณเงินเดือน"}
+        desc={taxOnly ? "อัตราภาษีที่ใช้ในใบเสนอราคาและเอกสาร" : "ค่าที่ใช้คำนวณเงินเดือนและค่าจ้างรายวัน"}
+      >
+        {taxOnly && (
+          <button type="button" className="btn solid btn-solid" onClick={() => setTaxEdit("new")}>
+            <PlusIcon className="size-4" strokeWidth={2.4} />
+            เพิ่มรายการ
+          </button>
+        )}
+      </AdminHead>
 
       <section className="glass overflow-hidden rounded-[18px]">
         <div className="border-b border-border px-4 py-3.5 sm:px-5">
-          <h2 className="text-[14.5px] font-bold">ค่าที่ใช้คำนวณ</h2>
+          <h2 className="text-[14.5px] font-bold">{taxOnly ? "อัตราภาษี" : "ค่าที่ใช้คำนวณ"}</h2>
         </div>
         {fields.map((f) => {
           const open = openHist.includes(f.key);
@@ -118,7 +143,6 @@ export function AdminRatesPage() {
             <div key={f.key} className="grid gap-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] sm:items-center sm:px-5">
               <div className="min-w-0">
                 <b className="text-[13.5px] font-semibold">{f.label}</b>
-                <small className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">{f.hint}</small>
               </div>
               <div className="num text-[19px] font-bold">
                 {rates[f.key]}
@@ -150,7 +174,7 @@ export function AdminRatesPage() {
               {open && (
                 <div className="rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px] sm:col-span-3">
                   {history.length === 0 ? (
-                    <span className="text-muted-foreground">ยังไม่เคยเปลี่ยนค่านี้ — ใช้ค่าตั้งต้นของระบบ</span>
+                    <span className="text-muted-foreground">ยังไม่เคยเปลี่ยนค่านี้</span>
                   ) : (
                     <ul className="grid gap-1.5">
                       {history.map((h) => (
@@ -178,13 +202,34 @@ export function AdminRatesPage() {
             </div>
           );
         })}
+        {taxOnly &&
+          extras.map((t) => (
+            <div key={t.id} className="grid gap-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] sm:items-center sm:px-5">
+              <div className="min-w-0">
+                <b className="text-[13.5px] font-semibold">{t.label}</b>
+                {t.hint && <small className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">{t.hint}</small>}
+              </div>
+              <div className="num text-[19px] font-bold">
+                {t.rate}
+                <small className="ml-1 text-[12px] font-medium text-muted-foreground">%</small>
+              </div>
+              <div className="flex gap-2 sm:justify-end">
+                <button type="button" className="btn glass-thin btn-mini" onClick={() => setTaxEdit(t)}>
+                  <PencilIcon className="size-4" strokeWidth={2.2} />
+                  แก้ไข
+                </button>
+              </div>
+            </div>
+          ))}
       </section>
 
+      {/* เพดานประกันสังคมเป็นของเงินเดือน ไม่ขึ้นในหน้าภาษี */}
+      {!taxOnly && (
+        <>
       <section className="glass overflow-hidden rounded-[18px]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
           <div>
             <h2 className="text-[14.5px] font-bold">เพดานเงินเดือนประกันสังคม</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">บันทึกล่วงหน้าเป็นช่วงปี พ.ศ. ได้</p>
           </div>
           <button
             type="button"
@@ -256,25 +301,7 @@ export function AdminRatesPage() {
         </div>
       </section>
 
-      {/* ตัวอย่างการคำนวณตามต้นแบบ HR-14 — เห็นผลของค่าที่ตั้งไว้ทันที */}
-      <section className="glass rounded-[18px] px-4 py-4 sm:px-5">
-        <h2 className="text-[14.5px] font-bold">ตัวอย่างการคำนวณ (เงินเดือน 30,000 บาท)</h2>
-        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-          <ExampleBox label="อัตรารายชั่วโมง = เงินเดือน ÷ 30 ÷ 8" value={`${round2(hourly)} บาท`} />
-          <ExampleBox label={`โอทีวันทำงาน (× ${rates.otAfterWork})`} value={`${round2(hourly * rates.otAfterWork)} บาท/ชม.`} />
-          <ExampleBox label={`โอทีวันหยุด (× ${rates.otHoliday})`} value={`${round2(hourly * rates.otHoliday)} บาท/ชม.`} />
-          <ExampleBox
-            label={`ประกันสังคมที่หัก (เพดาน ${capNow ? capNow.ceiling.toLocaleString() : "—"})`}
-            value={`${round2((Math.min(sal, capNow?.ceiling ?? sal) * rates.socialSecurity) / 100)} บาท`}
-          />
-        </div>
-      </section>
-
-      <p className="rounded-[14px] border border-[var(--warning)]/30 bg-[var(--warning-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--warning)]">
-        ระบบยังไม่ได้เก็บอัตราไว้กับเอกสารแต่ละใบ — ใบเสนอราคาและใบแจ้งหนี้ที่เปิดดูหลังจากนี้คิดด้วยอัตราที่ใช้อยู่วันนี้
-        รวมเอกสารเก่า · เงินเดือนของรอบที่ปิดไปแล้วเก็บตัวเลขไว้ ไม่คิดใหม่
-      </p>
-
+      {/* ไม่มีตัวอย่างการคำนวณและข้อความอธิบายการทำงานของระบบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <SaveBar
         dirty={ss.dirty}
         isDefault={history.length === 0 && ss.isDefault}
@@ -287,6 +314,11 @@ export function AdminRatesPage() {
           ss.toDefault();
         }}
       />
+
+        </>
+      )}
+
+      {taxEdit && <TaxSheet initial={taxEdit === "new" ? undefined : taxEdit} onClose={() => setTaxEdit(null)} />}
 
       {editing && <RateSheet field={editing} now={rates[editing.key]} onClose={() => setEditing(null)} onSave={saveOne} />}
     </div>
@@ -368,7 +400,6 @@ function RateSheet({
         </Input2>
         <Input2
           label="วันที่เริ่มใช้"
-          hint={at > todayIso() ? "ตั้งล่วงหน้า ระบบสลับให้เองเมื่อถึงวัน" : "มีผลตั้งแต่วันที่เลือกเป็นต้นไป"}
         >
           <DateField
             value={at}
@@ -377,6 +408,52 @@ function RateSheet({
             placeholder="เลือกวันที่"
             className="h-[38px] rounded-[10px] text-[13.5px]"
           />
+        </Input2>
+      </div>
+    </Sheet>
+  );
+}
+
+/** เพิ่ม/แก้ภาษีรายการอื่น — ชื่อ อัตรา และคำอธิบาย */
+function TaxSheet({ initial, onClose }: { initial?: ExtraTax; onClose: () => void }) {
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [rate, setRate] = useState(initial ? String(initial.rate) : "");
+  const [hint, setHint] = useState(initial?.hint ?? "");
+  const n = Number(rate);
+  const bad = !label.trim() ? "ใส่ชื่อภาษี" : !(rate.trim() && n >= 0 && n <= 100) ? "อัตราต้องอยู่ระหว่าง 0–100%" : "";
+  function save() {
+    if (bad) return;
+    const row: ExtraTax = { id: initial?.id ?? `tax-${Date.now()}`, label: label.trim(), rate: n, hint: hint.trim() };
+    extraTaxStore.update((list) => (initial ? list.map((x) => (x.id === row.id ? row : x)) : [...list, row]));
+    logChange("อัตราและภาษี", `${initial ? "แก้" : "เพิ่ม"}ภาษี ${row.label} = ${row.rate}%`);
+    onClose();
+  }
+  return (
+    <Sheet
+      title={initial ? "แก้ไขรายการภาษี" : "เพิ่มรายการภาษี"}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn glass-thin" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button type="button" className="btn solid btn-solid disabled:opacity-45" disabled={Boolean(bad)} title={bad || undefined} onClick={save}>
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_140px]">
+        <Input2 label="ชื่อภาษี">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} className={inputCls} placeholder="เช่น ภาษีธุรกิจเฉพาะ" />
+        </Input2>
+        <Input2 label="อัตรา (%)">
+          <input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^d.]/g, ""))} inputMode="decimal" className={`${inputCls} num`} />
+        </Input2>
+      </div>
+      <div className="mt-3.5">
+        <Input2 label="คำอธิบาย">
+          <input value={hint} onChange={(e) => setHint(e.target.value)} className={inputCls} />
         </Input2>
       </div>
     </Sheet>

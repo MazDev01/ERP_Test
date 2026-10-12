@@ -13,21 +13,27 @@ import { QuotationPaper } from "./quotation-paper";
 /**
  * ceo = เปิดจากหน้าดีลของ CEO (/ceo/sales/quotations/<เลขที่>) — ลิงก์ทุกตัวพากลับหน้าของ CEO เอง
  * ไม่พาไปหน้าของฝ่ายขาย (กติกาห้ามลิงก์ข้ามบทบาท) · ชื่อลูกค้าเป็นข้อความธรรมดา
+ * acc = เปิดจากเมนูใบเสนอราคาของบัญชี (/acc/quotations/<เลขที่>) — ลิงก์อยู่ในหน้าของบัญชีเอง (ผู้ใช้สั่ง 9 ต.ค. 2569)
  */
 export function QuotationDocPage({
   no,
   rev,
   ceo = false,
+  acc = false,
   pdf = false,
 }: {
   no: string;
   rev?: number;
   ceo?: boolean;
+  acc?: boolean;
   /** เปิดจากปุ่ม PDF ในตารางใบเสนอราคา — แสดงเอกสารแล้วเปิดหน้าต่างบันทึกเป็น PDF ทันที */
   pdf?: boolean;
 }) {
-  const back = ceo ? "/ceo/deals" : "/quotations";
-  const docHref = ceo ? `/ceo/sales/quotations/${encodeURIComponent(no)}` : `/quotations/${encodeURIComponent(no)}`;
+  const back = ceo ? "/ceo/deals" : acc ? "/acc/quotations" : "/quotations";
+  /* ที่อยู่เอกสารของแต่ละฝั่ง · ลิงก์ไปหน้าของฝ่ายอื่น (ผู้สนใจ คำขอ ดีล) ไม่ขึ้นในหน้าของ CEO และบัญชี */
+  const docBase = ceo ? "/ceo/sales/quotations" : acc ? "/acc/quotations" : "/quotations";
+  const foreign = ceo || acc;
+  const docHref = `${docBase}/${encodeURIComponent(no)}`;
   const crm = useCrm();
   /* เปิดด้วยเลขที่เท่านั้น — ไม่มีร่างแล้ว ทุกใบได้เลขตั้งแต่ออก (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   const current = crm.quotations.find((x) => x.no === no);
@@ -55,12 +61,9 @@ export function QuotationDocPage({
   /* ส่งไปวางบิลจากหน้าเอกสาร (ต้นแบบ quotation-view.html) — เงื่อนไขเดียวกับหน้ารายการ */
   const [billing, setBilling] = useState(false);
   const canBill = Boolean(current) && !old && !ceo && canBillQuotation(current!, Boolean(deal), todayIso());
-  const docLink = (n: string) =>
-    ceo ? (
-      <Link href={`/ceo/sales/quotations/${encodeURIComponent(n)}`} className="lnk-code">{n}</Link>
-    ) : (
-      <Link href={`/quotations/${encodeURIComponent(n)}`} className="lnk-code">{n}</Link>
-    );
+  const docLink = (n: string) => (
+    <Link href={`${docBase}/${encodeURIComponent(n)}`} className="lnk-code">{n}</Link>
+  );
 
   if (!q) {
     return (
@@ -83,7 +86,7 @@ export function QuotationDocPage({
           </Link>
           <h1 className="num">{q.no}</h1>
           <p>
-            {ceo ? (
+            {foreign ? (
               customer?.name ?? q.customerCode
             ) : (
               <Link href={`/leads/${q.customerCode}`} className="lnk-code">
@@ -112,7 +115,7 @@ export function QuotationDocPage({
                 <>
                   {(q.replacedBy || q.replaces) && " · "}
                   อ้างอิงคำขอ{" "}
-                  {ceo ? (
+                  {foreign ? (
                     q.ps
                   ) : (
                     <Link href={findLink("/presales", q.ps)} className="lnk-code">
@@ -125,7 +128,7 @@ export function QuotationDocPage({
           )}
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
-          {deal && (
+          {deal && !acc && (
             <Link
               href={`${ceo ? "/ceo/deals" : "/deals"}?find=${encodeURIComponent(deal.no)}`}
               className="btn glass-thin"
@@ -134,15 +137,11 @@ export function QuotationDocPage({
             </Link>
           )}
           {!ceo && !old && q.no && (
-            <Link href={`/quotations/new?from=${encodeURIComponent(q.no)}`} className="btn glass-thin">
+            <Link href={`${docBase}/new?from=${encodeURIComponent(q.no)}`} className="btn glass-thin">
               ออกใบใหม่จากใบนี้
             </Link>
           )}
-          {canBill && (
-            <button type="button" className="btn solid btn-solid" onClick={() => setBilling(true)}>
-              ส่งไปวางบิล
-            </button>
-          )}
+          {/* ส่งไปวางบิลจากตารางในหน้ารายการเท่านั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
           <button type="button" className="btn glass-thin" onClick={() => window.print()}>
             <PrintIcon className="size-[15px]" strokeWidth={1.9} />
             พิมพ์

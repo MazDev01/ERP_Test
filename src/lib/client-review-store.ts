@@ -147,6 +147,51 @@ const SEED: ReviewRound[] = [
     status: "open",
     comments: [],
   },
+  /* ตัวอย่างลูกค้าตอบกลับเดือน ต.ค. 2569 (เพิ่ม 8 ต.ค. 2569 สำหรับสาธิต) — คู่กับงานสถานะ wait ใน PJ-2569-0021/0022
+     migrate ด้านล่างเติมให้เครื่องที่ยังไม่มีตาม token */
+  {
+    token: "jngBkr7Lp2wOct01Xa",
+    pj: "PJ-2569-0021",
+    taskName: "ออกแบบหน้าแรกและหน้าสินค้า",
+    round: 1,
+    createdAt: "2026-10-06 10:00",
+    createdBy: "ชนิกานต์ วัฒนกุล",
+    expiresAt: "2026-11-05",
+    message: "แบบหน้าแรกและหน้าสินค้ารอบแรกค่ะ รบกวนดูสี ภาพเค้ก และปุ่มสั่งซื้อ ติดตรงไหนปักหมุดไว้ได้เลยค่ะ",
+    contact: "วรรณา ใจงาม",
+    project: "เว็บไซต์และระบบสั่งเค้ก ใจงามเบเกอรี่",
+    files: [
+      { id: "f-oct1-home", name: "หน้าแรก-ใจงาม-v2.png", kind: "image", size: "1.4 MB", url: DEMO_IMAGE },
+      { id: "f-oct1-prod", name: "หน้าสินค้า-ใจงาม-v2.png", kind: "image", size: "1.1 MB", url: DEMO_IMAGE, approved: true },
+    ],
+    status: "submitted",
+    submittedAt: "2026-10-07 20:15",
+    comments: [
+      { id: "c-oct1-1", fileId: "f-oct1-home", author: "วรรณา ใจงาม", text: "อยากให้ภาพเค้กวันเกิดขึ้นเป็นภาพแรกค่ะ ขายดีสุด", at: "2026-10-07 20:02", pin: { x: 48, y: 32, n: 1 } },
+      { id: "c-oct1-2", fileId: "f-oct1-home", author: "วรรณา ใจงาม", text: "ปุ่มสั่งเค้กขอสีเข้มกว่านี้อีกนิด ตอนนี้กลืนกับพื้นหลัง", at: "2026-10-07 20:06", pin: { x: 72, y: 58, n: 2 } },
+      { id: "c-oct1-3", fileId: "f-oct1-home", author: "วรรณา ใจงาม", text: "เพิ่มเบอร์โทรร้านที่ส่วนท้ายด้วยค่ะ", at: "2026-10-07 20:10" },
+    ],
+  },
+  {
+    token: "sxSaiC4m9QwOct02Yb",
+    pj: "PJ-2569-0022",
+    taskName: "เขียนแคปชันแคมเปญ ต.ค.",
+    round: 1,
+    createdAt: "2026-10-02 11:00",
+    createdBy: "ชนิกานต์ วัฒนกุล",
+    expiresAt: "2026-11-01",
+    message: "แคปชันโพสต์เดือนตุลาคม 6 โพสต์ค่ะ ถ้าโอเคกดอนุมัติได้เลย ทีมจะตั้งเวลาโพสต์ตามแผน",
+    contact: "พญ.อรวรรณ ใสสะอาด",
+    project: "แคมเปญเลเซอร์หน้าใส คลินิกใสใส",
+    files: [
+      { id: "f-oct2-cap", name: "แคปชัน-ต.ค.-ใสใส.pdf", kind: "pdf", size: "310 KB", approved: true },
+    ],
+    status: "approved",
+    submittedAt: "2026-10-03 09:40",
+    comments: [
+      { id: "c-oct2-1", fileId: "f-oct2-cap", author: "พญ.อรวรรณ ใสสะอาด", text: "อนุมัติค่ะ โพสต์ที่ 4 ขอเปลี่ยนคำว่า 'หายขาด' เป็น 'ดูแลต่อเนื่อง' ตามกฎโฆษณาคลินิก", at: "2026-10-03 09:38", page: 2 },
+    ],
+  },
 ];
 
 const INITIAL: ClientReviewState = { rounds: SEED };

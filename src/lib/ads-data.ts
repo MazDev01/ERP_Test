@@ -104,6 +104,16 @@ export const AD_PLANS: Record<string, AdPlan> = {
       {"channel": "Instagram", "objective": "Engagement", "tool": "Single 1-5", "budget": 2500, "est": "มีส่วนร่วม 1,800", "remark": ""},
     ],
   },
+  /* ตัวอย่างงาน DM ที่เปิดเป็นโปรเจคแล้ว (เพิ่ม 8 ต.ค. 2569 สำหรับสาธิต) */
+  "PJ-2569-0022": {
+    target: {"who": "ผู้หญิงวัยทำงานที่สนใจดูแลผิวหน้า", "area": "เชียงใหม่ ลำพูน และรัศมี 30 กม. รอบคลินิก", "age": "25 – 45 ปี", "interest": "เลเซอร์หน้าใส|คลินิกความงาม|ดูแลผิวหน้า|รักษาสิว|ฝ้ากระ", "size": "380,000 – 450,000 คน"},
+    rows: [
+      {"channel": "Facebook", "objective": "Inbox", "tool": "Single 1-3", "budget": 9000, "est": "ทัก 120", "remark": "เป้าหลักคือจองคิวผ่านแชท"},
+      {"channel": "Facebook", "objective": "Reach", "tool": "Album รีวิว", "budget": 3000, "est": "เข้าถึง 80,000", "remark": ""},
+      {"channel": "Instagram", "objective": "Engagement", "tool": "Single 1-3", "budget": 2000, "est": "มีส่วนร่วม 1,500", "remark": ""},
+      {"channel": "TikTok", "objective": "Video Views", "tool": "VDO 1", "budget": 3000, "est": "ยอดดู 60,000", "remark": "เริ่ม พ.ย."},
+    ],
+  },
 };
 
 export const AD_RUNS: AdRun[] = [
@@ -116,6 +126,11 @@ export const AD_RUNS: AdRun[] = [
   {"pj": "PJ-2569-0004", "round": "2026-10", "media": "E09", "ae": "E10", "orderedAt": "2026-10-05", "channel": "Facebook", "tool": "Single Ads 1-5", "start": "2026-10-06", "end": "2026-10-31", "budget": 7500, "ran": true, "note": ""},
   {"pj": "PJ-2569-0004", "round": "2026-10", "media": "E09", "ae": "E10", "orderedAt": "2026-10-05", "channel": "Facebook", "tool": "Photo Album 1-2", "start": "2026-10-06", "end": "2026-10-31", "budget": 3000, "ran": true, "note": ""},
   {"pj": "PJ-2569-0004", "round": "2026-11", "media": "E09", "ae": "E10", "orderedAt": "2026-11-02", "channel": "Instagram", "tool": "Single Ads 1-5", "start": "2026-11-03", "end": "2026-11-27", "budget": 2500, "ran": false, "note": ""},
+  /* PJ-2569-0022 คลินิกใสใส (เพิ่ม 8 ต.ค. 2569) — รอบทดลองปลาย ก.ย. + รอบ ต.ค. */
+  {"pj": "PJ-2569-0022", "round": "2026-09", "media": "E09", "ae": "E10", "orderedAt": "2026-09-28", "channel": "Facebook", "tool": "Single Ads 1-3", "start": "2026-09-28", "end": "2026-09-30", "budget": 3000, "ran": true, "note": "รอบทดลองก่อนเริ่มแคมเปญจริง", "orderedBy": "ชนิกานต์ วัฒนกุล", "ranBy": "ธีรวัฒน์ ศรีสมบูรณ์", "ranAt": "2026-09-28 10:15"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "media": "E09", "ae": "E10", "orderedAt": "2026-10-01", "channel": "Facebook", "tool": "Single Ads 1-3 (Inbox)", "start": "2026-10-02", "end": "2026-10-31", "budget": 9000, "ran": true, "note": "", "orderedBy": "ชนิกานต์ วัฒนกุล", "ranBy": "ธีรวัฒน์ ศรีสมบูรณ์", "ranAt": "2026-10-02 09:40"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "media": "E09", "ae": "E10", "orderedAt": "2026-10-01", "channel": "Facebook", "tool": "Photo Album รีวิว", "start": "2026-10-09", "end": "2026-10-31", "budget": 3000, "ran": false, "note": "รอ PM ตรวจอาร์ตเวิร์กชุดรีวิวก่อนรัน", "orderedBy": "ชนิกานต์ วัฒนกุล"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "media": "E09", "ae": "E10", "orderedAt": "2026-10-01", "channel": "Instagram", "tool": "Single Ads 1-3", "start": "2026-10-02", "end": "2026-10-31", "budget": 2000, "ran": true, "note": "", "orderedBy": "ชนิกานต์ วัฒนกุล", "ranBy": "ธีรวัฒน์ ศรีสมบูรณ์", "ranAt": "2026-10-02 09:45"},
 ];
 
 export const AD_CONTENTS: AdContent[] = [
@@ -128,6 +143,13 @@ export const AD_CONTENTS: AdContent[] = [
   {"pj": "PJ-2569-0008", "round": "2026-10", "name": "บ้านเดิมอยู่มานาน ต่อเติมให้ตอบโจทย์กว่าเดิม", "type": "Single", "m": {"impression": 24310, "reach": 15982, "engagement": 942, "reactions": 868, "comments": 4, "saves": 2, "shares": 3, "clicks": 1120, "spent": 2000}},
   {"pj": "PJ-2569-0008", "round": "2026-10", "name": "ครัวใหม่ในงบที่คุมได้ เริ่มต้นวางแผนกับเรา", "type": "Album", "m": {"impression": 18774, "reach": 12406, "engagement": 761, "reactions": 702, "comments": 2, "saves": 5, "shares": 1, "clicks": 864, "spent": 2000}},
   {"pj": "PJ-2569-0008", "round": "2026-10", "name": "ห้องนั่งเล่นที่ใช้งานได้จริง ไม่ใช่แค่สวย", "type": "Single", "m": null},
+  /* PJ-2569-0022 คลินิกใสใส (เพิ่ม 8 ต.ค. 2569) */
+  {"pj": "PJ-2569-0022", "round": "2026-09", "name": "เลเซอร์หน้าใส ลด 30% เฉพาะเดือนนี้", "type": "Single", "m": {"impression": 14820, "reach": 9630, "engagement": 612, "reactions": 540, "comments": 38, "saves": 12, "shares": 6, "clicks": 455, "spent": 1500}, "by": "ธีรวัฒน์ ศรีสมบูรณ์", "at": "2026-10-01 10:30"},
+  {"pj": "PJ-2569-0022", "round": "2026-09", "name": "หน้าใสใน 4 สัปดาห์ ปรึกษาหมอฟรี", "type": "Single", "m": {"impression": 12960, "reach": 8410, "engagement": 488, "reactions": 431, "comments": 29, "saves": 9, "shares": 4, "clicks": 362, "spent": 1500}, "by": "ธีรวัฒน์ ศรีสมบูรณ์", "at": "2026-10-01 10:32"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "name": "เลเซอร์หน้าใส ลด 30% เฉพาะเดือนนี้", "type": "Single", "m": {"impression": 26410, "reach": 17250, "engagement": 1184, "reactions": 1012, "comments": 96, "saves": 31, "shares": 18, "clicks": 902, "spent": 2100}, "by": "ธีรวัฒน์ ศรีสมบูรณ์", "at": "2026-10-07 17:00"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "name": "หน้าใสใน 4 สัปดาห์ ปรึกษาหมอฟรี", "type": "Single", "m": {"impression": 21730, "reach": 14090, "engagement": 903, "reactions": 801, "comments": 64, "saves": 22, "shares": 9, "clicks": 711, "spent": 1800}, "by": "ธีรวัฒน์ ศรีสมบูรณ์", "at": "2026-10-07 17:05"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "name": "ฝ้า กระ จุดด่างดำ จบได้ที่ใสใส", "type": "VDO", "m": {"impression": 18240, "reach": 12880, "engagement": 1342, "reactions": 1105, "comments": 47, "saves": 58, "shares": 33, "clicks": 520, "spent": 1600}, "by": "ธีรวัฒน์ ศรีสมบูรณ์", "at": "2026-10-07 17:08"},
+  {"pj": "PJ-2569-0022", "round": "2026-10", "name": "รีวิวจริงจากคนไข้ ก่อน–หลัง 3 ครั้ง", "type": "Album", "m": null},
 ];
 
 // ═══ ตัวเลขที่คำนวณจากผล ไม่เก็บลงข้อมูล ═════════════════════════

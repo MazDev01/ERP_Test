@@ -12,8 +12,8 @@
  *   คน    : พนักงานวันนี้ (ตอกบัตร + ใบลา) · งานโปรเจคที่เลยกำหนด (PM)
  *   ต้องทำ : คำขอที่รอผู้บริหารอนุมัติ → กดไปหน้าคำขออนุมัติ (?req=)
  *
- * ปุ่มช่วงเวลามีผลกับการ์ดเงินสามใบแรก ยอดขายแยกบริการ และรับชำระต่อคน
- * การ์ดต้นทุนแรงงาน กราฟรายเดือน พนักงานวันนี้ อัตราปิดงาน และคำขอรออนุมัติไม่ขึ้นกับช่วง (ตามต้นแบบ)
+ * ปุ่มช่วงเวลามีผลกับการ์ดเงินสามใบแรก กราฟรับชำระเทียบต้นทุนแรงงาน ยอดขาย/จำนวนดีลแยกบริการ และรับชำระต่อคน
+ * การ์ดต้นทุนแรงงาน พนักงานวันนี้ อัตราปิดงาน และคำขอรออนุมัติไม่ขึ้นกับช่วง (ตามต้นแบบ)
  * การ์ดไหนขึ้นกับช่วงไหนเขียนบอกไว้ในหน้าจอแล้ว ไม่ต้องเดาจากหัวเรื่อง
  */
 
@@ -22,7 +22,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useAcc } from "@/lib/acc-store";
 import { useCrm } from "@/lib/crm-store";
-import { TH_MONTHS_SHORT, money, thaiDate, todayIso, toIsoDate } from "@/lib/format";
+import { TH_MONTHS_SHORT, money, parseIsoDate, thaiDate, todayIso } from "@/lib/format";
+import { bucketsOf, rangeOf } from "@/lib/sales-report";
 import { quotationValidUntil } from "@/lib/crm-data";
 import {
   GROUP_LABEL,
@@ -71,7 +72,9 @@ export function CeoDashboardPage() {
   const [range, setRange] = useState<Range>("m");
   const [attOpen, setAttOpen] = useState<AttState | null>(null);
 
-  const span = rangeSpan(today, range);
+  /* ช่วงและช่วงย่อยของกราฟใช้ตัวช่วยเดียวกับแดชบอร์ดฝ่ายขาย (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const span = rangeOf(range, parseIsoDate(today));
+  const buckets = bucketsOf(span);
   const inR = (iso: string) => Boolean(iso) && iso >= span.from && iso <= span.to;
 
   /* ── การ์ดสรุป ── */
@@ -104,19 +107,23 @@ export function CeoDashboardPage() {
    */
   const svc = useMemo(() => {
     const sum = new Map(services().map((s) => [s.key, 0]));
+    const count = new Map(services().map((s) => [s.key, 0]));
     for (const d of won) {
       const key =
         crm.quotations.find((x) => x.no === d.quotationNo)?.service ??
         /* ยอดขายนับตามดีล — โปรเจคที่มาจากดีลนี้ (ถ้ามี) บอกประเภทบริการ ไม่ได้ใช้ดีลระบุโปรเจค */
         pm.projects.find((p) => p.deal === d.no)?.service ??
         pm.inbox.find((j) => j.deal === d.no)?.service;
-      if (key && sum.has(key)) sum.set(key, (sum.get(key) ?? 0) + d.total);
+      if (key && sum.has(key)) {
+        sum.set(key, (sum.get(key) ?? 0) + d.total);
+        count.set(key, (count.get(key) ?? 0) + 1);
+      }
     }
-    return services()
-      .map((s) => ({ label: s.label, v: sum.get(s.key) ?? 0 }))
-      .sort((a, b) => b.v - a.v);
+    return services().map((s) => ({ label: s.label, v: sum.get(s.key) ?? 0, n: count.get(s.key) ?? 0 }));
   }, [won, crm.quotations, pm.projects, pm.inbox]);
-  const svcMax = Math.max(0, ...svc.map((s) => s.v));
+  /* จำนวนดีลแยกบริการ กับยอดบาทแยกบริการ — สองกราฟ เรียงมากไปน้อยของตัวเอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const svcCount = [...svc].sort((a, b) => b.n - a.n).map((s) => ({ label: s.label, v: s.n }));
+  const svcBaht = [...svc].sort((a, b) => b.v - a.v).map((s) => ({ label: s.label, v: s.v }));
 
   /* ── ประสิทธิภาพ ── */
   const closed = crm.customers.filter((c) => c.status === "ปิดงาน").length;
@@ -140,12 +147,12 @@ export function CeoDashboardPage() {
       /* นับ "ผู้สนใจ" ไม่ใช่ "ใบเสนอราคา" — หน้ารายงานของฝ่ายขายนับใบเสนอราคา ตัวเลขจึงคนละตัว */
       k: "ผู้สนใจที่ปิดงานได้",
       v: `${pct(closed, crm.customers.length)}%`,
-      s: `ปิดงาน ${closed} จากผู้สนใจทั้งหมด ${crm.customers.length} ราย (ไม่ขึ้นกับช่วงที่เลือก)`,
+      s: `ปิดงาน ${closed} จากผู้สนใจทั้งหมด ${crm.customers.length} ราย`,
     },
     {
       k: "ใบเสนอราคาที่ลูกค้าตกลง",
       v: `${pct(qOk, decided.length)}%`,
-      s: `${qOk} จาก ${decided.length} ใบที่ลูกค้าตัดสินแล้ว (ไม่ขึ้นกับช่วงที่เลือก)`,
+      s: `${qOk} จาก ${decided.length} ใบที่ลูกค้าตัดสินแล้ว`,
     },
     {
       /* นับใบงานย่อยในโปรเจค ไม่ใช่จำนวนโปรเจค — หน้ารายการโปรเจคของ PM นับโปรเจค */
@@ -157,7 +164,7 @@ export function CeoDashboardPage() {
     {
       k: "รับชำระต่อผู้ได้รับค่าจ้าง 1 คน",
       v: `${whole(paidStaff ? got / paidStaff : 0)} บาท`,
-      s: `หารด้วยผู้ได้รับค่าจ้าง ${paidStaff} คน (คนที่ยังอยู่ ไม่รวมนักศึกษาฝึกงาน)`,
+      s: `ผู้ได้รับค่าจ้าง ${paidStaff} คน`,
     },
   ];
 
@@ -186,11 +193,10 @@ export function CeoDashboardPage() {
       <div className="bar">
         <div>
           <h1>แดชบอร์ด</h1>
-          {/* ช่วงนี้มีผลเฉพาะการ์ดเงิน ยอดขายแยกบริการ และประสิทธิภาพ
+          {/* ช่วงนี้มีผลกับการ์ดเงิน กราฟรับชำระเทียบต้นทุนแรงงาน จำนวนดีล/ยอดขายแยกบริการ และประสิทธิภาพ (ผู้ใช้สั่ง 9 ต.ค. 2569)
               การ์ดต้นทุนแรงงานเป็น "รอบเงินเดือนล่าสุดที่ปิดแล้ว" ซึ่งเป็นคนละช่วงเสมอ จึงบอกไว้ตรงนี้ */}
           <p>
-            ช่วงที่เลือก {thaiDate(span.from)} – {thaiDate(span.to)} · มีผลกับการ์ดรับชำระ ค้างรับ ดีลที่ปิดได้
-            ยอดขายแยกบริการ และประสิทธิภาพ
+            ช่วงที่เลือก {thaiDate(span.from)} – {thaiDate(span.to)}
           </p>
         </div>
         {/* มือถือ: ปุ่มช่วงเวลาเต็มแถว สูงพอให้นิ้วกด */}
@@ -257,7 +263,6 @@ export function CeoDashboardPage() {
             </b>
             <em className="mt-0.5 block text-[12px] text-muted-foreground not-italic">
               {waitPay.map((x) => `${shortRound(x.month)} ${GROUP_LABEL[x.group]}`).join(" · ")} · ยังไม่อนุมัติ
-              รอบนี้จึงยังไม่เข้าการ์ดต้นทุนแรงงาน
             </em>
           </span>
           <span aria-hidden className="flex-none text-[18px] text-muted-foreground">
@@ -267,60 +272,40 @@ export function CeoDashboardPage() {
       )}
 
       <div className="grid items-stretch gap-3.5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Panel title="รับชำระเทียบต้นทุนแรงงาน (รอบที่ปิดแล้ว)">
-          <Trend payments={acc.payments} payruns={hr.payruns} today={today} />
+        {/* กราฟตามช่วงที่เลือก: เดือนนี้รายสัปดาห์ · ไตรมาส/ปีนี้รายเดือน (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+        <Panel title={`รับชำระเทียบต้นทุนแรงงาน (${RANGE_LABEL[range]} · ${span.buckets === "week" ? "รายสัปดาห์" : "รายเดือน"})`}>
+          <Trend
+            payments={acc.payments}
+            payruns={hr.payruns}
+            today={today}
+            buckets={buckets}
+            weekly={span.buckets === "week"}
+            month={span.from.slice(0, 7)}
+          />
         </Panel>
 
+        {/* โดนัทสัดส่วนพนักงานวันนี้ แทนตัวเลขใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
         <Panel title="พนักงานวันนี้">
-          <p className="num text-[40px] leading-none font-extrabold">{cnt("ontime") + cnt("late")}</p>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            มาทำงานแล้ว จากคนที่ยังอยู่วันนี้ {att.length} คน
-          </p>
-          <div className="mt-3 space-y-0.5">
-            {ATT.map((a) => (
-              <button
-                key={a.key}
-                type="button"
-                onClick={() => setAttOpen(a.key)}
-                className="flex w-full items-center justify-between rounded-[10px] px-2 py-2 text-[13.5px] hover:bg-muted hover:text-primary max-sm:min-h-11 max-sm:text-[14.5px]"
-              >
-                <span className="flex items-center gap-2.5">
-                  <i className="size-2.5 rounded-full" style={{ background: a.color }} />
-                  {a.label}
-                </span>
-                <b className="num">{cnt(a.key)}</b>
-              </button>
-            ))}
-          </div>
+          <AttDonut
+            rows={ATT.map((a) => ({ ...a, n: cnt(a.key) }))}
+            present={cnt("ontime") + cnt("late")}
+            total={att.length}
+            onPick={setAttOpen}
+          />
         </Panel>
       </div>
 
-      <div className="grid items-stretch gap-3.5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Panel title="ยอดขายแยกบริการ (บาท · ช่วงที่เลือก)">
-          <ul className="space-y-2.5">
-            {svc.map((s) => (
-              <li
-                key={s.label}
-                className={`grid grid-cols-[110px_minmax(0,1fr)_96px] items-center gap-3 text-[13px] sm:grid-cols-[150px_minmax(0,1fr)_110px] ${
-                  s.v ? "" : "text-muted-foreground"
-                }`}
-              >
-                <span className="truncate">{s.label}</span>
-                <span className="h-2.5 overflow-hidden rounded-full bg-muted">
-                  <span
-                    className="block h-full rounded-full bg-primary"
-                    style={{
-                      width: `${svcMax ? Math.max(s.v ? 2 : 0, (s.v * 100) / svcMax) : 0}%`,
-                    }}
-                  />
-                </span>
-                <span className="num text-right">{whole(s.v)} บาท</span>
-              </li>
-            ))}
-          </ul>
+      {/* จำนวนดีลแยกบริการ · ยอดขายแยกบริการ · ประสิทธิภาพ — สามการ์ดเรียงกันไม่มีช่องว่าง (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <div className="grid items-stretch gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+        <Panel title="จำนวนดีลแยกบริการ (ช่วงที่เลือก)">
+          <ServiceBars rows={svcCount} fmt={(v) => `${v} ดีล`} />
         </Panel>
 
-        <Panel title="ประสิทธิภาพ">
+        <Panel title="ยอดขายแยกบริการ (บาท · ช่วงที่เลือก)">
+          <ServiceBars rows={svcBaht} fmt={(v) => `${whole(v)} บาท`} />
+        </Panel>
+
+        <Panel title="ประสิทธิภาพ" className="md:col-span-2 xl:col-span-1">
           <ul className="divide-y divide-border">
             {kpis.map((k) => (
               <li key={k.k} className="py-2.5 first:pt-0 last:pb-0">
@@ -475,9 +460,9 @@ function Kpi({ title, value, note, warn }: { title: string; value: string; note:
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className="glass flex min-w-0 flex-col rounded-[14px] px-5 py-[18px]">
+    <section className={`glass flex min-w-0 flex-col rounded-[14px] px-5 py-[18px] ${className}`}>
       <h2 className="mb-3.5 text-[15px] font-bold">{title}</h2>
       <div className="min-w-0 flex-1">{children}</div>
     </section>
@@ -485,42 +470,42 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /**
- * รับชำระ (เส้นทึบแดง) เทียบต้นทุนเงินเดือน (เส้นประเทา) รายเดือน
- * ตั้งแต่เดือนแรกที่มีการรับชำระจนถึงเดือนนี้ · เดือนที่รอบเงินเดือนยังไม่ปิดไม่มีจุด ไม่ประมาณเอง
+ * รับชำระ (เส้นทึบ) เทียบต้นทุนแรงงาน (เส้นประเทา) ตามช่วงที่เลือก (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * ไตรมาส/ปีนี้ = รายเดือน · เดือนที่รอบเงินเดือนยังไม่ปิดไม่มีจุด ไม่ประมาณเอง · เดือน/สัปดาห์ที่ยังไม่ถึงไม่มีจุด
+ * เดือนนี้ = รายสัปดาห์ · รอบเงินเดือนปิดเป็นรายเดือน จึงไม่หารแบ่งรายสัปดาห์
+ *   แสดงเป็นเส้นประแนวนอนค่าเดียวของรอบเดือนนี้ถ้าปิดแล้ว ยังไม่ปิดไม่มีเส้น
  */
 function Trend({
   payments,
   payruns,
   today,
+  buckets,
+  weekly,
+  month,
 }: {
   payments: { date: string; received: number; wht: number }[];
   payruns: Period[];
   today: string;
+  buckets: { label: string; from: string; to: string }[];
+  weekly: boolean;
+  month: string;
 }) {
-  const first = payments.reduce((m, p) => (!m || p.date < m ? p.date : m), "").slice(0, 7) || today.slice(0, 7);
-  const months: {
-    key: string;
-    label: string;
-    inc: number;
-    pay: number | null;
-  }[] = [];
-  for (let [y, m] = first.split("-").map(Number); `${y}-${String(m).padStart(2, "0")}` <= today.slice(0, 7);) {
-    const key = `${y}-${String(m).padStart(2, "0")}`;
-    months.push({
-      key,
-      label: TH_MONTHS_SHORT[m - 1],
-      inc: payments.filter((p) => p.date.startsWith(key)).reduce((a, p) => a + p.received + p.wht, 0),
-      pay: costOf(payruns.find((r) => r.month === key))?.cost ?? null,
-    });
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
-  }
+  const pts = buckets.map((b) => ({
+    key: b.from,
+    label: b.label,
+    inc:
+      b.from > today
+        ? null
+        : payments.filter((p) => p.date >= b.from && p.date <= b.to).reduce((a, p) => a + p.received + p.wht, 0),
+    pay: weekly ? null : (costOf(payruns.find((r) => r.month === b.from.slice(0, 7)))?.cost ?? null),
+  }));
+  /* เดือนนี้: ต้นทุนแรงงานของรอบเดือนนี้ (ถ้าปิดแล้ว) เป็นเส้นอ้างอิงเส้นเดียว */
+  const ref = weekly ? (costOf(payruns.find((r) => r.month === month))?.cost ?? null) : null;
+  const hasPay = ref !== null || pts.some((x) => x.pay !== null);
 
-  const top = Math.ceil(Math.max(0, ...months.map((x) => Math.max(x.inc, x.pay ?? 0))) / 100000) * 100000 || 100000;
-  const n = months.length;
+  const top =
+    Math.ceil(Math.max(0, ref ?? 0, ...pts.map((x) => Math.max(x.inc ?? 0, x.pay ?? 0))) / 100000) * 100000 || 100000;
+  const n = pts.length;
 
   /* จอใหญ่กว้าง 640 · มือถือวาดใหม่ที่กว้าง 340 ตัวหนังสือบนแกนจะไม่หดจนอ่านไม่ออก */
   const chart = (W: number, H: number, L: number, cls: string) => {
@@ -529,20 +514,22 @@ function Trend({
     const B = 34;
     const X = (i: number) => (n > 1 ? L + (i * (W - L - R)) / (n - 1) : (L + W - R) / 2);
     const Y = (v: number) => T + (H - T - B) * (1 - v / top);
+    /* ปีนี้ 12 เดือนบนจอแคบ ตัวหนังสือแกนต้องเล็กลงไม่ให้ชนกัน */
+    const fs = W < 400 && n > 6 ? 9.5 : W < 400 && weekly ? 10.5 : 12;
 
     const line = (key: "inc" | "pay", color: string, dash: boolean) => {
-      const pts = months.flatMap((x, i) => (x[key] === null ? [] : [`${X(i)},${Y(x[key] as number)}`]));
+      const coords = pts.flatMap((x, i) => (x[key] === null ? [] : [`${X(i)},${Y(x[key] as number)}`]));
       return (
         <g>
           <polyline
-            points={pts.join(" ")}
+            points={coords.join(" ")}
             fill="none"
             stroke={color}
             strokeWidth={2.5}
             strokeDasharray={dash ? "6 5" : undefined}
             strokeLinejoin="round"
           />
-          {months.map((x, i) =>
+          {pts.map((x, i) =>
             x[key] === null ? null : (
               <circle key={x.key} cx={X(i)} cy={Y(x[key] as number)} r={4} fill="#FFF" stroke={color} strokeWidth={2}>
                 <title>{`${x.label} ${key === "inc" ? "รับชำระ" : "ต้นทุนแรงงาน"} ${whole(x[key] as number)} บาท`}</title>
@@ -554,12 +541,7 @@ function Trend({
     };
 
     return (
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className={`w-full ${cls}`}
-        role="img"
-        aria-label="รับชำระเทียบต้นทุนแรงงานรายเดือน (บาท)"
-      >
+      <svg viewBox={`0 0 ${W} ${H}`} className={`w-full ${cls}`} role="img" aria-label="รับชำระเทียบต้นทุนแรงงาน (บาท)">
         {[0, 1, 2, 3, 4].map((k) => {
           const v = (top * k) / 4;
           return (
@@ -571,11 +553,16 @@ function Trend({
             </g>
           );
         })}
-        {months.map((x, i) => (
-          <text key={x.key} x={X(i)} y={H - 10} textAnchor="middle" fontSize={12} fill="var(--muted-foreground)">
+        {pts.map((x, i) => (
+          <text key={x.key} x={X(i)} y={H - 10} textAnchor="middle" fontSize={fs} fill="var(--muted-foreground)">
             {x.label}
           </text>
         ))}
+        {ref !== null && (
+          <line x1={L} x2={W - R} y1={Y(ref)} y2={Y(ref)} stroke="#6B7280" strokeWidth={2.5} strokeDasharray="6 5">
+            <title>{`ต้นทุนแรงงาน ${shortRound(month)} ${whole(ref)} บาท`}</title>
+          </line>
+        )}
         {line("pay", "#6B7280", true)}
         {line("inc", "var(--primary)", false)}
       </svg>
@@ -589,14 +576,118 @@ function Trend({
           <i className="h-[3px] w-4 rounded bg-primary" />
           รับชำระแล้ว
         </li>
-        <li className="flex items-center gap-1.5">
-          <i className="h-[3px] w-4 rounded bg-[#6B7280]" />
-          ต้นทุนแรงงาน
-        </li>
+        {hasPay && (
+          <li className="flex items-center gap-1.5">
+            <i className="h-[3px] w-4 rounded bg-[#6B7280]" />
+            {ref !== null ? `ต้นทุนแรงงาน ${shortRound(month)}` : "ต้นทุนแรงงาน"}
+          </li>
+        )}
       </ul>
       {chart(640, 230, 58, "hidden sm:block")}
       {chart(340, 220, 46, "sm:hidden")}
     </div>
+  );
+}
+
+/**
+ * โดนัทสัดส่วนพนักงานวันนี้ — ตรงเวลา / มาสาย / ลา / ยังไม่เข้างาน (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * กลางวง = มาทำงานแล้ว / ทั้งหมด · กดรายการด้านล่างเปิดรายชื่อเหมือนเดิม · โครงเดียวกับ PeopleDonut ฝ่ายบุคคล
+ */
+function AttDonut({
+  rows,
+  present,
+  total,
+  onPick,
+}: {
+  rows: { key: AttState; label: string; color: string; n: number }[];
+  present: number;
+  total: number;
+  onPick: (k: AttState) => void;
+}) {
+  const all = total || 1;
+  const R = 60;
+  const C = 2 * Math.PI * R;
+  const slices = rows.reduce<{ key: AttState; label: string; color: string; n: number; len: number; start: number }[]>(
+    (acc, r) => [...acc, { ...r, len: (C * r.n) / all, start: acc.reduce((s, x) => s + x.len, 0) }],
+    [],
+  );
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <span className="relative block size-[140px] flex-none">
+        <svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="สัดส่วนพนักงานวันนี้">
+          <circle cx="70" cy="70" r={R} fill="none" stroke="var(--muted)" strokeWidth="14" />
+          {slices.map((s) =>
+            s.n ? (
+              <circle
+                key={s.key}
+                cx="70"
+                cy="70"
+                r={R}
+                fill="none"
+                stroke={s.color}
+                strokeWidth="14"
+                strokeDasharray={`${s.len.toFixed(2)} ${(C - s.len).toFixed(2)}`}
+                strokeDashoffset={(-s.start).toFixed(2)}
+                transform="rotate(-90 70 70)"
+                className="cursor-pointer"
+                onClick={() => onPick(s.key)}
+              >
+                <title>{`${s.label} ${s.n} คน ${Math.round((s.n * 100) / all)}%`}</title>
+              </circle>
+            ) : null,
+          )}
+        </svg>
+        <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <b className="num text-[22px] leading-none font-extrabold">
+            {present}
+            <span className="text-[14px] font-semibold text-muted-foreground">/{total}</span>
+          </b>
+          <em className="mt-1 text-[11.5px] text-muted-foreground not-italic">มาทำงานแล้ว</em>
+        </span>
+      </span>
+      <div className="w-full space-y-0.5">
+        {rows.map((a) => (
+          <button
+            key={a.key}
+            type="button"
+            onClick={() => onPick(a.key)}
+            className="flex w-full items-center justify-between rounded-[10px] px-2 py-2 text-[13.5px] hover:bg-muted hover:text-primary max-sm:min-h-11 max-sm:text-[14.5px]"
+          >
+            <span className="flex items-center gap-2.5">
+              <i className="size-2.5 rounded-full" style={{ background: a.color }} />
+              {a.label}
+            </span>
+            <b className="num">{a.n}</b>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** แท่งแนวนอนแยกบริการ — ใช้ทั้งจำนวนดีลและยอดบาท (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+function ServiceBars({ rows, fmt }: { rows: { label: string; v: number }[]; fmt: (v: number) => string }) {
+  const max = Math.max(0, ...rows.map((s) => s.v));
+  return (
+    <ul className="space-y-2.5">
+      {rows.map((s) => (
+        <li
+          key={s.label}
+          className={`grid grid-cols-[minmax(0,110px)_minmax(0,1fr)_auto] items-center gap-3 text-[13px] ${
+            s.v ? "" : "text-muted-foreground"
+          }`}
+        >
+          <span className="truncate">{s.label}</span>
+          <span className="h-2.5 overflow-hidden rounded-full bg-muted">
+            <span
+              className="block h-full rounded-full bg-primary"
+              style={{ width: `${max ? Math.max(s.v ? 2 : 0, (s.v * 100) / max) : 0}%` }}
+            />
+          </span>
+          <span className="num text-right">{fmt(s.v)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -642,27 +733,6 @@ function lastCost(runs: Period[]) {
     .map((r) => costOf(r))
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
     .sort((a, b) => b.month.localeCompare(a.month))[0];
-}
-
-function rangeSpan(today: string, range: Range) {
-  const d = new Date(`${today}T00:00:00`);
-  const y = d.getFullYear();
-  if (range === "y")
-    return {
-      from: toIsoDate(new Date(y, 0, 1)),
-      to: toIsoDate(new Date(y, 11, 31)),
-    };
-  if (range === "q") {
-    const q = Math.floor(d.getMonth() / 3) * 3;
-    return {
-      from: toIsoDate(new Date(y, q, 1)),
-      to: toIsoDate(new Date(y, q + 3, 0)),
-    };
-  }
-  return {
-    from: toIsoDate(new Date(y, d.getMonth(), 1)),
-    to: toIsoDate(new Date(y, d.getMonth() + 1, 0)),
-  };
 }
 
 /**

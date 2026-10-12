@@ -50,7 +50,7 @@ export function SideSub({ items, pathname }: { items: SubItem[]; pathname: strin
                   aria-current={active ? "page" : undefined}
                   className={active ? "on" : undefined}
                 >
-                  <i aria-hidden="true" />
+                  {/* ไม่มีจุดนำหน้าเมนูย่อย (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
                   <span className="truncate">{item.label}</span>
                 </Link>
               </li>

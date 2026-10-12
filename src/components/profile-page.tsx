@@ -30,7 +30,7 @@ import {
   useBotnavPrefs,
 } from "@/lib/botnav-prefs";
 import { navItemsOf, useMenuAccess } from "@/lib/nav";
-import { useMyRoles } from "@/lib/hr-link";
+import { useMyMine, useMyRoles } from "@/lib/hr-link";
 import { useApprovalRoute } from "@/lib/role";
 import { ICONS } from "./app-shell";
 import {
@@ -60,8 +60,7 @@ const PANES: { key: Pane; label: string; icon: React.ReactNode }[] = [
   { key: "profile", label: "ข้อมูลส่วนตัว", icon: <UserIcon className="size-4" /> },
   { key: "notify", label: "การแจ้งเตือน", icon: <BellIcon className="size-4" /> },
   { key: "security", label: "รหัสผ่าน", icon: <LockIcon className="size-4" /> },
-  /* แถบเมนูล่างเป็นของแต่ละคน ตั้งเองได้ที่นี่ (เจ้าของสั่ง 25 ก.ย. 2569) */
-  { key: "botnav", label: "แถบเมนูล่าง", icon: <GridIcon className="size-4" /> },
+  /* ไม่มีแผงตั้งแถบเมนูล่างแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 ];
 
 /** ชื่อหัวจอของแต่ละแผงบนมือถือ — ตามต้นแบบ profile-glass.html */
@@ -169,7 +168,7 @@ export function ProfilePage() {
         {current === "profile" && <PersonalPane onSaved={flash} />}
         {current === "notify" && <NotifyPane onSaved={flash} />}
         {current === "security" && <SecurityPane onSaved={flash} />}
-        {current === "botnav" && <BotnavPane onSaved={flash} />}
+        {false && current === "botnav" && <BotnavPane onSaved={flash} />}
       </div>
     </div>
   );
@@ -392,14 +391,14 @@ function PersonalPane({ onSaved }: { onSaved: (m: string) => void }) {
       emergencyPhone: emPhone,
       birth,
     });
-    onSaved("บันทึกข้อมูลส่วนตัวเรียบร้อย (ยังไม่มีระบบหลังบ้าน)");
+    onSaved("บันทึกข้อมูลส่วนตัวเรียบร้อย");
   }
 
   return (
     <section className="pf-sheet glass rounded-[20px] px-4 py-5 sm:px-7 sm:py-[26px]">
       <h2 className="pf-intro text-lg font-semibold">ข้อมูลส่วนตัว</h2>
       <p className="pf-intro mt-1 text-[13px] leading-relaxed text-muted-foreground">
-        ตามแบบฟอร์มข้อมูลประจำตัวพนักงาน MAZ · ช่องที่มี{" "}
+        ช่องที่มี{" "}
         <em className="text-primary not-italic">*</em> ต้องกรอก
       </p>
 
@@ -499,7 +498,7 @@ function PersonalPane({ onSaved }: { onSaved: (m: string) => void }) {
             className="h-12 rounded-xl px-[15px] text-sm font-normal"
           />
         </F>
-        <F label="อายุ" hint="คำนวณจากวันเกิดอัตโนมัติ">
+        <F label="อายุ">
           <Input value={age} readOnly />
         </F>
         <F label="สถานภาพสมรส" wide>
@@ -765,9 +764,6 @@ function NotifyPane({ onSaved }: { onSaved: (m: string) => void }) {
   return (
     <section className="pf-sheet glass rounded-[20px] px-4 py-5 sm:px-7 sm:py-[26px]">
       <h2 className="pf-intro text-lg font-semibold">การแจ้งเตือน</h2>
-      <p className="pf-intro mt-1 text-[13px] leading-relaxed text-muted-foreground">
-        เลือกได้ว่าเรื่องไหนจะเตือนด้วยวิธีใด ระบบยังคงส่งเรื่องสำคัญที่เกี่ยวกับบัญชีของคุณเสมอ
-      </p>
 
       <DevicePushCard />
 
@@ -775,11 +771,6 @@ function NotifyPane({ onSaved }: { onSaved: (m: string) => void }) {
       <div className="pf-master glass-thin mt-5 flex items-center justify-between gap-3 rounded-[14px] px-4 py-3.5 text-sm font-semibold">
         <span>
           เปิดการแจ้งเตือน
-          <small className="mt-0.5 block text-[11.5px] font-normal text-muted-foreground">
-            {on
-              ? "ป๊อปอัปจะเด้งให้อัตโนมัติเมื่อถึงเวลาและอยู่ในพื้นที่ทำงาน"
-              : "ปิดอยู่ · ต้องกดปุ่มเช็คอินเองทุกครั้ง"}
-          </small>
         </span>
         <Switch on={on} onToggle={() => setOn(!on)} label="เปิดการแจ้งเตือน" />
       </div>
@@ -830,11 +821,6 @@ function NotifyPane({ onSaved }: { onSaved: (m: string) => void }) {
           </div>
         ))}
 
-        {ios && (
-          <p className="mt-3 text-xs leading-[1.65] text-muted-foreground">
-            iPhone สั่นตามการตั้งค่าของเครื่อง (การตั้งค่า › เสียงและการสั่น › การสั่น) — สวิตช์สั่นในแอปใช้กับ Android
-          </p>
-        )}
         </div>
 
         <div className="pf-grp">
@@ -975,7 +961,7 @@ function SecurityPane({ onSaved }: { onSaved: (m: string) => void }) {
     setNext("");
     setConfirm("");
     setTouched(false);
-    onSaved("เปลี่ยนรหัสผ่านเรียบร้อย (ยังไม่มีระบบหลังบ้าน)");
+    onSaved("เปลี่ยนรหัสผ่านเรียบร้อย");
   }
 
   return (
@@ -991,7 +977,6 @@ function SecurityPane({ onSaved }: { onSaved: (m: string) => void }) {
             label="รหัสผ่านปัจจุบัน"
             required
             error={touched && !current ? "กรอกรหัสผ่านปัจจุบัน" : undefined}
-            hint="หากลืมรหัสผ่าน ต้องติดต่อฝ่ายบุคคลเพื่อรีเซ็ตให้"
           >
             <input
               type="password"
@@ -1177,7 +1162,8 @@ function BotnavPane({ onSaved }: { onSaved: (message: string) => void }) {
   const roles = useMyRoles();
   const access = useMenuAccess();
   const route = useApprovalRoute();
-  const items = navItemsOf(roles, access, route);
+  const mine = useMyMine();
+  const items = navItemsOf(roles, access, route, mine);
   const prefs = useBotnavPrefs();
   const choices = botnavChoices(items, role);
   const current = botnavOf(prefs, role) ?? botnavDefault(items, role);
@@ -1218,7 +1204,7 @@ function BotnavPane({ onSaved }: { onSaved: (message: string) => void }) {
       <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
         กดเลือกหน้าที่อยากให้อยู่ในแถบล่างบนมือถือ ได้สูงสุด {BOTNAV_SLOTS} หน้า
         <br />
-        กดซ้ำที่หน้าเดิมเพื่อเอาออก · ปุ่มกลางเป็นลงเวลาเสมอ
+        กดซ้ำที่หน้าเดิมเพื่อเอาออก
       </p>
 
       {/* แถบตัวอย่างของจริง — เลือกแล้วเห็นผลทันทีว่าหน้าตาจะเป็นแบบไหน */}

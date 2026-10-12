@@ -76,7 +76,7 @@ export function DevicePushCard() {
 
       {view.kind === "no-sender" && (
         <p className="mt-1 leading-relaxed text-muted-foreground">
-          ใช้ได้เมื่อเปิดผ่านลิงก์ทดสอบที่ต่อกับตัวส่งบนคอมเท่านั้น (ยังไม่มีเซิร์ฟเวอร์ของระบบ)
+          ใช้ได้เมื่อเปิดผ่านลิงก์ทดสอบที่ต่อกับตัวส่งบนคอมเท่านั้น
         </p>
       )}
 
@@ -107,7 +107,7 @@ export function DevicePushCard() {
         ) : (
           <>
             <label className="mt-2 block text-xs text-muted-foreground">
-              ชื่อเครื่อง (ให้ผู้ส่งเลือกถูกเครื่อง)
+              ชื่อเครื่อง
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}

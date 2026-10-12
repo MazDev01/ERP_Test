@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { baht, thaiDate, toIsoDate, todayIso, commaInput } from "@/lib/format";
 import {
   hrDepts,
+  suggestUser,
   hrDocs,
   HR_EMPTYPE,
   HR_OT_DIVISOR,
@@ -25,11 +26,8 @@ import {
   hrPos,
   holdsPos,
   posOf,
-  empYears,
-  probColor,
   probDaysLeft,
   probLine,
-  probPct,
   type DeptKey,
   type DocKey,
   type EmpStatus,
@@ -39,6 +37,7 @@ import {
 } from "@/lib/hr-data";
 import {
   addEmployee,
+  createAccount,
   changePosition,
   lockedUntil,
   passProbation,
@@ -50,12 +49,12 @@ import {
 import { optionsOf } from "@/lib/options";
 import { useFindParam } from "@/lib/deep-link";
 import { USERS } from "@/lib/mock-data";
-import { useRole } from "@/lib/role";
+import { useRole, type Role } from "@/lib/role";
 import { Sheet } from "./lead-dialogs";
-import { EmployeeDetail, EmpPhoto, StatusPill } from "./hr-employee-detail";
+import { EmployeeDetail } from "./hr-employee-detail";
 import { ThaiDatePicker } from "./thai-date-picker";
 import { Field, Input, Select, Textarea } from "./ui";
-import { ADD_VALUE, useAddOption } from "./add-option";
+import { CredentialsDialog, PassBox, RolePicker, tempPass } from "./account-parts";
 import { lockScroll } from "@/lib/scroll-lock";
 import "@/styles/mobile/hr-employees.css";
 
@@ -71,6 +70,8 @@ export function HrEmployeesPage() {
   const [passing, setPassing] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  /** หลังเพิ่มพนักงาน — แสดงชื่อผู้ใช้และรหัสชั่วคราวให้ฝ่ายบุคคลส่งต่อ */
+  const [cred, setCred] = useState<{ name: string; user: string; pass: string } | null>(null);
   /** มือถือ: แผ่นตัวกรองแผนก/ตำแหน่งเปิดอยู่ไหม (ต้นแบบ hr-employees.html .m-he-sheet) */
   const [fopen, setFopen] = useState(false);
   /** กลุ่มไหนกางอยู่ — จำไว้ข้ามการวาดใหม่ ตั้งต้นกางทุกกลุ่ม */
@@ -175,7 +176,10 @@ export function HrEmployeesPage() {
 
       <div className="bar">
         <div>
-          <h1>ข้อมูลพนักงาน</h1>
+          <h1>
+            ข้อมูลพนักงาน
+            <span className="num ml-2.5 text-primary">{rows.length} คน</span>
+          </h1>
         </div>
         <div className="tools w-full flex-wrap items-end sm:w-auto">
           {/* มือถือ: ปุ่มเพิ่มพนักงานเต็มแถวบนสุด ค้นหาเต็มแถว ตัวกรองสามช่องเรียงแถวเดียว */}
@@ -264,26 +268,29 @@ export function HrEmployeesPage() {
                 }}
                 className="group"
               >
-                <summary className="flex cursor-pointer list-none items-center gap-2.5 py-1 text-[13.5px] font-bold marker:content-none [&::-webkit-details-marker]:hidden">
-                  <i className="size-[9px] flex-none rounded-full" style={{ background: g.dot }} />
-                  {g.label}
-                  <span className="num font-semibold text-muted-foreground">({list.length} คน)</span>
+                {/* หัวกลุ่มเป็นแถบขาว จุดสี · ชื่อกลุ่ม · จำนวนคน · ลูกศรชิดขวา (ต้นแบบ hr-employees-grid.html) */}
+                <summary className="flex cursor-pointer list-none items-center gap-2.5 rounded-[14px] border border-[#ECEEF2] bg-card px-4 py-3 select-none marker:content-none hover:border-[#E4C7CC] [&::-webkit-details-marker]:hidden">
+                  <i className="size-2.5 flex-none rounded-full" style={{ background: g.dot }} />
+                  <b className="text-[15px] font-bold">{g.label}</b>
+                  <span className="num rounded-[20px] bg-[#F1F2F5] px-2.5 py-0.5 text-[12px] font-semibold text-muted-foreground">
+                    {list.length} คน
+                  </span>
                   <svg
-                    width="14"
-                    height="14"
+                    width="18"
+                    height="18"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="2.4"
+                    strokeWidth="2.2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="text-muted-foreground transition-transform group-open:rotate-180"
+                    className="ml-auto text-muted-foreground transition-transform group-open:rotate-180"
                     aria-hidden="true"
                   >
                     <path d="m6 9 6 6 6-6" />
                   </svg>
                 </summary>
-                <div className="he-list mt-2 flex flex-col gap-3">
+                <div className="mt-3.5 grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-stretch gap-[18px] max-sm:grid-cols-1 max-sm:gap-3">
                   {list.map((e) => (
                     <EmpCard key={e.id} emp={e} query={query} today={today} onOpen={() => setViewing(e.id)} />
                   ))}
@@ -329,7 +336,8 @@ export function HrEmployeesPage() {
           hr={hr}
           today={today}
           onClose={() => setAdding(false)}
-          onAdded={(id) => {
+          onAdded={(id, c) => {
+            setCred(c);
             /* ตามต้นแบบ: ล้างช่องค้นหาแล้วเลื่อนไปที่การ์ดของคนที่เพิ่งเพิ่ม
                กางทุกกลุ่มด้วย ไม่งั้นการ์ดอาจอยู่ในกลุ่มที่พับไว้จนเลื่อนไปไม่ถึง */
             justAdded.current = id;
@@ -337,6 +345,10 @@ export function HrEmployeesPage() {
             setOpen({ full: true, probat: true, intern: true });
           }}
         />
+      )}
+
+      {cred && (
+        <CredentialsDialog title="เพิ่มพนักงานแล้ว" {...cred} onClose={() => setCred(null)} />
       )}
 
       {current && (
@@ -472,53 +484,11 @@ function Mark({ text, query }: { text: string; query: string }) {
   );
 }
 
-function Donut({ pct }: { pct: number }) {
-  const r = 23;
-  const c = 2 * Math.PI * r;
-  const on = (c * pct) / 100;
-  const col = probColor(pct);
-  return (
-    <span
-      className="relative block size-14 sm:mx-auto"
-      role="img"
-      aria-label={`ผ่านช่วงเวลาทดลองงานแล้ว ${pct} เปอร์เซ็นต์ (นับจากวันที่ ไม่ใช่คะแนนผลงาน)`}
-    >
-      <svg width="56" height="56" viewBox="0 0 56 56" className="block -rotate-90">
-        <circle cx="28" cy="28" r={r} fill="none" stroke="#DFE3EA" strokeWidth="5" />
-        {pct > 0 && (
-          <circle
-            cx="28"
-            cy="28"
-            r={r}
-            fill="none"
-            stroke={col}
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={`${on.toFixed(2)} ${(c - on).toFixed(2)}`}
-          />
-        )}
-      </svg>
-      <b className="num absolute inset-0 flex items-center justify-center text-xs font-extrabold" style={{ color: col }}>
-        {pct}%
-      </b>
-    </span>
-  );
-}
-
-function Chip({ children, tone }: { children: React.ReactNode; tone?: "warn" | "bad" }) {
-  const skin =
-    tone === "bad"
-      ? "border-transparent bg-[var(--destructive-soft)] font-semibold text-destructive"
-      : tone === "warn"
-        ? "border-transparent bg-[var(--warning-soft)] font-semibold text-[var(--warning)]"
-        : "border-border bg-muted/60 text-muted-foreground";
-  return (
-    <span className={`he-chip rounded-[20px] border px-2.5 py-[3px] text-[11.5px] ${tone ? "" : "he-chip-plain"} ${skin}`}>
-      {children}
-    </span>
-  );
-}
-
+/*
+ * การ์ดพนักงานแนวตั้ง เรียงเป็นกริด (ต้นแบบ hr-employees-grid.html · ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * รูปวงกลมใช้อักษรแรกของชื่อ (ข้ามสระหน้า เ แ โ ใ ไ) ยังไม่มีรูปจริงของพนักงาน
+ * ป้ายขึ้นเฉพาะคนที่ต้องจับตา — ทดลองงานที่ยังอยู่ และคนที่พ้นสภาพ
+ */
 function EmpCard({
   emp,
   query,
@@ -531,9 +501,9 @@ function EmpCard({
   onOpen: () => void;
 }) {
   const p = hrPos(emp.pos);
-  const gone = emp.status === "left";
-  const onProbation = emp.type === "probat" && emp.status === "active";
-  const left = onProbation ? probDaysLeft(emp.startedAt, today) : null;
+  const on = emp.status === "active";
+  const left = emp.type === "probat" && on ? probDaysLeft(emp.startedAt, today) : null;
+  const ini = emp.name.replace(/^[เแโใไ]/, "").charAt(0) || "?";
 
   return (
     /* กดที่ไหนก็ได้ในการ์ดเพื่อเปิดประวัติ — รองรับคีย์บอร์ดด้วย Enter/Space */
@@ -549,72 +519,95 @@ function EmpCard({
       }}
       aria-label={`ดูประวัติของ ${emp.name}`}
       data-emp-id={emp.id}
-      /* มือถือ: การ์ดตกบรรทัด รูป 64px ส่วนขวาเรียงเป็นแถวเต็มความกว้าง */
-      className={`he-card flex cursor-pointer flex-wrap items-center gap-3.5 rounded-[18px] border border-border bg-card px-5 py-4 max-sm:items-start max-sm:gap-x-3 max-sm:gap-y-2 max-sm:rounded-[14px] max-sm:px-3.5 max-sm:py-3 transition-[box-shadow,border-color] hover:border-[#E4C7CC] hover:shadow-[0_3px_14px_rgba(28,20,45,.07)] sm:flex-nowrap sm:gap-[18px] ${
-        gone ? "opacity-[.62]" : ""
+      className={`group/card relative flex cursor-pointer flex-col gap-3.5 rounded-[20px] border border-[#ECEEF2] bg-card px-[18px] pt-[18px] pb-4 shadow-[0_1px_2px_rgba(28,20,45,.03)] transition-[box-shadow,transform,border-color] hover:-translate-y-0.5 hover:border-[#E4C7CC] hover:shadow-[0_10px_26px_-12px_rgba(28,20,45,.18)] max-sm:hover:translate-y-0 ${
+        on ? "" : "opacity-60"
       }`}
     >
-      {/* มือถือรูป 64px ยังเล็กไปสำหรับคำว่า "ยังไม่มีรูป" เหลือไว้แต่ไอคอน */}
-      <EmpPhoto className="he-photo size-16 rounded-[14px] max-sm:[&>em]:hidden max-sm:[&>svg]:mb-0 sm:size-[88px] sm:rounded-[16px]" />
-
-      <span className="he-info min-w-0 flex-1">
-        <span className="he-top flex flex-wrap items-center gap-2.5">
-          <b className="he-name text-base font-bold">
-            <Mark text={emp.name} query={query} />
-          </b>
-          <StatusPill emp={emp} />
+      <div className="relative flex justify-center pt-1">
+        <span className="relative size-[68px] flex-none">
+          <span
+            className="flex size-[68px] items-center justify-center rounded-full bg-[#FDECEE] text-[24px] font-bold text-primary"
+            aria-hidden="true"
+          >
+            {ini}
+          </span>
+          <i
+            className={`absolute right-[3px] bottom-[3px] size-3.5 rounded-full border-[2.5px] border-white ${
+              on ? "bg-[var(--success)]" : "bg-[#B5BAC4]"
+            }`}
+            title={on ? "ปฏิบัติงานอยู่" : "พ้นสภาพ"}
+          />
         </span>
-        {/* ตำแหน่งบรรทัดหนึ่ง แผนกตัวเล็กจางอีกบรรทัด */}
-        <span className="he-pos mt-[5px] block text-[13px]">
+        <span
+          className="absolute -top-1.5 -right-1.5 flex h-7 w-8 items-center justify-center rounded-lg text-foreground group-hover/card:bg-[#F6F7F9]"
+          aria-hidden="true"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="5" cy="12" r="1.9" />
+            <circle cx="12" cy="12" r="1.9" />
+            <circle cx="19" cy="12" r="1.9" />
+          </svg>
+        </span>
+      </div>
+
+      <div className="-mt-1 text-center">
+        <b className="block text-[15px] leading-snug font-bold">
+          <Mark text={emp.name} query={query} />
+        </b>
+        <span className="mt-0.5 block text-[12.5px] text-muted-foreground">
           {p.label}
           {/* ควบตำแหน่งอื่นด้วย — ตำแหน่งหลักยังเป็นตัวคิดเงินเดือนและสายอนุมัติ */}
-          {(emp.posMore ?? []).length > 0 && (
-            <span className="text-muted-foreground">
-              {" · ควบ "}
-              {(emp.posMore ?? []).map((v) => hrPos(v).label).join(" · ")}
-            </span>
-          )}
+          {(emp.posMore ?? []).length > 0 && ` · ควบ ${(emp.posMore ?? []).map((v) => hrPos(v).label).join(" · ")}`}
         </span>
-        <span className="he-dept block text-[12px] text-muted-foreground">{hrDept(p.dept).label}</span>
-        <span className="he-chips mt-[11px] flex flex-wrap gap-1.5 max-sm:mt-2">
-          <Chip>เริ่ม {thaiDate(emp.startedAt)}</Chip>
-          <Chip>
-            {emp.leftAt ? "ทำงานรวม" : "ทำงานมาแล้ว"} {empYears(emp.startedAt, today, emp.leftAt)}
-          </Chip>
-          {left !== null && (
-            <Chip tone={left < 0 ? "bad" : "warn"}>
-              {left < 0
-                ? `เลยกำหนดทดลองงาน ${Math.abs(left)} วัน`
-                : left === 0
-                  ? "ครบกำหนดวันนี้"
-                  : `ครบกำหนดอีก ${left} วัน`}
-            </Chip>
-          )}
-          {emp.leftAt && <Chip tone="bad">พ้นสภาพ {thaiDate(emp.leftAt)}</Chip>}
-        </span>
-      </span>
-
-      {/* วงแหวนบอก "ช่วงเวลา" ทดลองงานที่ผ่านมาแล้ว ไม่ใช่คะแนนผลงาน */}
-      <span
-        /* มือถือ: แถวเต็มความกว้างใต้การ์ด — คนที่ไม่ได้ทดลองงานไม่ต้องขึ้น เพราะหัวกลุ่มบอกประเภทอยู่แล้ว */
-        className={`he-side flex w-full flex-none items-center gap-2.5 sm:block sm:w-[110px] sm:text-center ${
-          onProbation ? "max-sm:mt-1 max-sm:border-t max-sm:border-border max-sm:pt-2" : "max-sm:hidden"
-        }`}
-      >
-        {onProbation ? (
-          <>
-            <Donut pct={probPct(emp.startedAt, today)} />
-            <span className="block text-[10.5px] leading-snug text-muted-foreground sm:mt-1.5">
-              ผ่านช่วงทดลองงาน
-              <span className="max-sm:hidden"> (นับตามวัน)</span>
-            </span>
-          </>
-        ) : (
-          <span className="block text-[11px] leading-snug text-muted-foreground">
-            {HR_EMPTYPE[emp.type].label}
+        {left !== null && (
+          <span
+            className={`mt-[7px] inline-block rounded-[20px] px-[9px] py-0.5 text-[11px] font-semibold ${
+              left < 0
+                ? "bg-[var(--destructive-soft)] text-destructive"
+                : "bg-[var(--warning-soft)] text-[var(--warning)]"
+            }`}
+          >
+            {left < 0
+              ? `เลยกำหนดทดลองงาน ${Math.abs(left)} วัน`
+              : `ทดลองงาน · ครบกำหนด${left === 0 ? "วันนี้" : `อีก ${left} วัน`}`}
           </span>
         )}
-      </span>
+        {emp.leftAt && (
+          <span className="mt-[7px] inline-block rounded-[20px] bg-[#EFF0F3] px-[9px] py-0.5 text-[11px] font-semibold text-muted-foreground">
+            พ้นสภาพ {thaiDate(emp.leftAt)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-auto flex flex-col gap-3 rounded-[14px] bg-[#F6F7F9] px-3.5 py-[13px]">
+        <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5">
+          <dt className="text-[11.5px] leading-[18px] text-muted-foreground">แผนก</dt>
+          <dt className="text-right text-[11.5px] leading-[18px] text-muted-foreground">วันเริ่มงาน</dt>
+          <dd className="m-0 truncate text-[13px] leading-[22px] font-semibold">{hrDept(p.dept).label}</dd>
+          <dd className="m-0 text-right text-[13px] leading-[22px] font-semibold whitespace-nowrap">
+            {thaiDate(emp.startedAt)}
+          </dd>
+        </dl>
+        <div className="flex flex-col gap-[7px] text-[12.5px]">
+          <span className="flex min-w-0 items-center gap-[9px]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-muted-foreground" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2.5" />
+              <path d="m4 7 8 6 8-6" />
+            </svg>
+            <em className={`truncate not-italic ${emp.email ? "" : "text-muted-foreground"}`}>
+              {emp.email || "ไม่มีอีเมล"}
+            </em>
+          </span>
+          <span className="flex min-w-0 items-center gap-[9px]">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-muted-foreground" aria-hidden="true">
+              <path d="M5 4h3.5l1.6 4.2-2.2 1.4a11 11 0 0 0 6.5 6.5l1.4-2.2L20 15.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" />
+            </svg>
+            <em className={`truncate not-italic ${emp.phone ? "" : "text-muted-foreground"}`}>
+              {emp.phone || "ไม่มีเบอร์โทร"}
+            </em>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -649,13 +642,9 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
     boss: emp.boss,
   });
   const [docs, setDocs] = useState<DocKey[]>(emp.docs);
-  /* เพิ่มชนิดเอกสารใหม่จากตรงนี้ได้ — เพิ่มแล้วติ๊กให้เลยว่าได้รับแล้ว */
-  const addDoc = useAddOption({ catalog: "docs" }, (v) => setDocs((x) => (x.includes(v) ? x : [...x, v])));
   const [pos, setPos] = useState<PosKey>(cur.pos);
   /* ตำแหน่งควบ — เจ้าของสั่ง 28 ก.ย. 2569 ให้หนึ่งคนถือได้หลายตำแหน่ง */
   const [posMore, setPosMore] = useState<PosKey[]>(emp.posMore ?? []);
-  const addPos = useAddOption({ catalog: "positions", dept: hrPos(cur.pos).dept }, setPos);
-  const addSex = useAddOption({ list: "sex" }, (v) => setF((x) => ({ ...x, sex: v })));
   const [salary, setSalary] = useState(commaInput(String(cur.salary)));
   const [posAt, setPosAt] = useState("");
   const [posNote, setPosNote] = useState("");
@@ -712,7 +701,6 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
     onClose();
   }
 
-  const bosses = hr.emp.filter((e) => e.id !== emp.id && e.status === "active");
 
   return (
     <Sheet
@@ -744,17 +732,15 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
               {/* อ่านจากข้อมูลหลัก — เพิ่มเพศใหม่แล้วต้องขึ้นให้เลือกที่นี่ทันที */}
               <Select
                 value={f.sex}
-                onChange={(e) => addSex.pick(e.target.value) || setF((x) => ({ ...x, sex: e.target.value }))}
+                onChange={(e) => setF((x) => ({ ...x, sex: e.target.value }))}
               >
                 {optionsOf("sex").map((g) => (
                   <option key={g} value={g}>
                     {g}
                   </option>
                 ))}
-                {addSex.option}
               </Select>
             </Field>
-            {addSex.dialog}
             <Field label="วันเกิด">
               <ThaiDatePicker
                 value={f.birth}
@@ -803,23 +789,11 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
         </Sect>
 
         <Sect title="การจ้างงาน">
-          <div className="grid gap-3.5 sm:grid-cols-2">
-            <Field label="ผู้บังคับบัญชา">
-              <Select value={f.boss} onChange={set("boss")}>
-                <option value="">ไม่มี</option>
-                {bosses.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} · {hrPos(b.pos).label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
 
           <h4 className="mt-4 mb-2 text-[12.5px] font-semibold">ปรับตำแหน่ง / เงินเดือน</h4>
           <div className="grid gap-3.5 sm:grid-cols-2">
             <Field label="ตำแหน่ง">
-              <Select value={pos} onChange={(e) => addPos.pick(e.target.value) || setPos(e.target.value as PosKey)}>
+              <Select value={pos} onChange={(e) => setPos(e.target.value as PosKey)}>
                 {hrDepts().map((d) => (
                   <optgroup key={d.v} label={d.label}>
                     {hrPositions().filter((x) => x.dept === d.v).map((x) => (
@@ -829,11 +803,10 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
                     ))}
                   </optgroup>
                 ))}
-                {addPos.option}
               </Select>
             </Field>
 
-            <Field label="ตำแหน่งควบ" hint="ทำหลายตำแหน่งได้ · เงินเดือนและสายอนุมัติยังคิดจากตำแหน่งหลักด้านซ้าย">
+            <Field label="ตำแหน่งควบ">
               <div className="flex flex-wrap gap-1.5">
                 {hrPositions()
                   .filter((x) => x.v !== pos)
@@ -855,7 +828,6 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
                   })}
               </div>
             </Field>
-            {addPos.dialog}
             <Field label="เงินเดือน (บาท)">
               <Input inputMode="decimal" value={salary} onChange={(e) => setSalary(commaInput(e.target.value))} />
             </Field>
@@ -884,12 +856,6 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
               </>
             )}
           </div>
-          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-            {posChanged
-              ? "บันทึกเป็นประวัติแถวใหม่ ตัวเลขก่อนวันที่มีผลไม่เปลี่ยน"
-              : "แก้ตำแหน่งหรือเงินเดือนแล้วจะให้ระบุวันที่มีผลและเหตุผล"}
-            {lock && ` · รอบเงินเดือนปิดถึง ${thaiDate(lock)} วันที่มีผลต้องหลังวันนั้น`}
-          </p>
 
           <label className="mt-4 flex cursor-pointer items-center gap-2 text-[13px] font-semibold">
             <input
@@ -945,12 +911,6 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
               </li>
             ))}
           </ul>
-          {addDoc.canAdd && (
-            <button type="button" className="lnk mt-2 text-[12.5px]" onClick={() => addDoc.pick(ADD_VALUE)}>
-              ＋ เพิ่มชนิดเอกสาร
-            </button>
-          )}
-          {addDoc.dialog}
         </Sect>
       </div>
 
@@ -1050,17 +1010,13 @@ function PassDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
           ระบุวันที่มีผล และเงินเดือนเป็นตัวเลขมากกว่าศูนย์
         </p>
       )}
-      <p className="mt-3 rounded-[11px] border border-border bg-muted/50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        {ok ? (
-          <>
-            หลังมีผล จะคิดเงินเดือนรายเดือน <b className="text-foreground">{baht(Number(raw))}</b> บาท
-            (ค่าจ้างรายชั่วโมงสำหรับโอที{" "}
-            {baht(Number(raw) / HR_OT_DIVISOR.days / HR_OT_DIVISOR.hours)} บาท)
-          </>
-        ) : (
-          "ก่อนหน้านี้จ่ายค่าจ้างรายวัน หลังมีผลจะเปลี่ยนเป็นเงินเดือนรายเดือน"
-        )}
-      </p>
+      {ok && (
+        <p className="mt-3 rounded-[11px] border border-border bg-muted/50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
+          หลังมีผล จะคิดเงินเดือนรายเดือน <b className="text-foreground">{baht(Number(raw))}</b> บาท
+          (ค่าจ้างรายชั่วโมงสำหรับโอที{" "}
+          {baht(Number(raw) / HR_OT_DIVISOR.days / HR_OT_DIVISOR.hours)} บาท)
+        </p>
+      )}
     </Sheet>
   );
 }
@@ -1126,7 +1082,7 @@ function AddDialog({
   hr: HrState;
   today: string;
   onClose: () => void;
-  onAdded?: (id: string) => void;
+  onAdded?: (id: string, cred: { name: string; user: string; pass: string }) => void;
 }) {
   const [f, setF] = useState({
     name: "",
@@ -1147,19 +1103,22 @@ function AddDialog({
     sosPhone: "",
   });
   const [docs, setDocs] = useState<DocKey[]>([]);
-  /* เพิ่มชนิดเอกสารใหม่จากตรงนี้ได้ — เพิ่มแล้วติ๊กให้เลยว่าได้รับแล้ว */
-  const addDoc = useAddOption({ catalog: "docs" }, (v) => setDocs((x) => (x.includes(v) ? x : [...x, v])));
   const [picker, setPicker] = useState<"" | "birth" | "start">("");
   const [warn, setWarn] = useState("");
+  /* บัญชีเข้าระบบสร้างพร้อมพนักงาน (ต้นแบบ hr-employees-grid.html · ผู้ใช้สั่ง 6 ต.ค. 2569)
+     ชื่อผู้ใช้ตามชื่อที่พิมพ์ไปเรื่อย ๆ จนกว่าฝ่ายบุคคลจะแก้ช่องชื่อผู้ใช้เอง */
+  const taken = hr.emp.filter((e) => e.account).map((e) => e.account!.user);
+  const [user, setUser] = useState("");
+  const [userEdited, setUserEdited] = useState(false);
+  const [pass, setPass] = useState(tempPass);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const shownUser = userEdited ? user : f.name.trim() ? suggestUser(f.name.trim(), taken) : "";
 
   const set =
     (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setF((v) => ({ ...v, [k]: e.target.value }));
 
-  const addPos = useAddOption({ catalog: "positions" }, (v) => setF((x) => ({ ...x, pos: v })));
-  const addSex = useAddOption({ list: "sex" }, (v) => setF((x) => ({ ...x, sex: v })));
   const salary = Number(f.salary.replace(/[^\d.]/g, ""));
-  const bosses = hr.emp.filter((e) => e.status === "active");
   /*
    * รอบที่ปิดแล้วไม่รับคนเพิ่มไม่ว่ากรณีใด (ผู้ใช้กำหนด 23 ก.ย. 2569)
    * วันเริ่มงานต้องอยู่หลังวันสุดท้ายของรอบเงินเดือนที่ปิดล่าสุด
@@ -1182,6 +1141,9 @@ function AddDialog({
     if (!f.phone.trim()) return setWarn("กรอกเบอร์โทร");
     /* ชื่อซ้ำตรวจเป็นข้อสุดท้าย — ช่องที่ยังว่างต้องบอกก่อน (ลำดับตามต้นแบบ) */
     if (hr.emp.some((e) => e.name === name)) return setWarn("มีพนักงานชื่อนี้ในระบบแล้ว ตรวจสอบก่อนบันทึก");
+    const login = shownUser.trim();
+    if (login.length < 4) return setWarn("ชื่อผู้ใช้ต้องยาวอย่างน้อย 4 ตัวอักษร");
+    if (taken.includes(login)) return setWarn("ชื่อผู้ใช้นี้มีคนใช้แล้ว");
 
     const id = addEmployee({
       name,
@@ -1201,8 +1163,10 @@ function AddDialog({
       docs: hrDocs().map((d) => d.v).filter((v) => docs.includes(v)),
       salary,
     });
+    /* TODO: ต่อ backend แล้วต้องบันทึกพนักงาน เอกสาร และบัญชีในธุรกรรมเดียว */
+    if (id) createAccount(id, login, today, roles);
     onClose();
-    if (id) onAdded?.(id);
+    if (id) onAdded?.(id, { name, user: login, pass });
   }
 
   return (
@@ -1235,17 +1199,15 @@ function AddDialog({
               <Select
                 value={f.sex}
                 aria-label="เพศ"
-                onChange={(e) => addSex.pick(e.target.value) || setF((x) => ({ ...x, sex: e.target.value }))}
+                onChange={(e) => setF((x) => ({ ...x, sex: e.target.value }))}
               >
                 {optionsOf("sex").map((g) => (
                   <option key={g} value={g}>
                     {g}
                   </option>
                 ))}
-                {addSex.option}
               </Select>
             </Field>
-            {addSex.dialog}
             <Field label="วันเกิด">
               <ThaiDatePicker
                 value={f.birth}
@@ -1265,17 +1227,15 @@ function AddDialog({
         <Sect title="การจ้างงาน">
           <div className="grid gap-3.5 sm:grid-cols-2">
             <Field label="ตำแหน่ง" required>
-              <Select value={f.pos} onChange={(e) => addPos.pick(e.target.value) || set("pos")(e)} aria-label="ตำแหน่ง">
+              <Select value={f.pos} onChange={(e) => set("pos")(e)} aria-label="ตำแหน่ง">
                 {hrPositions().map((p) => (
                   <option key={p.v} value={p.v}>
-                    {p.label} · {hrDept(p.dept).label}
+                    {p.label}
                   </option>
                 ))}
-                {addPos.option}
               </Select>
             </Field>
-            {addPos.dialog}
-            <Field label="ประเภทการจ้าง" hint="คนเข้าใหม่ตั้งต้นที่ทดลองงาน">
+            <Field label="ประเภทการจ้าง">
               <Select value={f.type} onChange={set("type")} aria-label="ประเภทการจ้าง">
                 {(Object.keys(HR_EMPTYPE) as EmpType[]).map((k) => (
                   <option key={k} value={k}>
@@ -1284,11 +1244,7 @@ function AddDialog({
                 ))}
               </Select>
             </Field>
-            <Field
-              label="วันเริ่มงาน"
-              required
-              hint={minStart ? `รอบที่ปิดแล้วไม่รับคนเพิ่ม เลือกได้ตั้งแต่ ${thaiDate(minStart)}` : undefined}
-            >
+            <Field label="วันเริ่มงาน" required>
               <ThaiDatePicker
                 value={f.startedAt}
                 min={minStart || undefined}
@@ -1301,25 +1257,7 @@ function AddDialog({
                 }}
               />
             </Field>
-            <Field label="หัวหน้างาน">
-              <Select value={f.boss} onChange={set("boss")} aria-label="หัวหน้างาน">
-                <option value="">ยังไม่กำหนด</option>
-                {bosses.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name} · {hrPos(e.pos).label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field
-              label="เงินเดือน"
-              required
-              hint={
-                f.type === "probat"
-                  ? "ช่วงทดลองงานจ่ายรายวัน คิดจากค่านี้หารจำนวนวันของเดือน"
-                  : undefined
-              }
-            >
+            <Field label="เงินเดือน" required>
               <Input
                 value={f.salary}
                 onChange={(e) => setF((v) => ({ ...v, salary: commaInput(e.target.value) }))}
@@ -1365,6 +1303,31 @@ function AddDialog({
           </div>
         </Sect>
 
+        <Sect title="บัญชีเข้าระบบ">
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <Field label="ชื่อผู้ใช้" required>
+              <Input
+                value={shownUser}
+                onChange={(e) => {
+                  setUserEdited(true);
+                  setUser(e.target.value);
+                }}
+                aria-label="ชื่อผู้ใช้"
+                autoComplete="off"
+                spellCheck={false}
+                className="num"
+              />
+            </Field>
+            <Field label="รหัสผ่านชั่วคราว">
+              <PassBox pass={pass} onNew={() => setPass(tempPass())} />
+            </Field>
+          </div>
+          <p className="mt-3.5 mb-2 text-[12.5px] font-semibold text-muted-foreground">
+            งานที่รับผิดชอบ
+          </p>
+          <RolePicker roles={roles} onChange={setRoles} onWarn={setWarn} />
+        </Sect>
+
         <Sect title="เอกสารที่ได้รับแล้ว">
           <ul className="grid gap-1.5 text-[13px] sm:grid-cols-2">
             {hrDocs().map((d) => (
@@ -1384,15 +1347,6 @@ function AddDialog({
               </li>
             ))}
           </ul>
-          {addDoc.canAdd && (
-            <button type="button" className="lnk mt-2 text-[12.5px]" onClick={() => addDoc.pick(ADD_VALUE)}>
-              ＋ เพิ่มชนิดเอกสาร
-            </button>
-          )}
-          {addDoc.dialog}
-          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-            เอกสารไม่ครบก็บันทึกได้ หน้าประวัติจะขึ้นว่ายังขาดอะไรบ้าง
-          </p>
         </Sect>
 
         {warn && (

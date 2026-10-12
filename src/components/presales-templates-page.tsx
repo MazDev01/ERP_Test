@@ -78,7 +78,7 @@ export function PresalesTemplatesPage() {
       <div className="bar">
         <div>
           <h1>คลังเทมเพลต</h1>
-          <p>เทมเพลตข้อเสนอที่ใช้ซ้ำได้ {list.length} รายการ</p>
+          <p>{list.length} รายการ</p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto sm:flex-nowrap">
           <select
@@ -140,7 +140,7 @@ export function PresalesTemplatesPage() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-7 text-center text-muted-foreground">
-                    {list.length === 0 ? "ยังไม่มีเทมเพลต กด “เพิ่มเทมเพลต” เพื่อเริ่ม" : "ไม่พบเทมเพลตที่ตรงกับที่ค้นหา"}
+                    {list.length === 0 ? "ยังไม่มีเทมเพลต" : "ไม่พบเทมเพลตที่ตรงกับที่ค้นหา"}
                   </td>
                 </tr>
               ) : (

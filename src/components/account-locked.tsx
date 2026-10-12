@@ -51,10 +51,6 @@ export function AccountLocked({
       >
         กลับไปหน้าเข้าสู่ระบบ
       </button>
-
-      <p className="mt-4 rounded-xl bg-accent px-3.5 py-3 text-left text-[11.5px] leading-[1.6] text-primary">
-        ฝ่ายบุคคลจะตรวจสอบและปลดล็อกให้ รวมถึงรีเซ็ตรหัสผ่านใหม่ให้ถ้าจำเป็น
-      </p>
     </div>
   );
 }

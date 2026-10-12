@@ -48,9 +48,6 @@ export function SetPasswordPage() {
         </span>
 
         <h1 className="mt-4 text-center text-lg font-semibold">กรุณาตั้งรหัสผ่านใหม่</h1>
-        <p className="mt-2 text-center text-[13.5px] leading-[1.65] text-muted-foreground">
-          เพื่อความปลอดภัยของบัญชีคุณ
-        </p>
 
         <form onSubmit={submit} noValidate className="mt-5">
           <Field

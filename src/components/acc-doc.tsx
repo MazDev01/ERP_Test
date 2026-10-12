@@ -3,7 +3,7 @@
 /*
  * เอกสารฝั่งบัญชีแบบเต็มหน้า — ต้นแบบ dose-erp-maz/invoice-view.html และ receipt-view.html
  *   ใบแจ้งหนี้   /acc/billing/invoice/<เลขที่>  (เปิดจากแท็บใบแจ้งหนี้ หน้าวางบิล)
- *   ใบเสร็จรับเงิน /acc/receipts/<เลขที่>        (เปิดจากแท็บออกแล้ว หน้าใบเสร็จ)
+ *   ใบเสร็จรับเงิน /acc/receipts/<เลขที่>        (เปิดจากแถวงวด/แท็บใบเสร็จ หน้าวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569))
  *
  * ยอดทุกบรรทัดอ่านจากเอกสารที่บันทึกไว้ ไม่คิดใหม่ — เอกสารออกเลขแล้วห้ามเปลี่ยน
  * ใบแจ้งหนี้และใบเสร็จต้องขึ้นภาษีครบสี่บรรทัด (ราคาก่อนภาษี · VAT · หัก ณ ที่จ่าย · ยอดชำระสุทธิ)
@@ -131,7 +131,7 @@ export function AccReceiptView({ no }: { no: string }) {
   const crm = useCrm();
   const r = acc.receipts.find((x) => x.no === no);
 
-  if (!r) return <NotFound back="/acc/receipts" backLabel="กลับไปหน้าใบเสร็จ" no={no} what="ไม่พบใบเสร็จนี้" />;
+  if (!r) return <NotFound back="/acc/billing?tab=rc" backLabel="กลับไปหน้าวางบิล" no={no} what="ไม่พบใบเสร็จนี้" />;
 
   const deal = acc.deals.find((d) => d.no === r.deal);
   const seq = seqText(r.seq, deal?.plan.length ?? 0);
@@ -141,8 +141,8 @@ export function AccReceiptView({ no }: { no: string }) {
 
   return (
     <DocShell
-      back="/acc/receipts"
-      backLabel="กลับไปหน้าใบเสร็จ"
+      back="/acc/billing?tab=rc"
+      backLabel="กลับไปหน้าวางบิล"
       no={r.no}
       cus={r.cus}
       reference={`อ้างอิงใบแจ้งหนี้ ${r.inv} · ${seq}`}
@@ -198,7 +198,7 @@ export function AccCreditNoteView({ no }: { no: string }) {
         back="/acc/credits"
         backLabel="กลับไปหน้าใบลดหนี้"
         no={no}
-        what="ไม่พบใบลดหนี้นี้ — ใบที่ยังไม่ผ่านการอนุมัติยังไม่มีเลขที่"
+        what="ไม่พบใบลดหนี้นี้"
       />
     );
 
@@ -356,11 +356,6 @@ function PaperFit({ children }: { children: React.ReactNode }) {
       >
         {children}
       </div>
-      {zoom > 0 && (
-        <p className="no-print mt-2 text-center text-[11.5px] text-muted-foreground sm:hidden">
-          ย่อกระดาษ A4 ให้พอดีจอ · ถ่างสองนิ้วเพื่อขยายอ่าน
-        </p>
-      )}
     </div>
   );
 }
@@ -380,7 +375,7 @@ function NotFound({ back, backLabel, no, what }: { back: string; backLabel: stri
   );
 }
 
-function BackLink({ href, label }: { href: string; label: string }) {
+export function BackLink({ href, label }: { href: string; label: string }) {
   return (
     /* ปุ่มไอคอนล้วน — ต้องมีทั้งชื่อให้โปรแกรมอ่านหน้าจอและคำอธิบายตอนชี้ ไม่งั้นไม่มีใครเดาออกว่ากดแล้วไปไหน */
     <Link href={href} aria-label={label} title={label} className="mt-0.5 grid size-9 flex-none place-items-center rounded-[10px] border border-border bg-card text-foreground hover:border-primary hover:text-primary">

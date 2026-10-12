@@ -29,9 +29,6 @@ export function FileNotice({ name, onClose }: { name: string; onClose: () => voi
       }
     >
       <p className="text-[13.5px] font-semibold break-words">{name}</p>
-      <p className="mt-2 text-[12.5px] text-muted-foreground">
-        ยังไม่ได้ต่อที่เก็บไฟล์จริง เปิดตัวไฟล์ได้เมื่อระบบต่อ backend แล้ว
-      </p>
     </Sheet>
   );
 }
@@ -350,8 +347,9 @@ export function ProjectChat({
         aria-label={open ? "ปิดแชทโปรเจค" : "เปิดแชทโปรเจค"}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
+        /* เปิดแชทแล้วซ่อนปุ่มลอย ปิดด้วยปุ่ม - ที่หัวแชท (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+        style={open && !phone ? { display: "none" } : undefined}
       >
-        {/* เปิดอยู่แล้วปุ่มเปลี่ยนเป็นกากบาท ใช้ปิดกล่องแบบแชทบอททั่วไป */}
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           {open && !phone ? (
             <path d="M18 6 6 18M6 6l12 12" />

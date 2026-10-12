@@ -128,37 +128,9 @@ export function PmSchedulePage({ sales = false }: { sales?: boolean }) {
       {/* ฝ่ายขายไม่มีหัวเรื่องในหน้า — ชื่อหน้าอยู่แถบบนแล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
       {!sales && (
       <div className="max-md:hidden">
-      <div className="bar">
-        <div>
-          <h1>ตารางงาน</h1>
-          <p>
-            {canEdit
-              ? sales
-                ? "นัดหมายกับผู้สนใจของฝ่ายขาย กดวันในปฏิทินเพื่อเพิ่มนัดของวันนั้น"
-                : "นัดหมายและกิจกรรมของผู้จัดการโครงการ กดวันในปฏิทินเพื่อเพิ่มนัดของวันนั้น"
-              : "นัดหมายของผู้จัดการโครงการ กดวันเพื่อดูนัดของวันนั้น"}
-          </p>
-        </div>
-        {/* ฝ่ายขายไม่มีปุ่มนี้ — กดช่องวันในปฏิทินเพื่อเพิ่มนัดได้อยู่แล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-        {canEdit && !sales && (
-          <div className="tools">
-            {/* มือถือใช้ปุ่ม "+ เพิ่มนัดหมาย" ในการ์ดนัดของวันที่เลือก (schedule-board) จึงซ่อนปุ่มนี้
-                ซ่อนที่ตัวครอบ ไม่ใช่ที่ปุ่ม เพราะ .btn ใน globals.css ตั้ง display ไว้นอก @layer
-                คลาส hidden ของ Tailwind อยู่ในเลเยอร์ จึงแพ้ แล้วปุ่มก็โผล่ทั้งสองขนาดจอ */}
-            <span className="max-sm:hidden">
-              <button
-                type="button"
-                className="btn solid btn-solid"
-                title={`เพิ่มนัดหมายวันที่ ${thaiDate(nav.sel)}`}
-                onClick={() => setEditing({ date: nav.sel })}
-              >
-                <PlusIcon className="size-3.5" strokeWidth={2.4} />
-                เพิ่มนัดหมาย
-              </button>
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+      <h1 className="sr-only">ตารางงาน</h1>
+      {/* ไม่มีปุ่มเพิ่มนัดหมาย — ดับเบิลคลิกช่องวันในปฏิทินเพื่อเพิ่ม (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       </div>
       )}
 
@@ -178,15 +150,9 @@ export function PmSchedulePage({ sales = false }: { sales?: boolean }) {
         nav={nav}
         events={events}
         kinds={pmBoardKinds()}
-        /* คำแนะนำตามโครงหน้า · คนที่แก้ไม่ได้ให้บอกวิธีใช้ตัวกรองแทน */
-        hint={
-          canEdit
-            ? "กดที่ช่องวันในปฏิทินเพื่อเพิ่มนัดของวันนั้น"
-            : "กดที่ประเภทเพื่อซ่อนหรือแสดงในปฏิทิน นับจากนัดทั้งหมดที่มี"
-        }
         onOpen={(e) => openEvent(e.data)}
         onAdd={canEdit ? (day) => setEditing({ date: day }) : undefined}
-        noToday={sales}
+        noKinds
       />
       </div>
 
@@ -289,7 +255,8 @@ function PmMobileCalendar({
     nav.pickDay(iso(new Date(y, m, Math.min(selD.getDate(), last))));
   }
 
-  const kindLabel = (e: BoardEvent<PmEvent>) => eventKind(e.data.kind).label;
+  /* ไม่มีประเภทนัดแล้ว — บรรทัดเล็กเหนือหัวข้อบอกสถานที่แทน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+  const kindLabel = (e: BoardEvent<PmEvent>) => e.data.place || "";
   const timeText = (e: BoardEvent<PmEvent>) => (e.time ? `${e.time}${e.timeEnd ? ` – ${e.timeEnd}` : ""} น.` : "ทั้งวัน");
 
   /* ── มุมมองเดือน ── */
@@ -590,7 +557,7 @@ function PmMobileCalendar({
  * เหตุผลตอนยกเลิกเป็นของบังคับ (เจ้าของสั่ง 24 ก.ย. 2569)
  * คนที่กันเวลาไว้แล้วได้รับแจ้งว่า "ยกเลิก" เฉย ๆ ก็ต้องเดินมาถามอยู่ดี
  */
-const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน — ผู้เข้าร่วมจะเห็นข้อความนี้ในแจ้งเตือน";
+const CANCEL_WARN = "กรอกเหตุผลที่ยกเลิกก่อน";
 
 /*
  * บอกให้ตรงช่องที่ยังไม่ผ่าน (เจ้าของสั่ง 25 ก.ย. 2569)
@@ -674,7 +641,7 @@ function EventForm({
   /* บอกให้เห็นทันทีว่านัดนี้กินกี่วัน (ต้นแบบ spanNote) */
   const hint =
     form.date && multi
-      ? `นัดต่อเนื่อง ${dayDiff(form.date, form.dateEnd) + 1} วัน ${thaiDate(form.date)} – ${thaiDate(form.dateEnd)} เวลาที่กรอกคือเวลาของแต่ละวัน`
+      ? `นัดต่อเนื่อง ${dayDiff(form.date, form.dateEnd) + 1} วัน ${thaiDate(form.date)} – ${thaiDate(form.dateEnd)}`
       : "นัดวันเดียว";
 
   function save() {
@@ -765,19 +732,10 @@ function EventForm({
           />
         </Field>
 
-        <Field label="ประเภท">
-          <Select value={form.kind} onChange={(e) => set("kind", e.target.value as EventKind)}>
-            {kindList().map((k) => (
-              <option key={k.key} value={k.key}>
-                {k.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
+        {/* ไม่มีช่องประเภท — สีของนัดแยกนัดแทน (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
         <div>
           <p className="mb-2 block text-[0.8rem] font-medium">
-            สีของนัด <span className={sub}>— เลือกให้ตรงกับงานของคุณเอง</span>
+            สีของนัด
           </p>
           <span className="flex flex-wrap gap-[9px] pt-1 pl-1">
             {PM_COLORS.map((c) => (
@@ -797,7 +755,7 @@ function EventForm({
 
         <div>
           <p className="mb-2 block text-[0.8rem] font-medium">
-            วันและเวลา <span className={sub}>— นัดข้ามวันได้</span>
+            วันและเวลา
           </p>
           <div className="grid grid-cols-[52px_minmax(0,1.5fr)_minmax(0,1fr)] items-center gap-x-2.5 gap-y-[9px]">
             <span className="text-xs font-bold text-muted-foreground">เริ่ม</span>

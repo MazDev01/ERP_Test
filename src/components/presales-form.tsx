@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { Customer, Urgency } from "@/lib/crm-data";
 import { addPresalesRequest, useCrm } from "@/lib/crm-store";
+import { hrPos } from "@/lib/hr-data";
+import { useHr } from "@/lib/hr-store";
 import { addDays, todayIso } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { CustomerCombo } from "./customer-combo";
@@ -19,10 +21,6 @@ import { DateField } from "./thai-date-picker";
  * ส่งแล้วขึ้นแถบสำเร็จด้านบน แล้วล้างฟอร์มให้ส่งคำขอถัดไปได้เลย
  */
 
-const KINDS = [
-  { key: "BD" as const, label: "BD", detail: "ทำข้อเสนอเชิงธุรกิจ ราคา แพ็กเกจ" },
-  { key: "SA" as const, label: "SA", detail: "วิเคราะห์ขอบเขตและความเป็นไปได้ทางเทคนิค" },
-];
 
 const URGENCIES: { key: Urgency; detail: string }[] = [
   { key: "ปกติ", detail: "ตามคิวงาน" },
@@ -52,11 +50,11 @@ function PresalesNewBody() {
             คำขอก่อนการขาย
           </Link>
           <h1>ส่งคำขอก่อนการขาย</h1>
-          <p>ส่งใบงานให้ BD หรือ SA จัดทำข้อเสนอ</p>
         </div>
       </div>
 
-      <div className="mx-auto max-w-[860px] space-y-4">
+      {/* ฟอร์มเต็มความกว้าง ไม่เว้นซ้ายขวา (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <div className="space-y-4">
         {done && (
           <p
             role="status"
@@ -107,7 +105,12 @@ function PresalesForm({
   const [customer, setCustomer] = useState<Customer | null>(
     () => crm.customers.find((c) => c.code === presetCustomer) ?? null,
   );
-  const [kind, setKind] = useState<"BD" | "SA" | "">("");
+  /* ส่งให้พนักงานคนไหนก็ได้ในบริษัท ไม่จำกัดแค่ SA/BD (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const hr = useHr();
+  const staff = hr.emp.filter((e) => e.status === "active");
+  const [toId, setToId] = useState("");
+  const to = staff.find((e) => e.id === toId);
+  const kind: "BD" | "SA" | "" = to ? (to.pos === "sa" ? "SA" : "BD") : "";
   const [problem, setProblem] = useState("");
   const [budget, setBudget] = useState("");
   const [due, setDue] = useState(() => addDays(today, 7));
@@ -142,6 +145,7 @@ function PresalesForm({
     const no = addPresalesRequest({
       customerCode: customer.code,
       kind,
+      assignee: to ? `${to.name} (${hrPos(to.pos).label})` : undefined,
       problem: problem.trim(),
       due,
       urgency,
@@ -153,7 +157,7 @@ function PresalesForm({
     /* บอกเลขที่คำขอที่เพิ่งสร้างด้วย — ต้องใช้อ้างอิงเวลาตามงานกับทีมก่อนการขาย
        (เจ้าของแจ้ง 25 ก.ย. 2569 ว่าส่งแล้วไม่รู้ว่าได้เลขอะไร) */
     onCreated([
-      `ส่งคำขอ ${kind} ให้ ${customer.name} เรียบร้อย`,
+      `ส่งคำขอของ ${customer.name} ให้ ${to?.name ?? ""} เรียบร้อย`,
       `เลขที่คำขอ ${no}`,
       `แนบไฟล์ ${files.length} รายการ`,
       "สถานะ รอรับงาน",
@@ -186,7 +190,7 @@ function PresalesForm({
                   /* ปุ่มสลับสถานะ ต้องบอกโปรแกรมอ่านหน้าจอด้วยว่าอันไหนถูกเลือก ไม่ใช่รู้จากสีอย่างเดียว */
                   aria-pressed={urgency === u.key}
                   onClick={() => setUrgency(u.key)}
-                  className={`rounded-xl border-[1.4px] px-3 py-2.5 text-left transition-colors max-sm:px-2.5 ${
+                  className={`rounded-xl border-[1.4px] px-3 py-3 text-center transition-colors max-sm:px-2.5 ${
                     urgency === u.key
                       ? u.key === "ด่วนมาก"
                         ? "border-destructive bg-[var(--destructive-soft)] text-destructive"
@@ -194,8 +198,8 @@ function PresalesForm({
                       : "border-border bg-white text-muted-foreground hover:border-muted-foreground/40"
                   }`}
                 >
+                  {/* ชื่อระดับอย่างเดียว อยู่กลางปุ่ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
                   <b className="block text-[13.5px] font-semibold">{u.key}</b>
-                  <small className="mt-0.5 block text-[11.5px] opacity-80">{u.detail}</small>
                 </button>
               ))}
             </div>
@@ -221,31 +225,21 @@ function PresalesForm({
       <section className={card}>
         <h2 className={h2}>รายละเอียดงาน</h2>
 
-        <Field label="ประเภทงาน" required error={touched && problems.kind ? "เลือกประเภทงาน" : undefined}>
-          <div className="grid grid-cols-2 gap-2">
-            {KINDS.map((k) => (
-              <button
-                key={k.key}
-                type="button"
-                onClick={() => setKind(k.key)}
-                className={`rounded-xl border-[1.4px] px-3.5 py-3 text-left transition-colors ${
-                  kind === k.key
-                    ? "border-primary bg-accent text-primary"
-                    : "border-border bg-white text-muted-foreground hover:border-muted-foreground/40"
-                }`}
-              >
-                <b className="block text-[13.5px] font-semibold">{k.label}</b>
-                <small className="mt-0.5 block text-[11.5px] opacity-80">{k.detail}</small>
-              </button>
+        <Field label="ส่งให้" required error={touched && problems.kind ? "เลือกพนักงานที่จะส่งให้" : undefined}>
+          <select value={toId} onChange={(e) => setToId(e.target.value)} className="field-control cursor-pointer" aria-label="ส่งให้">
+            <option value="">— เลือกพนักงาน —</option>
+            {staff.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name} · {hrPos(e.pos).label}
+              </option>
             ))}
-          </div>
+          </select>
         </Field>
 
         <Field
           label="โจทย์จากลูกค้า"
           required
           error={touched && problems.problem ? "กรอกโจทย์จากลูกค้า" : undefined}
-          hint="ยิ่งละเอียด ยิ่งลดรอบการถามกลับ"
         >
           <textarea
             value={problem}
@@ -259,7 +253,6 @@ function PresalesForm({
           <Field
             label="งบประมาณโดยประมาณ"
             labelNote="ถ้าลูกค้าบอก"
-            hint="ช่วยให้ผู้จัดทำเลือกขนาดของข้อเสนอได้ตรงขึ้น"
           >
             <input
               value={budget}
@@ -294,11 +287,12 @@ function PresalesForm({
       </section>
 
       {/* มือถือ: แถบปุ่มติดล่างจอเหนือแถบเมนู กดส่งได้ทุกเมื่อไม่ต้องเลื่อนลงสุดฟอร์ม */}
-      <div className="flex justify-end gap-2.5 max-sm:sticky max-sm:bottom-[calc(var(--botbar)+10px)] max-sm:z-10 max-sm:rounded-2xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:p-2.5 max-sm:shadow-[0_-6px_16px_-10px_rgb(0_0_0/0.25)] max-sm:[&>.btn]:h-11 max-sm:[&>.btn]:justify-center">
-        <button type="button" className="btn glass-thin max-sm:flex-1" onClick={onCancel}>
+      {/* ปุ่มใหญ่แบ่งครึ่งซ้ายขวา (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      <div className="grid grid-cols-2 gap-3 [&>.btn]:h-12 [&>.btn]:justify-center [&>.btn]:text-[15px] max-sm:sticky max-sm:bottom-[calc(var(--botbar)+10px)] max-sm:z-10 max-sm:rounded-2xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:p-2.5 max-sm:shadow-[0_-6px_16px_-10px_rgb(0_0_0/0.25)] max-sm:[&>.btn]:h-11 max-sm:[&>.btn]:justify-center">
+        <button type="button" className="btn glass-thin" onClick={onCancel}>
           ยกเลิก
         </button>
-        <button type="submit" className="btn solid btn-solid max-sm:flex-[2]" disabled={saving}>
+        <button type="submit" className="btn solid btn-solid" disabled={saving}>
           {saving ? (
             <span
               aria-label="กำลังส่งคำขอ"

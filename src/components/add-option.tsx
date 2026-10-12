@@ -31,7 +31,8 @@ export type AddTarget = { list: OptionKey } | { catalog: AddCatalogKey; dept?: s
 export function useAddOption(target: AddTarget, onAdded: (value: string) => void) {
   const [open, setOpen] = useState(false);
   /* ทุกบทบาทที่ล็อกอินอยู่เพิ่มตัวเลือกได้ — ฝ่ายบุคคลยังเป็นคนดูแลรายการรวมที่ /admin/options */
-  const canAdd = Boolean(useRole());
+  /* เพิ่มตัวเลือกจากดรอปดาวน์ไม่ได้แล้ว — เพิ่มได้ที่ข้อมูลหลัก (/admin/options) เท่านั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const canAdd = false && Boolean(useRole());
   return {
     /** ผู้ดูแลระบบเท่านั้นที่เพิ่มตัวเลือกได้ — ใช้ซ่อนปุ่ม "+ เพิ่ม" ที่หน้าวาดเอง */
     canAdd,
@@ -149,13 +150,10 @@ function AddOptionDialog({
       {isCat && target.catalog === "docs" && (
         <label className="mt-3.5 flex cursor-pointer items-center gap-2.5 text-[13.5px]">
           <input type="checkbox" checked={req} onChange={(e) => setReq(e.target.checked)} className="size-4 accent-[var(--primary)]" />
-          ต้องมี — ขาดแล้วขึ้นเตือนว่าเอกสารไม่ครบ
+          ต้องมี
         </label>
       )}
       {err && <p className="mt-2 text-[12.5px] text-destructive">{err}</p>}
-      <p className="mt-3 rounded-[11px] bg-muted/60 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-muted-foreground">
-        ตัวเลือกนี้ใช้ได้ทุกคนทันที · ผู้ดูแลระบบแก้ชื่อ เรียงลำดับ หรือลบได้ที่หน้า “ตัวเลือกในรายการ”
-      </p>
     </Sheet>
   );
 }

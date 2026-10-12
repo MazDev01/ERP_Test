@@ -30,6 +30,10 @@ import {
   linesOfGroup,
   payLines,
   sumOfGroup,
+  dailyPayLines,
+  dailyRoundRange,
+  dailySumOf,
+  isDailyRoundKey,
   type ComSource,
   type Cycle,
   type LeaveKind,
@@ -49,6 +53,7 @@ import { useAllOt } from "./ot-store";
 import { addDays, baht, bkkOf, pad2, thaiMonth, todayIso } from "./format";
 import { isWorkday } from "./holidays";
 import { useRole, type Role } from "./role";
+import { mineItems, type MineKind, type NavItem } from "./nav";
 import type { LeaveRecord } from "./leave-data";
 
 /* บทบาทที่ล็อกอินได้ → รหัสในทะเบียนพนักงาน (ย้ายไปอยู่ hr-data เพื่อให้สโตร์ใช้ได้โดยไม่วนกัน) */
@@ -354,12 +359,18 @@ export function usePayrollSumFn() {
 
   return useCallback(
     (month: string, group: PayGroup) => {
+      /* รอบจ่ายรายวันของทดลองงาน — คีย์เป็นช่วงวัน "จาก~ถึง" (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+      if (isDailyRoundKey(month)) {
+        const range = dailyRoundRange(month);
+        const round = hr.dailyRounds.find((r) => r.id === month);
+        return dailySumOf(dailyPayLines(hr.emp, range, time, hr.extras, today, src, round), range, hr.extras);
+      }
       const range = hrCycle(month);
       const payrun = hr.payruns.find((p) => p.month === month);
       const lines = payLines(hr.emp, range, time, hr.extras, today, src, payrun, month);
       return sumOfGroup(linesOfGroup(lines, group), group, range, hr.extras);
     },
-    [hr.emp, hr.payruns, hr.extras, time, src, today],
+    [hr.emp, hr.payruns, hr.dailyRounds, hr.extras, time, src, today],
   );
 }
 
@@ -425,8 +436,40 @@ export function useMyRoles(): Role[] {
       ? me?.account
       : hr.emp.find((e) => accountRoles(e.account).includes(role))?.account;
     const roles = accountRoles(acc);
-    return roles.length > 1 ? [role, ...roles.filter((r) => r !== role)] : [role];
+    /* เมนูเรียงตามลำดับที่ฝ่ายบุคคลติกตอนสร้างบัญชี ไม่ใช่บทบาทที่ใช้เข้าระบบมาก่อน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
+    return roles.length > 1 && roles.includes(role) ? roles : [role];
   }, [hr.emp, role]);
+}
+
+/**
+ * เมนู "ของฉัน" ของคนที่ล็อกอิน — ขึ้นตามประเภทพนักงานในทะเบียน ไม่ใช่ตามบทบาท (ผู้ใช้สั่ง 6 ต.ค. 2569)
+ * ไม่พบในทะเบียน (บทบาทเดโม) ใช้ค่าตามบทบาทแทน
+ */
+export function useMyMine(): NavItem[] {
+  const role = useRole();
+  const roles = useMyRoles();
+  const hr = useHr();
+  return useMemo(() => {
+    const me =
+      hr.emp.find((e) => e.id === ROLE_EMPLOYEE[role]) ??
+      hr.emp.find((e) => accountRoles(e.account).includes(role));
+    const kind: MineKind = me
+      ? me.type === "intern"
+        ? "intern"
+        : me.pos === "maid"
+          ? "maid"
+          : roles.every((r) => r === "ceo")
+            ? "none"
+            : "full"
+      : role === "intern"
+        ? "intern"
+        : role === "maid"
+          ? "maid"
+          : role === "ceo"
+            ? "none"
+            : "full";
+    return mineItems(kind);
+  }, [hr.emp, role, roles]);
 }
 
 export function usePendingRequests(c: Cycle) {

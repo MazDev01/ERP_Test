@@ -75,14 +75,15 @@ function initialOf(crm: CrmState, mode: Mode, presetCustomer?: string, ps?: stri
   };
 }
 
-export function QuotationNewPage() {
+/** base = หน้ารายการที่เปิดมา — ฝ่ายขาย /quotations · บัญชี /acc/quotations (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function QuotationNewPage({ base = "/quotations" }: { base?: string }) {
   /* รอ hydrate ก่อน — ใบที่สร้างในเครื่องอยู่ใน localStorage ตอนเรนเดอร์ฝั่งเซิร์ฟเวอร์ยังหาไม่เจอ
      แล้วโหมด/ค่าตั้งต้นของฟอร์มจะถูกจำเป็นค่าว่างไปตลอด */
   const hydrated = useHydrated();
-  return hydrated ? <NewPageBody /> : null;
+  return hydrated ? <NewPageBody base={base} /> : null;
 }
 
-function NewPageBody() {
+function NewPageBody({ base }: { base: string }) {
   const crm = useCrm();
   const params = useSearchParams();
   const router = useRouter();
@@ -113,14 +114,13 @@ function NewPageBody() {
         <div className="min-w-0">
           {/* เส้นทางแทนปุ่มย้อนกลับ (ต้นแบบ quotation-new.html · ผู้ใช้สั่ง 5 ต.ค. 2569) */}
           <nav aria-label="เส้นทาง" className="mb-2 flex items-center gap-2 text-[14px] text-muted-foreground">
-            <Link href="/quotations" className="hover:text-foreground hover:underline underline-offset-4">
+            <Link href={base} className="hover:text-foreground hover:underline underline-offset-4">
               ใบเสนอราคา
             </Link>
             <ChevronRightIcon className="size-3.5" strokeWidth={2.2} />
             <span aria-current="page">สร้างใหม่</span>
           </nav>
           <h1>สร้างใบเสนอราคา</h1>
-          <p>ออกเลขที่เอกสารแล้วแก้ไขไม่ได้ ถ้าต้องเปลี่ยนให้ออกใบเสนอราคาใหม่แทนใบเดิม</p>
           {!fresh && <FromLine mode={mode} ps={ps} />}
         </div>
       </div>
@@ -142,6 +142,7 @@ function NewPageBody() {
         mode={effective}
         ps={fresh ? "" : ps}
         presetCustomer={fresh ? undefined : presetCustomer}
+        base={base}
         onSaved={(msg) => {
           setDone(msg);
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -151,7 +152,7 @@ function NewPageBody() {
         }}
         /* ยกเลิก = ออกจากฟอร์ม กลับไปหน้ารายการใบเสนอราคา (เจ้าของแจ้ง 25 ก.ย. 2569)
            เดิมล้างฟอร์มให้ว่างเฉย ๆ ฟอร์มที่ยังไม่ได้กรอกอะไรกดแล้วจึงเหมือนปุ่มเสีย */
-        onReset={() => router.push("/quotations")}
+        onReset={() => router.push(base)}
       />
     </div>
   );
@@ -182,6 +183,7 @@ function QuotationForm({
   mode,
   ps,
   presetCustomer,
+  base,
   onSaved,
   onReset,
 }: {
@@ -190,9 +192,13 @@ function QuotationForm({
   mode: Mode;
   ps: string;
   presetCustomer?: string;
+  base: string;
   onSaved: (msg: ReactNode) => void;
   onReset: () => void;
 }) {
+  /* ฝ่ายขายเรียก "ผู้สนใจ" · ฝ่ายบัญชีเรียก "ลูกค้า" ห้ามปนกัน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const acc = base.startsWith("/acc");
+  const who = acc ? "ลูกค้า" : "ผู้สนใจ";
   const init = useMemo(() => initialOf(crm, mode, presetCustomer, ps), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [customer, setCustomer] = useState<Customer | null>(init.customer);
   /* เลขประจำตัวผู้เสียภาษี — ย้ายมากรอกตอนสร้างใบเสนอราคา (ผู้ใช้สั่ง 5 ต.ค. 2569)
@@ -277,7 +283,7 @@ function QuotationForm({
     items: !htmlToText(body) || totals.gross <= 0,
   };
   const miss = [
-    problems.customer && "ผู้สนใจ",
+    problems.customer && who,
     problems.service && "บริการ",
     problems.pending && "ปฏิเสธใบเดิมที่ค้างอยู่",
     problems.rep && "ออกแทนใบเดิม",
@@ -324,11 +330,11 @@ function QuotationForm({
     const no = addQuotation(input);
     onSaved(
       <>
-        ออกเลขที่ <b className="num">{no}</b> แล้ว · รวมทั้งสิ้น {baht(totals.grand)} บาท · แก้ไขไม่ได้อีก
-        <Link href={`/quotations/${encodeURIComponent(no)}`} className="font-semibold underline">
-          เปิดเอกสารไปส่งลูกค้า
+        ออกเลขที่ <b className="num">{no}</b> แล้ว · รวมทั้งสิ้น {baht(totals.grand)} บาท
+        <Link href={`${base}/${encodeURIComponent(no)}`} className="font-semibold underline">
+          เปิดเอกสารไปส่ง{who}
         </Link>
-        <Link href="/quotations" className="font-semibold underline">
+        <Link href={base} className="font-semibold underline">
           กลับไปรายการใบเสนอราคา
         </Link>
       </>,
@@ -354,11 +360,12 @@ function QuotationForm({
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <section className={card}>
-            <h2 className={h2}>ผู้สนใจ</h2>
-            <Field label="ผู้สนใจ" required error={touched && problems.customer ? "เลือกลูกค้าก่อน" : undefined}>
+            <h2 className={h2}>{who}</h2>
+            <Field label={who} required error={touched && problems.customer ? `เลือก${who}ก่อน` : undefined}>
               <CustomerCombo
                 /* ต้นแบบ quotation-new ไม่มีรายที่ปฏิเสธแล้วในรายการ · เลือกแล้วแสดงแค่ชื่อ · มีป้ายไม่มีเลขภาษี */
-                customers={crm.customers.filter((c) => c.status !== "ปฏิเสธ")}
+                /* บัญชีเลือกได้เฉพาะลูกค้าที่ปิดการขายแล้ว ไม่มีผู้สนใจปน */
+                customers={crm.customers.filter((c) => c.status !== "ปฏิเสธ" && (!acc || c.status === "ปิดงาน" || Boolean(c.leadCode)))}
                 nameOnly
                 taxFlag
                 value={customer}
@@ -376,11 +383,7 @@ function QuotationForm({
               <Field
                 label="เลขประจำตัวผู้เสียภาษี"
                 error={touched && problems.taxId ? "กรอกให้ครบ 13 หลัก" : undefined}
-                hint={
-                  customer && !taxId
-                    ? "ผู้สนใจรายนี้ยังไม่มีเลขประจำตัวผู้เสียภาษี · จำเป็นตอนออกเอกสารการเงิน"
-                    : "13 หลัก · ออกเลขแล้วบันทึกไว้กับผู้สนใจรายนี้"
-                }
+                hint={customer && !taxId ? `${who}รายนี้ยังไม่มีเลขประจำตัวผู้เสียภาษี` : undefined}
               >
                 <input
                   value={taxId}
@@ -400,10 +403,7 @@ function QuotationForm({
                 }`}
               >
                 <p className="text-[13px] font-semibold text-[var(--warning)]">
-                  ลูกค้ารายนี้มีใบเสนอราคาที่ยังรอดำเนินการ ต้องกดปฏิเสธใบเดิมก่อนจึงออกใบใหม่ได้
-                </p>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">
-                  ทั้งกรณีออกใบแก้ และกรณีลูกค้าไม่ต้องการแล้ว · ใบที่ปฏิเสธเก็บไว้เป็นประวัติ
+                  {who}รายนี้มีใบเสนอราคาที่ยังรอดำเนินการ ต้องกดปฏิเสธใบเดิมก่อนจึงออกใบใหม่ได้
                 </p>
                 <ul className="mt-2.5 grid gap-2">
                   {pending.map((q) => (
@@ -472,7 +472,6 @@ function QuotationForm({
                 label="บริการ"
                 required
                 error={touched && problems.service ? "เลือกบริการ" : undefined}
-                hint="1 ใบเสนอราคา = 1 บริการ ถ้าลูกค้าซื้อหลายบริการให้ออกคนละใบ"
               >
                 <select
                   value={service}
@@ -493,11 +492,6 @@ function QuotationForm({
                 label="ออกในนาม"
                 required
                 error={touched && problems.issuer ? "เลือกผู้ออกเอกสาร" : undefined}
-                hint={
-                  issuer && !issuerOf(issuer).vat
-                    ? "ผู้ออกรายนี้ไม่ได้จดทะเบียน VAT จึงไม่คิดภาษีมูลค่าเพิ่ม"
-                    : undefined
-                }
               >
                 <select
                   value={issuer}
@@ -648,17 +642,12 @@ function QuotationForm({
                 />
                 <span className="min-w-0 flex-1">
                   หักภาษี ณ ที่จ่าย
-                  <small className="mt-0.5 block text-[11.5px] text-muted-foreground">
-                    {buyer === "individual"
-                      ? "ลูกค้าบุคคลธรรมดาไม่มีหน้าที่หักภาษี ณ ที่จ่าย"
-                      : "อัตราที่เลือกจะติดไปกับใบนี้ทุกหน้าจอ"}
-                  </small>
                 </span>
               </label>
               {/* อัตราติดอยู่กับใบเสนอราคา ไม่ใช่ค่าตั้งค่าของระบบ ใบเก่าจึงไม่เปลี่ยนตามทีหลัง */}
               {wht && buyer !== "individual" && (
                 <div className="mt-2.5 flex items-center gap-2.5">
-                  <span className="text-[12.5px] text-muted-foreground">อัตราที่ลูกค้าหัก</span>
+                  <span className="text-[12.5px] text-muted-foreground">อัตราที่{who}หัก</span>
                   <select
                     value={whtPct}
                     aria-label="อัตราหักภาษี ณ ที่จ่าย"
@@ -716,10 +705,6 @@ function QuotationForm({
                 ))}
               </p>
             )}
-            <p className="mt-3 text-center text-[11.5px] leading-relaxed text-muted-foreground">
-              ออกเลขที่แล้วแก้ไขไม่ได้ ถ้าต้องเปลี่ยนให้ออกใบใหม่ · จากนั้นดาวน์โหลดไฟล์ไปส่งลูกค้าเอง
-              แล้วกด “บันทึกว่าส่งแล้ว” ในหน้ารายการ
-            </p>
           </section>
         </aside>
       </div>

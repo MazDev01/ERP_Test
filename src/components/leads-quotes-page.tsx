@@ -123,7 +123,6 @@ export function LeadsQuotesPage() {
       <div className="bar">
         <div>
           <h1>ผู้สนใจและใบเสนอราคา</h1>
-          <p>ลูกค้าที่ยังไม่มีใบ ลูกค้าที่มีใบแล้ว และรายที่ไม่ทำใบให้</p>
         </div>
         <div className="tools">
           <Link href="/quotations/new" className="btn solid btn-solid">

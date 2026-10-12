@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { bottomNav, canVisit, canVisitAny, findItem, homeOf, mobileHomeOf, navGroupsOf, navItemsOf, pageTitle, useMenuAccess, type IconName, type NavItem } from "@/lib/nav";
 import { BillingNavDot } from "./acc-ui";
-import { useMyRoles } from "@/lib/hr-link";
+import { PmNavDot } from "./pm-nav-dot";
+import { useMyMine, useMyRoles } from "@/lib/hr-link";
 import { thaiDate, todayIso } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { lockScroll } from "@/lib/scroll-lock";
@@ -91,7 +92,13 @@ const NO_QUERY = new URLSearchParams();
 const BARE_PAGES = ["/login", "/install", "/offline", "/set-password", "/notify-test"];
 
 /* หน้าที่มีเส้นทาง (ใบเสนอราคา > สร้างใหม่) ของตัวเอง — ไม่ต้องมีปุ่มย้อนกลับของเปลือกซ้ำ */
-const OWN_CRUMB = ["/quotations/new"];
+/* หน้าที่มีทางเดินกลับของตัวเองแล้ว ไม่ต้องมีปุ่มย้อนกลับซ้ำ · หน้าวางแผนงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+/* หน้าเอกสาร 50 ทวิ และใบแนบ ภ.ง.ด. มีปุ่มกลับของตัวเอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+const OWN_CRUMB = ["/quotations/new", "/presales/new", "/acc/quotations/new", "/pm/plan", "/acc/wht/cert", "/acc/wht/pnd"];
+/* รายละเอียดผู้สนใจ /leads/[code] มีเส้นทาง "ผู้สนใจ › ชื่อ" ของตัวเองแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+/* หน้าเอกสารใบเสนอราคามีลิงก์ "‹ ใบเสนอราคา" ของตัวเองแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+const ownCrumb = (p: string) =>
+  OWN_CRUMB.includes(p) || /^\/leads\/[^/]+$/.test(p) || /^\/(acc\/|ceo\/)?quotations\/[^/]+$/.test(p);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -109,7 +116,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const route = useApprovalRoute();
   /* คนที่ควบสองตำแหน่งเห็นแถบงานของทั้งสองฝ่าย (บัญชีผู้ใช้กำหนดไว้ที่ /hr/accounts) */
   const roles = useMyRoles();
-  const items = navItemsOf(roles, access, route);
+  const mine = useMyMine();
+  const items = navItemsOf(roles, access, route, mine);
   const groups = navGroupsOf(roles);
   const current = findItem(pathname, role);
   const title = pageTitle(pathname, role);
@@ -320,6 +328,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <span className="truncate">{item.label}</span>
                       {/* ดีลใหม่ที่ฝ่ายบัญชียังไม่ได้เปิดดู (AC-BR-01) */}
                       {item.href === "/acc/billing" && <BillingNavDot />}
+                      {/* มีของใหม่ในเมนูของ PM — งานเข้าใหม่ · โปรเจครอวางแผน · งานรอตรวจ (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+                      <PmNavDot href={item.href} />
                     </Link>
                     {/* เมนูย่อยกางใต้เมนูแม่ที่เปิดอยู่ แทนแถบชิปเหนือเนื้อหา (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                     {active && item.sub && <SideSub items={item.sub} pathname={pathname} />}
@@ -411,7 +421,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main id="main" className="w-full min-w-0 flex-1 px-4 pt-[18px] pb-10 max-md:pb-[calc(94px+env(safe-area-inset-bottom))] sm:px-[30px]">
           {/* จอคอม — ทางกลับของหน้าย่อยที่ไม่มีในเมนู วางเหนือเนื้อหาเป็นลิงก์ข้อความ
               ไม่เอาไว้บนแถบบน เพราะปุ่มกลมเบียดชื่อหน้าแล้วดูไม่เข้ากับหัวหน้าจอ (เจ้าของทัก 28 ก.ย. 2569) */}
-          {!blocked && !onMenuPage && !OWN_CRUMB.includes(pathname) && (
+          {!blocked && !onMenuPage && !ownCrumb(pathname) && (
             /* .btn ประกาศ display เอง คลาส hidden/md:inline-flex จึงสู้ไม่ได้ ต้องซ่อนที่กล่องนอกแทน */
             <div className="mb-3 hidden md:block">
               <button type="button" onClick={() => router.back()} className="btn glass-thin gap-1.5">
@@ -424,9 +434,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             /* ทุกบทบาทอยู่ในหน้าของตัวเองเท่านั้น — ลิงก์เก่าหรือพิมพ์ที่อยู่เองก็เข้าหน้าของบทบาทอื่นไม่ได้ */
             <section className="glass mx-auto mt-10 max-w-[520px] rounded-[16px] px-6 py-12 text-center">
               <h1 className="text-lg font-bold">หน้านี้ไม่ได้อยู่ในเมนูของ{roleLabel(role)}</h1>
-              <p className="mt-2 text-[13.5px] text-muted-foreground">
-                แต่ละบทบาทเปิดได้เฉพาะหน้าในเมนูของตัวเอง หรือผู้ดูแลระบบปิดเมนูนี้ไว้
-              </p>
               {/* บทบาทจำแยกตามแท็บ แท็บใหม่ใช้บทบาทล่าสุดที่เข้าระบบ อาจไม่ใช่บทบาทที่ตั้งใจเปิดหน้านี้
                   ให้สลับเป็นบทบาทที่เปิดหน้านี้ได้ในคลิกเดียว ไม่ต้องออกแล้วเข้าใหม่ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
               {ROLES.some((r) => r.key !== role && canVisit(pathname, r.key, access, route)) && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { holidays } from "@/lib/holidays";
+import { isHoliday } from "@/lib/holidays";
 import Link from "next/link";
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useCrm } from "@/lib/crm-store";
@@ -10,17 +10,13 @@ import {
   toggleCard,
   useDashCards,
 } from "@/lib/dashboard-cards";
-import { downloadCsv, reportCsv } from "@/lib/report-export";
-import { bkkNow, greetNow, toIsoDate, todayIso } from "@/lib/format";
+import { TH_MONTHS_SHORT, bkkNow, greetNow, toIsoDate, todayIso } from "@/lib/format";
 import { CURRENT_USER } from "@/lib/mock-data";
 import {
-  AGENDA_COLOR,
-  AGENDA_LABEL,
   buildAgenda,
   buildReport,
   RANGE_LABEL,
   type AgendaEvent,
-  type AgendaType,
   type RangeKey,
   type Slice,
 } from "@/lib/sales-report";
@@ -29,10 +25,8 @@ import {
   ChartIcon,
   CheckCircleIcon,
   CheckIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
-  DownloadIcon,
   GridIcon,
   TrendDownIcon,
   TrendUpIcon,
@@ -51,13 +45,12 @@ const BREAKDOWNS = [
   { key: "lost", label: "เหตุผลที่ไม่ตกลง" },
 ] as const;
 
-const TH_MONTHS = [
-  "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
-  "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
-];
-
-/** dealsHref — ปลายทางของลิงก์ "ดีล" · CEO ใช้หน้านี้แบบดูอย่างเดียวแล้วต้องไปหน้าดีลของตัวเอง */
-export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } = {}) {
+/** dealsHref — ปลายทางของลิงก์ "ดีล" · CEO ใช้หน้านี้แบบดูอย่างเดียวแล้วต้องไปหน้าดีลของตัวเอง
+ *  scheduleHref — ปลายทางเมื่อกดวันในปฏิทิน · ว่าง = ไม่มีลิงก์ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function DashboardPage({
+  dealsHref = "/deals",
+  scheduleHref = "/sales-schedule",
+}: { dealsHref?: string; scheduleHref?: string } = {}) {
   const crm = useCrm();
   const cards = useDashCards();
   const [picker, setPicker] = useState(false);
@@ -99,12 +92,6 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
         ? d.sourceSlices
         : d.lostSlices;
 
-  const exportCsv = () =>
-    downloadCsv(
-      `รายงานการขาย-${RANGE_LABEL[range]}-${todayIso()}.csv`,
-      reportCsv(d, RANGE_LABEL[range]),
-    );
-
   return (
     <>
     {/* จอคอม: แดชบอร์ดเดิมทุกอย่าง · มือถือ (แคบกว่า md) ซ่อนแล้วแสดงแบบแอปด้านล่างแทน (.sd-desk / .sd-mob) */}
@@ -115,41 +102,7 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           <h1>{hello}</h1>
           <p>มาดูภาพรวมการขายของคุณกัน</p>
         </div>
-        <div ref={pickerRef} className="relative ml-auto hidden sm:block">
-          <button
-            type="button"
-            className="btn glass-thin"
-            onClick={() => setPicker((v) => !v)}
-            aria-expanded={picker}
-          >
-            <GridIcon className="size-3.5" strokeWidth={2} />
-            ปรับการ์ดที่แสดง
-          </button>
-          {picker && (
-            <div className="glass-solid absolute top-[calc(100%+6px)] left-0 z-60 w-[248px] rounded-xl p-1.5">
-              {DASH_CARDS.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => toggleCard(c.key)}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted"
-                >
-                  <span
-                    className={`grid size-4 flex-none place-items-center rounded-[5px] border ${
-                      cardOn(cards, c.key)
-                        ? "border-primary bg-primary text-white"
-                        : "border-border"
-                    }`}
-                    aria-hidden="true"
-                  >
-                    {cardOn(cards, c.key) && <CheckIcon className="size-3" strokeWidth={3} />}
-                  </span>
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ไม่มีปุ่มปรับการ์ดที่แสดง (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
         <div className="tools w-full sm:w-auto">
           <div
             className="seg glass-thin flex-1 sm:flex-none"
@@ -167,15 +120,7 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            className="btn solid btn-solid"
-            data-ceo-hide
-            onClick={exportCsv}
-          >
-            <DownloadIcon className="size-3.5" strokeWidth={2} />
-            ส่งออก Excel
-          </button>
+          {/* ไม่มีปุ่มส่งออก Excel (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
         </div>
       </div>
 
@@ -186,8 +131,9 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           icon={<ChartIcon className="size-3.5" strokeWidth={2} />}
           name="มูลค่าที่ปิดได้"
           href={dealsHref}
-          value={`${money(d.won)} บาท`}
-          foot={`${d.wonDeals} ดีลที่ปิดในช่วงนี้`}
+          /* ใต้ตัวเลขเป็นแค่ลักษณนาม แบบแดชบอร์ด PM · ลูกศรเทียบช่วงก่อนยังอยู่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+          value={money(d.won)}
+          foot="บาท"
           delta={d.dWon}
         />
         <Kpi
@@ -195,8 +141,8 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           icon={<UserIcon className="size-3.5" strokeWidth={2} />}
           name="ผู้สนใจใหม่"
           href="/leads"
-          value={`${d.leads} ราย`}
-          foot="เทียบช่วงก่อน"
+          value={String(d.leads)}
+          foot="ราย"
           delta={d.dLead}
         />
         <Kpi
@@ -209,23 +155,19 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           name="ใบเสนอราคาที่ปิดได้"
           href="/quotations"
           value={d.quotes ? `${d.rate}%` : "—"}
-          foot={
-            d.quotes
-              ? `ปิดได้ ${d.quoteWon} จาก ${d.quotes} ฉบับที่ออกในช่วงนี้` +
-                (d.wonBefore ? ` · อีก ${d.wonBefore} ดีลปิดจากใบที่ออกก่อนช่วง` : "")
-              : d.wonBefore
-                ? `ไม่มีใบเสนอราคาที่ออกในช่วงนี้ · ${d.wonBefore} ดีลที่ปิดมาจากใบที่ออกก่อนช่วง`
-                : "ไม่มีใบเสนอราคาที่ออกในช่วงนี้"
-          }
+          foot="ของใบที่ออก"
           delta={d.quotes ? d.dRate : undefined}
         />
         <Kpi
           tone="job"
           icon={<ClockIcon className="size-3.5" strokeWidth={2} />}
-          name="ระยะเวลาปิดเฉลี่ย"
+          /* อัตราปิดการขายของพนักงานขายคนนี้ แทนระยะเวลาปิดเฉลี่ย (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+          name="อัตราปิดการขาย"
+          /* รายที่ปิดแล้วไม่อยู่ในหน้าผู้สนใจ — พาไปหน้าดีล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
           href={dealsHref}
-          value={`${d.avgDays} วัน`}
-          foot="จากวันออกใบเสนอราคาถึงวันปิดดีล"
+          value={d.leads ? `${d.leadRate}%` : "—"}
+          foot="ของผู้สนใจ"
+          delta={d.leads ? d.dLeadRate : undefined}
         />
       </div>
 
@@ -256,7 +198,7 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
         {/* ── ปฏิทินนัดหมาย ── */}
         {showAgenda && (
           <div className="md:col-span-2 [&>section]:h-full">
-            <AgendaCard events={agenda} />
+            <AgendaCard events={agenda} scheduleHref={scheduleHref} />
           </div>
         )}
 
@@ -330,12 +272,10 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           )}
 
           {/* ── เทียบเสนอ vs ปิดได้ ── */}
+          {/* ไม่มีกล่องสรุปข้าง ๆ แล้ว — จอกลางกินเต็มแถว ไม่เหลือช่องว่าง (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
           {showCompare && (
-          <section className="glass rounded-[15px] px-[18px] py-4 md:col-span-3 xl:col-span-2">
+          <section className="glass rounded-[15px] px-[18px] py-4 md:col-span-6 xl:col-span-2">
             <h2 className="text-sm font-semibold">เสนอราคา เทียบ ปิดได้</h2>
-            <p className="mt-[3px] text-[11.5px] text-muted-foreground">
-              จำนวนฉบับที่เสนอ เทียบกับดีลที่ปิดได้ในเดือนเดียวกัน
-            </p>
             <div className="mt-2.5 flex gap-3.5 text-[11.5px] text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <i className="size-2 rounded-[3px] bg-brand-100" />
@@ -350,22 +290,7 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
           </section>
           )}
 
-          {/*
-            สรุปช่วงที่เลือกเป็นประโยคเดียวปิดท้ายคอลัมน์ขวา (โครง mockup 24 ก.ย. 2569)
-            ตัวเลขชุดเดียวกับการ์ดด้านบน ไม่ได้นับใหม่ — พื้นสีหลัก ไม่มีภาพตกแต่งแบบ mockup
-          */}
-          <section className="rounded-[15px] bg-primary px-[18px] py-4 text-white md:col-span-3 xl:col-span-2">
-            <b className="block text-[15.5px] leading-[1.35] font-bold">
-              {d.wonDeals
-                ? `${RANGE_LABEL[range]}ปิดได้ ${d.wonDeals} ดีลแล้ว`
-                : `ยังไม่มีดีลที่ปิดได้${RANGE_LABEL[range]}`}
-            </b>
-            <p className="mt-1.5 text-[12.5px] leading-[1.55] text-white/80">
-              {d.wonDeals
-                ? `รวม ${money(d.won)} บาท · เสนอไปแล้ว ${money(d.quoted)} บาท`
-                : "ใบเสนอราคาที่ส่งไว้รอติดตามอยู่ ลุยต่อกัน"}
-            </p>
-          </section>
+          {/* กล่องสรุปสีแดงท้ายหน้าเอาออกบนจอคอม — มือถือยังมีใน SalesDashboardMobile (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
       </div>
     </div>
 
@@ -378,7 +303,6 @@ export function DashboardPage({ dealsHref = "/deals" }: { dealsHref?: string } =
       today={todayIso()}
       hello={hello}
       dealsHref={dealsHref}
-      onExport={exportCsv}
     />
     </>
   );
@@ -667,221 +591,156 @@ function Breakdown({ slices }: { slices: Slice[] }) {
 }
 
 // ─── แท่งเทียบ ────────────────────────────────────────────────────
+/*
+ * แท่งทุกกลุ่มตั้งบนเส้นฐานเดียวกัน ป้ายช่วงอยู่แถวของตัวเองใต้กราฟ ไม่ซ้อนในพื้นที่แท่ง
+ * ป้ายรายสัปดาห์ ("8–14 ต.ค.") ตัดเป็นสองบรรทัดเท่ากันทุกกลุ่ม (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ */
 function CompareBars({ data }: { data: [string, number, number][] }) {
   const max = Math.max(...data.map((c) => Math.max(c[1], c[2])), 1);
+  const cols = { gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))`, columnGap: 9 };
   return (
-    <div className="mt-3 flex h-[132px] items-end gap-[9px] pb-5">
-      {data.map(([label, a, b], i) => (
-        <div
-          key={label}
-          className="relative flex h-full flex-1 items-end justify-center gap-[3px]"
-          title={`${label} · เสนอ ${a} ปิดได้ ${b}`}
-        >
-          <span
-            className="block w-[9px] rounded-t bg-brand-100"
-            style={{ height: `${Math.max(3, Math.round((a / max) * 100))}%` }}
-          />
-          <span
-            className="block w-[9px] rounded-t bg-primary"
-            style={{ height: `${Math.max(3, Math.round((b / max) * 100))}%` }}
-          />
-          <span
-            className={`absolute -bottom-[18px] text-[10.5px] text-muted-foreground max-sm:text-[10px] max-sm:whitespace-nowrap ${
-              data.length > 6 && i % 2 ? "max-sm:invisible" : ""
-            }`}
+    <div className="mt-3">
+      <div className="grid h-[112px] border-b border-border" style={cols}>
+        {data.map(([label, a, b]) => (
+          <div
+            key={label}
+            className="flex h-full items-end justify-center gap-[3px]"
+            title={`${label} · เสนอ ${a} ปิดได้ ${b}`}
           >
-            {label}
-          </span>
-        </div>
-      ))}
+            <span
+              className="block w-[9px] rounded-t bg-brand-100"
+              style={{ height: `${Math.max(3, Math.round((a / max) * 100))}%` }}
+            />
+            <span
+              className="block w-[9px] rounded-t bg-primary"
+              style={{ height: `${Math.max(3, Math.round((b / max) * 100))}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 grid items-start" style={cols}>
+        {data.map(([label], i) => {
+          const sp = label.lastIndexOf(" ");
+          return (
+            <span
+              key={label}
+              className={`num text-center text-muted-foreground ${data.length > 6 && i % 2 ? "max-sm:invisible" : ""}`}
+              style={{ fontSize: 10.5, lineHeight: 1.25 }}
+            >
+              {sp > 0 ? (
+                <>
+                  <span className="block whitespace-nowrap">{label.slice(0, sp)}</span>
+                  <span className="block whitespace-nowrap">{label.slice(sp + 1)}</span>
+                </>
+              ) : (
+                <span className="block whitespace-nowrap">{label}</span>
+              )}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 // ─── ปฏิทินนัดหมาย ────────────────────────────────────────────────
-function AgendaCard({ events }: { events: AgendaEvent[] }) {
+/*
+ * ปฏิทินย่อแบบแดชบอร์ด PM — เลขวันกับจุดว่ามีนัดเท่านั้น ไม่มีรายการนัดใต้ปฏิทิน
+ * กดวันหรือ "ดูตารางงาน" ไปหน้าตารางงานของฝ่ายขาย (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * scheduleHref ว่าง = ไม่มีลิงก์ (มุมมอง CEO)
+ */
+function AgendaCard({ events, scheduleHref }: { events: AgendaEvent[]; scheduleHref?: string }) {
   const now = bkkNow();
   const [cursor, setCursor] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
-  const [selected, setSelected] = useState(() => toIsoDate(now));
 
   const y = cursor.getFullYear();
   const m = cursor.getMonth();
-  const first = new Date(y, m, 1).getDay();
+  const lead = new Date(y, m, 1).getDay();
   const last = new Date(y, m + 1, 0).getDate();
-  /* วันของเดือนก่อน/ถัดไปที่เติมให้เต็มแถว (สีจาง กดไม่ได้) และวันนี้ — ตาม mockup */
-  const prevLast = new Date(y, m, 0).getDate();
-  const tail = (7 - ((first + last) % 7)) % 7;
   const todayStr = toIsoDate(now);
-  const monthCount = events.filter((e) => {
-    const [ey, em] = e.date.split("-").map(Number);
-    return ey === y && em - 1 === m;
-  }).length;
-  const dayEvents = events.filter((e) => e.date === selected);
+  const dayCls = "num flex aspect-square flex-col items-center justify-center gap-[3px] rounded-[9px] text-[12.5px]";
 
   return (
     <section className="glass rounded-[15px] px-[18px] py-4">
       <h2 className="flex items-center gap-[9px] text-sm font-semibold">
         <CalendarIcon className="size-[15px]" strokeWidth={2} />
         นัดติดตามและกำหนดส่ง
-        <em className="ml-auto text-[11.5px] font-normal text-muted-foreground not-italic">
-          เดือนนี้ {monthCount} รายการ
-        </em>
+        {scheduleHref && (
+          <Link href={scheduleHref} className="lnk ml-auto flex-none text-[12.5px] font-normal">
+            ดูตารางงาน
+          </Link>
+        )}
       </h2>
 
-      {/* การ์ดนี้อยู่คอลัมน์แคบของแถวบน (ตามการจัดเรียงแบบตัวอย่าง)
-          ปฏิทินจึงวางบน รายการนัดของวันที่เลือกวางล่าง ไม่แบ่งสองคอลัมน์อีก */}
-      <div className="mt-3.5 grid gap-4">
-        <div className="min-w-0">
-          <div className="mb-2.5 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              className="iconbtn glass-thin size-7 rounded-lg"
-              onClick={() => setCursor(new Date(y, m - 1, 1))}
-              aria-label="เดือนก่อนหน้า"
+      <div className="mt-3.5 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="iconbtn glass-thin size-7 rounded-lg"
+          aria-label="เดือนก่อนหน้า"
+          onClick={() => setCursor(new Date(y, m - 1, 1))}
+        >
+          ‹
+        </button>
+        <b className="text-[13px] font-bold">
+          {TH_MONTHS_SHORT[m]} {y + 543}
+        </b>
+        <button
+          type="button"
+          className="iconbtn glass-thin size-7 rounded-lg"
+          aria-label="เดือนถัดไป"
+          onClick={() => setCursor(new Date(y, m + 1, 1))}
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="mt-2 grid grid-cols-7 gap-0.5">
+        {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((d) => (
+          <span key={d} className="py-1 text-center text-[10.5px] font-semibold text-muted-foreground">
+            {d}
+          </span>
+        ))}
+        {Array.from({ length: lead }, (_, i) => (
+          <span key={`b${i}`} />
+        ))}
+        {Array.from({ length: last }, (_, i) => {
+          const iso = toIsoDate(new Date(y, m, i + 1));
+          const n = events.filter((e) => e.date === iso).length;
+          /* วันหยุดบริษัทเลขสีแดง · เสาร์-อาทิตย์สีเทาอ่อน — ตามแดชบอร์ด PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+          const dow = new Date(y, m, i + 1).getDay();
+          const tone = isHoliday(iso)
+            ? "text-destructive"
+            : dow === 0 || dow === 6
+              ? "text-muted-foreground/50"
+              : "";
+          const cls = `${dayCls} ${tone} ${iso === todayStr ? "font-bold ring-1 ring-primary ring-inset" : ""}`;
+          const body = (
+            <>
+              {i + 1}
+              <i className={`block size-[5px] rounded-full ${n ? "bg-primary" : "bg-transparent"}`} />
+            </>
+          );
+          return scheduleHref ? (
+            <Link
+              key={iso}
+              href={scheduleHref}
+              title={n ? `มีนัด ${n} รายการ` : undefined}
+              className={`${cls} transition-colors hover:bg-black/5`}
             >
-              <ChevronLeftIcon className="size-3.5" strokeWidth={2.4} />
-            </button>
-            <span className="text-[13.5px] font-semibold">
-              {TH_MONTHS[m]} {y + 543}
-            </span>
-            <button
-              type="button"
-              className="iconbtn glass-thin size-7 rounded-lg"
-              onClick={() => setCursor(new Date(y, m + 1, 1))}
-              aria-label="เดือนถัดไป"
-            >
-              <ChevronRightIcon className="size-3.5" strokeWidth={2.4} />
-            </button>
-          </div>
-
-          <div className="mb-1 grid grid-cols-7 gap-0.5">
-            {["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"].map((d) => (
-              <span
-                key={d}
-                className="py-1 text-center text-[10.5px] font-semibold text-muted-foreground"
-              >
-                {d}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5">
-            {Array.from({ length: first }, (_, i) => (
-              <span
-                key={`b${i}`}
-                aria-hidden
-                className="num flex aspect-square items-center justify-center text-[12.5px] text-[#D3D7DE]"
-              >
-                {prevLast - first + 1 + i}
-              </span>
-            ))}
-            {Array.from({ length: last }, (_, i) => {
-              const d = i + 1;
-              const iso = `${y}-${pad(m + 1)}-${pad(d)}`;
-              const types: AgendaType[] = [
-                ...new Set(events.filter((e) => e.date === iso).map((e) => e.type)),
-              ];
-              const isSelected = iso === selected;
-              const isToday = iso === todayStr;
-              const holiday = holidays()[iso];
-              return (
-                <button
-                  key={iso}
-                  type="button"
-                  onClick={() => setSelected(iso)}
-                  title={holiday}
-                  aria-label={holiday ? `${d} ${holiday}` : undefined}
-                  className={`num flex aspect-square flex-col items-center justify-center gap-[3px] rounded-[9px] text-[12.5px] transition-colors ${
-                    isSelected
-                      ? "bg-primary font-semibold text-white"
-                      : holiday
-                        ? "bg-[var(--destructive-soft)] font-semibold text-destructive hover:bg-[var(--destructive-soft)]"
-                        : "hover:bg-black/5"
-                  }${isToday && !isSelected ? " font-bold text-primary shadow-[inset_0_0_0_1.5px_var(--primary)]" : ""}`}
-                >
-                  {d}
-                  <span className="flex h-[5px] gap-[3px]">
-                    {types.map((t) => (
-                      <i
-                        key={t}
-                        className="block size-[5px] rounded-full"
-                        style={{
-                          background: isSelected ? "rgb(255 255 255 / 0.9)" : AGENDA_COLOR[t],
-                        }}
-                      />
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-            {Array.from({ length: tail }, (_, i) => (
-              <span
-                key={`a${i}`}
-                aria-hidden
-                className="num flex aspect-square items-center justify-center text-[12.5px] text-[#D3D7DE]"
-              >
-                {i + 1}
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2.5 border-t border-border pt-[11px] text-[10.5px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              {/* สี่เหลี่ยมพื้นอ่อน ให้ต่างจากจุดของนัดหมาย — ตรงกับช่องวันหยุดในปฏิทิน */}
-              <i className="size-[9px] rounded-[3px] bg-[var(--destructive-soft)] ring-1 ring-destructive" />
-              วันหยุด
-            </span>
-            {(Object.keys(AGENDA_COLOR) as AgendaType[]).map((t) => (
-              <span key={t} className="inline-flex items-center gap-1.5">
-                <i className="size-[7px] rounded-full" style={{ background: AGENDA_COLOR[t] }} />
-                {AGENDA_LABEL[t]}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <p className="border-b border-border pb-[9px] text-[12.5px] font-semibold text-muted-foreground">
-            <span className="block leading-[1.6]">{thaiFull(selected)}</span>
-            <span className="block leading-[1.6]">{dayEvents.length} รายการ</span>
-            {holidays()[selected] && (
-              <span className="mt-1 inline-block rounded-full bg-[var(--destructive-soft)] px-2 py-0.5 text-[11.5px] text-destructive">
-                วันหยุด · {holidays()[selected]}
-              </span>
-            )}
-          </p>
-          {dayEvents.length === 0 ? (
-            <p className="py-[22px] text-[12.5px] text-muted-foreground">
-              ไม่มีนัดหมายหรือกำหนดส่งในวันนี้
-            </p>
+              {body}
+            </Link>
           ) : (
-            dayEvents.map((e) => (
-              <Link
-                key={e.id}
-                href={e.href}
-                className="grid grid-cols-[4px_minmax(0,1fr)] gap-[11px] border-b border-border py-3 transition-colors last:border-b-0 hover:bg-muted"
-              >
-                <span className="rounded-[3px]" style={{ background: AGENDA_COLOR[e.type] }} />
-                <span>
-                  <b className="block text-[13px] font-medium">{e.title}</b>
-                  <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
-                    {e.detail}
-                  </span>
-                </span>
-              </Link>
-            ))
-          )}
-        </div>
+            <span key={iso} title={n ? `มีนัด ${n} รายการ` : undefined} className={cls}>
+              {body}
+            </span>
+          );
+        })}
       </div>
     </section>
   );
 }
 
 // ─── ตัวช่วย ──────────────────────────────────────────────────────
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-
 function money(n: number) {
   return n.toLocaleString("th-TH");
 }
@@ -895,11 +754,6 @@ function baht(n: number) {
 
 function pct(a: number, b: number) {
   return b ? Math.round((a / b) * 1000) / 10 : 0;
-}
-
-function thaiFull(iso: string) {
-  const d = new Date(`${iso}T00:00:00`);
-  return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
 }
 
 /**

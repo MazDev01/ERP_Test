@@ -85,7 +85,8 @@ export function QuotationsPage() {
   const isSoon = (q: Quotation) =>
     !q.rejectedAt && !hasDeal.has(q.no) && !q.replacedBy && daysLeft(q) >= 0 && daysLeft(q) <= EXPIRING_DAYS;
   const canBill = (q: Quotation) => canBillQuotation(q, hasDeal.has(q.no), today);
-  const canReject = (q: Quotation) => canRejectQuotation(q, hasDeal.has(q.no));
+  /* ใบที่หมดอายุแล้วไม่ต้องปฏิเสธ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const canReject = (q: Quotation) => canRejectQuotation(q, hasDeal.has(q.no)) && daysLeft(q) >= 0;
   const rowStatus = (q: Quotation): RowStatus =>
     hasDeal.has(q.no) ? "billed" : q.rejectedAt ? "rejected" : daysLeft(q) < 0 ? "expired" : "pending";
   const byNo = useMemo(
@@ -197,7 +198,7 @@ export function QuotationsPage() {
       {q.replacedBy && <span className="why">ออกใบใหม่แทน {q.replacedBy}</span>}
       {q.replaces && <span className="why">แทนใบ {q.replaces}</span>}
       {q.ps && <span className="why">อ้างอิงคำขอ {q.ps}</span>}
-      {q.rejectedAt && <span className="why text-destructive">ลูกค้าปฏิเสธ {thaiDate(q.rejectedAt)}</span>}
+      {q.rejectedAt && <span className="why text-destructive">ผู้สนใจปฏิเสธ {thaiDate(q.rejectedAt)}</span>}
     </>
   );
 
@@ -270,13 +271,14 @@ export function QuotationsPage() {
             <thead>
               <tr>
                 <th style={{ width: 150 }}>เลขที่เอกสาร</th>
-                <th style={{ width: "24%" }}>ผู้สนใจ</th>
+                <th style={{ width: "21%" }}>ผู้สนใจ</th>
                 <th className="qt-hide" style={{ width: "12%" }}>วันที่ออก</th>
-                <th style={{ width: "16%" }}>มีผลถึง</th>
-                <th className="qt-hide" style={{ width: "13%" }}>ออกในนาม</th>
-                <th className="r" style={{ width: "14%" }}>ยอดรวม</th>
-                <th style={{ width: "13%" }}>สถานะ</th>
-                <th style={{ width: 168 }} aria-label="จัดการ" />
+                <th style={{ width: "13%" }}>มีผลถึง</th>
+                <th className="qt-hide" style={{ width: "9%" }}>ออกในนาม</th>
+                <th className="r" style={{ width: "12%" }}>ยอดรวม</th>
+                {/* คอลัมน์จัดการกว้างพอให้ส่งไปวางบิล+ปฏิเสธ ไม่ทับสถานะ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                <th style={{ width: 120 }}>สถานะ</th>
+                <th style={{ width: 290 }} aria-label="จัดการ" />
               </tr>
             </thead>
             <tbody>
@@ -328,6 +330,12 @@ export function QuotationsPage() {
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="qt-acts">
+                            {/* ส่งไปวางบิลจากตารางได้เลย ไม่ต้องเปิดเอกสาร (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+                            {canBill(q) && (
+                              <button type="button" className="lnk qt-rej" style={{ color: "var(--primary)" }} onClick={() => setBilling(q)}>
+                                ส่งไปวางบิล
+                              </button>
+                            )}
                             {/* ปฏิเสธ — ใบที่ยังไม่ได้ตัดสิน (รอดำเนินการหรือหมดอายุ) · ต้องปฏิเสธก่อนออกใบใหม่ */}
                             {canReject(q) && (
                               <button type="button" className="lnk qt-rej" onClick={() => setRejecting(q)}>
@@ -373,7 +381,7 @@ export function QuotationsPage() {
                                     const amt = quotationTotals(h).grand;
                                     const delta = prev ? amt - quotationTotals(prev).grand : null;
                                     const what = !prev
-                                      ? "ฉบับแรกที่ส่งให้ลูกค้า"
+                                      ? "ฉบับแรกที่ส่งให้ผู้สนใจ"
                                       : prev.rejectReason
                                         ? `ออกใหม่แทน ${prev.no} · ${prev.rejectReason}`
                                         : `ออกใหม่แทน ${prev.no}`;

@@ -36,10 +36,6 @@ export function OfflinePage() {
         </span>
 
         <h1 className="mt-5 text-xl font-bold">ตอนนี้ยังเชื่อมต่ออินเทอร์เน็ตไม่ได้</h1>
-        <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-          หน้าที่เคยเปิดไว้แล้วยังดูได้ตามปกติ
-          ส่วนหน้าที่ยังไม่เคยเปิดต้องรอสัญญาณกลับมาก่อน
-        </p>
 
         <button
           type="button"

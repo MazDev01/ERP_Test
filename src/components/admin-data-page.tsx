@@ -114,7 +114,7 @@ export function AdminDataPage() {
         {list(WORK_DATA)}
       </Card>
 
-      <Card title="การตั้งค่าระบบ" note="คืนแยกทีละหมวด ไม่รวมอยู่ในปุ่มคืนค่าข้อมูลงานทั้งหมด">
+      <Card title="การตั้งค่าระบบ">
         {list(SYSTEM_DATA)}
       </Card>
 

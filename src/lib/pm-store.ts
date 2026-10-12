@@ -165,6 +165,9 @@ function assignPj(v: PmState): PmState {
   return { ...v, inbox, projects, drafts, talks };
 }
 
+/** งานเข้าใหม่ตัวอย่างที่เพิ่มเข้าชุดตั้งต้น 8 ต.ค. 2569 — migratePm เติมให้เครื่องที่ยังไม่มี */
+const INBOX_ADDED_OCT = new Set(["PJ-2569-0025", "PJ-2569-0026"]);
+
 function migratePm(input: PmState): PmState {
   const v = assignPj(input);
   const seedOf = new Map(PM_PROJECTS.map((p) => [p.pj, p]));
@@ -209,18 +212,24 @@ function migratePm(input: PmState): PmState {
   /* ชื่อคนรับงานเพิ่ม 5 ต.ค. 2569 (กระดานรับงาน) — งานตั้งต้นที่รับไปแล้วเติมชื่อจากชุดตั้งต้น
      งานอื่นที่รับไปก่อนมีช่องนี้ปล่อยว่าง หน้าจอขึ้นแค่ "รับแล้ว" */
   const inboxSeed = new Map(PM_INBOX.map((j) => [j.pj, j]));
-  const inbox = v.inbox.map((j) => {
+  const inboxKept = v.inbox.map((j) => {
     const seed = inboxSeed.get(j.pj);
     return j.stage === "plan" && !j.takenBy && seed?.takenBy
       ? { ...j, takenBy: seed.takenBy, takenAt: j.takenAt ?? seed.takenAt }
       : j;
   });
+  /* งานเข้าใหม่ตัวอย่างที่เพิ่มเข้าชุดตั้งต้นทีหลัง (8 ต.ค. 2569) — เติมเฉพาะเลขที่โปรเจคที่ยังไม่มีทั้งในกล่องและในโปรเจค
+     งานที่ยืนยันแผนแล้วออกจากกล่องไปเป็นโปรเจคเลขเดิม จึงต้องเช็กสองที่ ไม่งั้นงานที่ทำไปแล้วจะเด้งกลับมา */
+  const takenPj = new Set([...v.inbox, ...v.projects, ...added].map((x) => x.pj));
+  /* เฉพาะใบที่เพิ่มรอบนี้ — ใบตั้งต้นรุ่นก่อนที่หายไปจากเครื่อง อาจหายเพราะดีลถูกยกเลิก ห้ามเด้งกลับ */
+  const inbox = [...inboxKept, ...PM_INBOX.filter((j) => INBOX_ADDED_OCT.has(j.pj) && !takenPj.has(j.pj))];
 
   /* เอกสารแนบของโปรเจคเพิ่ม 5 ต.ค. 2569 — ข้อมูลเก่าที่ยังไม่มีช่องนี้ถือว่ายังไม่มีเอกสาร (ผู้ใช้สั่ง 5 ต.ค. 2569)
      ชื่อโปรเจคที่เก็บไว้แล้วไม่แตะ แม้จะเป็นรูปแบบเดิม "ลูกค้า – ขอบเขตงาน" */
   return {
     ...v,
     inbox: inbox.map((j) => (j.docs ? j : { ...j, docs: [] })),
+    /* added (โปรเจคตั้งต้นที่ยังไม่มีในเครื่อง) ต่อท้ายอยู่ใน cancelled แล้ว */
     projects: cancelled.map((p) => (p.docs ? p : { ...p, docs: [] })),
     drafts: v.drafts ?? {},
     talks: v.talks ?? {},
@@ -474,6 +483,60 @@ export function acceptInboxJob(pj: string, start: string, name = ""): AcceptResu
   return { ok: true };
 }
 
+/**
+ * PM เพิ่มโปรเจคเอง — งานด่วนที่ได้รับแจ้งมาโดยตรง เกี่ยวกับลูกค้าหรือไม่ก็ได้ (ผู้ใช้สั่ง 8 ต.ค. 2569)
+ * ไม่ผ่านกล่องงานเข้า: เกิดเป็นงานที่ "รับแล้ว รอวางแผน" ทันที แล้ววางแผนต่อจากหน้าโปรเจคเหมือนงานอื่น
+ * ไม่มีใบแจ้งหนี้/ใบเสนอราคาผูก · เลขที่ต่อจากเลข PJ ที่มากที่สุดของปีนี้
+ */
+export function addAdhocProject(input: { name: string; cus: string; service: string; scope: string }) {
+  const by = USERS[currentRole()]?.name ?? "";
+  const at = today();
+  const be = Number(at.slice(0, 4)) + 543;
+  let pj = "";
+  store.update((s) => {
+    const nums = [...s.inbox, ...s.projects]
+      .map((x) => x.pj)
+      .filter((x) => x.startsWith(`PJ-${be}-`))
+      .map((x) => Number(x.slice(-4)) || 0);
+    pj = `PJ-${be}-${String(Math.max(0, ...nums) + 1).padStart(4, "0")}`;
+    const job: InboxJob = {
+      pj,
+      bill: "",
+      service: input.service,
+      cus: input.cus.trim() || "งานภายใน",
+      quo: "",
+      quoDate: "",
+      net: 0,
+      seqs: 0,
+      paidAt: "",
+      sentAt: at,
+      scope: input.scope.trim() || input.name.trim(),
+      items: [],
+      /* ยังไม่มีวัน — PM กำหนดเฟสและวันเองตอนวางแผน */
+      due: "",
+      stage: "plan",
+      planStart: "",
+      planEnd: "",
+      durationDays: 0,
+      phases: [],
+      seen: true,
+      projectStart: "",
+      name: input.name.trim(),
+      takenBy: by,
+      takenAt: at,
+      /* ไม่ได้มาจากใบเสนอราคา จึงไม่มีข้อมูลผู้ติดต่อ/เงื่อนไข */
+      contact: "",
+      phone: "",
+      taxId: "",
+      address: "",
+      terms: "",
+      validDays: 0,
+    };
+    return { ...s, inbox: [job, ...s.inbox] };
+  });
+  return pj;
+}
+
 export type PlannedTask = {
   /** ดัชนีงานเดิมในโปรเจค — มีเฉพาะตอนแก้แผนของโปรเจคที่เดินงานอยู่ */
   from?: number;
@@ -551,8 +614,9 @@ export function confirmPlan(
       net: job.net,
       scope: job.scope,
       pm: pmName,
-      start: job.projectStart || today(),
-      due: job.planEnd || lastEnd,
+      start: job.projectStart || phases.reduce((m, ph) => (!m || (ph.start && ph.start < m) ? ph.start : m), "") || today(),
+      /* วันจบตามเฟสที่ PM วางเอง ไม่ใช่ระยะจากข้อเสนอ (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+      due: lastEnd || job.planEnd,
       status: "running",
       updated: today(),
       tone: tones[s.projects.length % tones.length],
@@ -651,6 +715,22 @@ export function replanProject(pj: string, tasks: PlannedTask[], phases: ProjectP
  * แก้ชื่อโปรเจค (PM-BR-03) — PM ตั้งและแก้ได้เอง ส่วนลูกค้า บริการ และขอบเขตมาจากดีล แก้ตรงนี้ไม่ได้
  * งานที่ยังรอวางแผน (อยู่ในกล่องงานเข้า) แก้ที่งานนั้น ชื่อจะติดไปตอนยืนยันแผน
  */
+/** ลบโปรเจค (หรืองานที่ยังวางแผนอยู่) ออกจากระบบ พร้อมร่างแผนและข้อความของงานย่อย (ผู้ใช้สั่ง 8 ต.ค. 2569) */
+export function deleteProject(pj: string) {
+  store.update((s) => {
+    const drafts = { ...s.drafts };
+    delete drafts[pj];
+    const talks = Object.fromEntries(Object.entries(s.talks).filter(([k]) => !k.startsWith(`${pj}|`)));
+    return {
+      ...s,
+      inbox: s.inbox.filter((j) => !isRef(j, pj)),
+      projects: s.projects.filter((p) => !isRef(p, pj)),
+      drafts,
+      talks,
+    };
+  });
+}
+
 export function renameProject(pj: string, name: string) {
   const v = name.trim();
   if (!v) return;

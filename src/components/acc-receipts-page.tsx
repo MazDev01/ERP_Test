@@ -30,7 +30,7 @@ import { PhoneCard, PhoneList } from "./acchr-phone";
 
 import { DateField } from "./thai-date-picker";
 
-/** ที่อยู่หน้าเอกสารใบเสร็จ — อยู่ใต้เมนูใบเสร็จ สิทธิ์เข้าหน้าจึงตามเมนูนี้ */
+/** ที่อยู่หน้าเอกสารใบเสร็จ — เมนูใบเสร็จรวมเข้าหน้าวางบิลแล้ว สิทธิ์เข้าหน้าจึงตามเมนูวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 export function receiptHref(no: string) {
   return `/acc/receipts/${encodeURIComponent(no)}`;
 }
@@ -42,12 +42,9 @@ function seqsOf(acc: AccState, deal: string) {
 
 export function AccReceiptsPage() {
   const acc = useAcc();
-  const crm = useCrm();
   const router = useRouter();
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [issuing, setIssuing] = useState<Invoice | null>(null);
-  const [openCus, setOpenCus] = useState<Record<string, boolean>>({});
-  const today = todayIso();
   /* ตัวกรอง: รอออกใบเสร็จเทียบวันครบกำหนด · ออกแล้วเทียบวันที่ออกใบเสร็จ */
   const filter = useAccFilter();
   const { hit, inRange } = filter;
@@ -58,17 +55,7 @@ export function AccReceiptsPage() {
     .sort((a, b) => a.due.localeCompare(b.due));
 
   const done = acc.receipts.filter((r) => hit(r.no, r.inv, r.cus) && inRange(r.date));
-  /* จัดกลุ่มตามลูกค้า ลูกค้าที่ออกใบล่าสุดขึ้นก่อน ใบในกลุ่มเรียงใหม่ไปเก่า */
-  const groups: { cus: string; list: Receipt[]; total: number; last: string }[] = [];
-  for (const r of done) {
-    let g = groups.find((x) => x.cus === r.cus);
-    if (!g) groups.push((g = { cus: r.cus, list: [], total: 0, last: "" }));
-    g.list.push(r);
-    g.total = round2(g.total + r.total);
-    if (r.date > g.last) g.last = r.date;
-  }
-  for (const g of groups) g.list.sort((a, b) => b.date.localeCompare(a.date));
-  groups.sort((a, b) => b.last.localeCompare(a.last));
+  const groups = receiptGroups(done);
 
   return (
     <div className="space-y-4">
@@ -132,89 +119,7 @@ export function AccReceiptsPage() {
               </tbody>
             </table>
           ) : (
-            <table className="data-table cards-sm min-w-[800px]">
-              <thead>
-                <tr>
-                  <th style={{ width: 220 }}>ลูกค้า</th>
-                  <th style={{ width: 160 }}>ใบเสร็จ</th>
-                  <th style={{ width: 170 }}>ออกล่าสุด</th>
-                  <th className="r" style={{ width: 190 }}>ยอดรวม (บาท)</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {groups.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-10 text-center text-muted-foreground">
-                      ยังไม่มีใบเสร็จ
-                    </td>
-                  </tr>
-                ) : (
-                  groups.map((g) => {
-                    const isOpen = Boolean(openCus[g.cus]);
-                    return (
-                      <Fragment key={g.cus}>
-                        <tr
-                          className={isOpen ? "open" : ""}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setOpenCus((o) => ({ ...o, [g.cus]: !o[g.cus] }))}
-                        >
-                          <td data-label="ลูกค้า" className="font-semibold">{g.cus}</td>
-                          <td data-label="ใบเสร็จ" className="muted">{g.list.length} ใบ</td>
-                          <td data-label="ออกล่าสุด" className="num muted">{thaiDate(g.last)}</td>
-                          <td data-label="ยอดรวม (บาท)" className="r num font-semibold">{baht(g.total)}</td>
-                          <td>
-                            <span className="why">{isOpen ? "กดแถวเพื่อย่อ" : "กดแถวเพื่อดูใบเสร็จ"}</span>
-                          </td>
-                        </tr>
-                        {isOpen && (
-                          <tr className="sub">
-                            <td colSpan={5}>
-                              <div className="subwrap">
-                                <table className="inner">
-                                  <colgroup>
-                                    <col style={{ width: 220 }} />
-                                    <col style={{ width: 230 }} />
-                                    <col style={{ width: 170 }} />
-                                    <col style={{ width: 190 }} />
-                                  </colgroup>
-                                  <tbody>
-                                    {g.list.map((r) => (
-                                      <tr
-                                        key={r.no}
-                                        tabIndex={0}
-                                        title="เปิดใบเสร็จ"
-                                        style={{ cursor: "pointer" }}
-                                        onClick={() => router.push(receiptHref(r.no))}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter" || e.key === " ") {
-                                            e.preventDefault();
-                                            router.push(receiptHref(r.no));
-                                          }
-                                        }}
-                                      >
-                                        <td data-label="เลขที่ใบเสร็จ" className="num">
-                                          <b className="font-semibold">{r.no}</b>
-                                          <span className="why">{r.inv}</span>
-                                          <span className="why">{seqText(r.seq, seqsOf(acc, r.deal))}</span>
-                                        </td>
-                                        <td data-label="ประเภทเอกสาร" className="muted">{receiptKind(r.vat)}</td>
-                                        <td data-label="วันที่ออก" className="num muted">{thaiDate(r.date)}</td>
-                                        <td data-label="ยอดรวม" className="r num">{baht(r.total)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+            <ReceiptGroupsTable acc={acc} groups={groups} />
           )}
         </div>
 
@@ -305,20 +210,8 @@ export function AccReceiptsPage() {
       </section>
 
       {issuing && (
-        <IssueDialog
+        <IssueReceiptDialog
           invoice={issuing}
-          seqs={seqsOf(acc, issuing.deal)}
-          /* ใบนี้เคยรับชำระบางส่วนมาแล้วหรือยัง — ใบแรกเท่านั้นที่ใช้ยอดหักตามใบเสนอราคาเป็นค่าตั้งต้น */
-          first={receiptsOf(acc, issuing.no).length === 0}
-          buyer={taxInvoiceBuyer(
-            customerOfDeal(
-              crm,
-              issuing.deal,
-              acc.deals.find((d) => d.no === issuing.deal)?.quo ?? "",
-              issuing.cus,
-            ),
-          )}
-          today={today}
           onClose={() => setIssuing(null)}
           onDone={() => {
             setIssuing(null);
@@ -327,6 +220,142 @@ export function AccReceiptsPage() {
         />
       )}
     </div>
+  );
+}
+
+type ReceiptGroup = { cus: string; list: Receipt[]; total: number; last: string };
+
+/** จัดกลุ่มตามลูกค้า ลูกค้าที่ออกใบล่าสุดขึ้นก่อน ใบในกลุ่มเรียงใหม่ไปเก่า — ใช้ร่วมกับแท็บใบเสร็จหน้าวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function receiptGroups(done: Receipt[]) {
+  const groups: ReceiptGroup[] = [];
+  for (const r of done) {
+    let g = groups.find((x) => x.cus === r.cus);
+    if (!g) groups.push((g = { cus: r.cus, list: [], total: 0, last: "" }));
+    g.list.push(r);
+    g.total = round2(g.total + r.total);
+    if (r.date > g.last) g.last = r.date;
+  }
+  for (const g of groups) g.list.sort((a, b) => b.date.localeCompare(a.date));
+  groups.sort((a, b) => b.last.localeCompare(a.last));
+  return groups;
+}
+
+/** ตารางใบเสร็จที่ออกแล้ว กดแถวลูกค้าเพื่อกาง กดใบเสร็จเพื่อเปิดเอกสาร — ใช้ร่วมกับหน้าวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: ReceiptGroup[] }) {
+  const router = useRouter();
+  const [openCus, setOpenCus] = useState<Record<string, boolean>>({});
+  return (
+      <table className="data-table cards-sm min-w-[800px]">
+        <thead>
+          <tr>
+            <th style={{ width: 220 }}>ลูกค้า</th>
+            <th style={{ width: 160 }}>ใบเสร็จ</th>
+            <th style={{ width: 170 }}>ออกล่าสุด</th>
+            <th className="r" style={{ width: 190 }}>ยอดรวม (บาท)</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {groups.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-10 text-center text-muted-foreground">
+                ยังไม่มีใบเสร็จ
+              </td>
+            </tr>
+          ) : (
+            groups.map((g) => {
+              const isOpen = Boolean(openCus[g.cus]);
+              return (
+                <Fragment key={g.cus}>
+                  <tr
+                    className={isOpen ? "open" : ""}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setOpenCus((o) => ({ ...o, [g.cus]: !o[g.cus] }))}
+                  >
+                    <td data-label="ลูกค้า" className="font-semibold">{g.cus}</td>
+                    <td data-label="ใบเสร็จ" className="muted">{g.list.length} ใบ</td>
+                    <td data-label="ออกล่าสุด" className="num muted">{thaiDate(g.last)}</td>
+                    <td data-label="ยอดรวม (บาท)" className="r num font-semibold">{baht(g.total)}</td>
+                    <td></td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="sub">
+                      <td colSpan={5}>
+                        <div className="subwrap">
+                          <table className="inner">
+                            <colgroup>
+                              <col style={{ width: 220 }} />
+                              <col style={{ width: 230 }} />
+                              <col style={{ width: 170 }} />
+                              <col style={{ width: 190 }} />
+                            </colgroup>
+                            <tbody>
+                              {g.list.map((r) => (
+                                <tr
+                                  key={r.no}
+                                  tabIndex={0}
+                                  title="เปิดใบเสร็จ"
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => router.push(receiptHref(r.no))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      router.push(receiptHref(r.no));
+                                    }
+                                  }}
+                                >
+                                  <td data-label="เลขที่ใบเสร็จ" className="num">
+                                    <b className="font-semibold">{r.no}</b>
+                                    <span className="why">{r.inv}</span>
+                                    <span className="why">{seqText(r.seq, seqsOf(acc, r.deal))}</span>
+                                  </td>
+                                  <td data-label="ประเภทเอกสาร" className="muted">{receiptKind(r.vat)}</td>
+                                  <td data-label="วันที่ออก" className="num muted">{thaiDate(r.date)}</td>
+                                  <td data-label="ยอดรวม" className="r num">{baht(r.total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+  );
+}
+
+/**
+ * กล่องออกใบเสร็จพร้อมข้อมูลที่ต้องใช้ (จำนวนงวด ผู้ซื้อ ใบแรกหรือไม่) — หน้าวางบิลเรียกใช้ตัวเดียวกัน (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ */
+export function IssueReceiptDialog({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: Invoice;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const acc = useAcc();
+  const crm = useCrm();
+  return (
+    <IssueDialog
+      invoice={invoice}
+      seqs={seqsOf(acc, invoice.deal)}
+      /* ใบนี้เคยรับชำระบางส่วนมาแล้วหรือยัง — ใบแรกเท่านั้นที่ใช้ยอดหักตามใบเสนอราคาเป็นค่าตั้งต้น */
+      first={receiptsOf(acc, invoice.no).length === 0}
+      buyer={taxInvoiceBuyer(
+        customerOfDeal(crm, invoice.deal, acc.deals.find((d) => d.no === invoice.deal)?.quo ?? "", invoice.cus),
+      )}
+      today={todayIso()}
+      onClose={onClose}
+      onDone={onDone}
+    />
   );
 }
 
@@ -521,12 +550,6 @@ function IssueDialog({
             <span>ตรวจกับรายการเดินบัญชีแล้ว ยืนยันออกใบเสร็จตามยอดนี้</span>
           </label>
         </div>
-      )}
-
-      {whtNum > 0 && !bad && (
-        <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
-          ใบเสร็จจะขึ้นหมายเหตุ &quot;{WHT_CERT_WAIT}&quot; จนกว่าลูกค้าจะส่งหนังสือรับรองมา
-        </p>
       )}
 
       <p className="mt-3.5">
