@@ -18,7 +18,7 @@ import {
   type Invoice,
   type Receipt,
 } from "@/lib/acc-data";
-import { awaitingReceipt, invoiceDue, receiptsOf, useAcc, type AccState } from "@/lib/acc-store";
+import { awaitingReceipt, invoiceDue, invoiceNotYet, receiptsOf, useAcc, type AccState } from "@/lib/acc-store";
 import { taxInvoiceBuyer, type TaxInvoiceBuyer } from "@/lib/crm-data";
 import { customerOfDeal, useCrm } from "@/lib/crm-store";
 import { issueReceiptFlow } from "@/lib/flow";
@@ -29,6 +29,7 @@ import { Field } from "./ui";
 import { PhoneCard, PhoneList } from "./acchr-phone";
 
 import { DateField } from "./thai-date-picker";
+import { stackNo } from "@/lib/stack-no";
 
 /** ที่อยู่หน้าเอกสารใบเสร็จ — เมนูใบเสร็จรวมเข้าหน้าวางบิลแล้ว สิทธิ์เข้าหน้าจึงตามเมนูวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 export function receiptHref(no: string) {
@@ -93,7 +94,7 @@ export function AccReceiptsPage() {
               <tbody>
                 {todo.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
                       ไม่มีใบแจ้งหนี้ที่รอออกใบเสร็จ
                     </td>
                   </tr>
@@ -105,7 +106,11 @@ export function AccReceiptsPage() {
                         <span className="why">{seqText(v.seq, seqsOf(acc, v.deal))}</span>
                       </td>
                       <td data-label="ลูกค้า">{v.cus}</td>
-                      <td data-label="ครบกำหนดชำระ" className="num muted">{thaiDate(v.due)}</td>
+                      <td data-label="ครบกำหนดชำระ" className="num muted">
+                        {thaiDate(v.due)}
+                        {/* ใบลงวันที่ล่วงหน้า (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                        {invoiceNotYet(v, todayIso()) && <span className="why">ออกวันที่ {thaiDate(v.issue)}</span>}
+                      </td>
                       {/* ยอดที่ต้องรับ คือส่วนที่ยังไม่ได้รับ ไม่ใช่ยอดเต็มของงวด — อ่านค่าเดียวกับหน้าวางบิล */}
                       <td data-label="ยอดที่ต้องรับชำระ" className="r num font-semibold">{baht(invoiceDue(v))}</td>
                       <td data-label="จัดการ" className="c">
@@ -139,7 +144,10 @@ export function AccReceiptsPage() {
                 amount={baht(invoiceDue(v))}
                 amountNote="ยอดที่ต้องรับชำระ"
                 badge={
-                  <span className="num text-[12px] text-muted-foreground">ครบกำหนดชำระ {thaiDate(v.due)}</span>
+                  <span className="num text-[12px] text-muted-foreground">
+                    ครบกำหนดชำระ {thaiDate(v.due)}
+                    {invoiceNotYet(v, todayIso()) && ` · ออกวันที่ ${thaiDate(v.issue)}`}
+                  </span>
                 }
                 actions={
                   <button type="button" className="btn solid btn-solid" data-ceo-hide onClick={() => setIssuing(v)}>
@@ -241,13 +249,34 @@ export function receiptGroups(done: Receipt[]) {
 }
 
 /** ตารางใบเสร็จที่ออกแล้ว กดแถวลูกค้าเพื่อกาง กดใบเสร็จเพื่อเปิดเอกสาร — ใช้ร่วมกับหน้าวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: ReceiptGroup[] }) {
+export function ReceiptGroupsTable({
+  acc,
+  groups,
+  empty = "ยังไม่มีใบเสร็จ",
+}: {
+  acc: AccState;
+  groups: ReceiptGroup[];
+  /** ข้อความตอนไม่มีแถว — หน้าวางบิลส่ง "ไม่พบรายการที่ค้นหา" ตอนกำลังค้นหา (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  empty?: string;
+}) {
   const router = useRouter();
   const [openCus, setOpenCus] = useState<Record<string, boolean>>({});
+  /*
+   * ลำดับแบบกองซ้อน — นับจากใบเสร็จทั้งหมดก่อนกรองช่วงวันที่/ค้นหา (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * แถวลูกค้านับตามวันที่ออกใบเสร็จใบแรกของลูกค้านั้น · แถวใบเสร็จที่กางออกนับตามวันที่ออกของแต่ละใบ
+   */
+  const rcNo = stackNo(acc.receipts, (r) => r.date, (r) => r.no);
+  const firstOf = new Map<string, Receipt>();
+  for (const r of acc.receipts) {
+    const f = firstOf.get(r.cus);
+    if (!f || r.date < f.date || (r.date === f.date && r.no < f.no)) firstOf.set(r.cus, r);
+  }
+  const cusNo = stackNo([...firstOf.values()], (r) => r.date, (r) => r.cus);
   return (
-      <table className="data-table cards-sm min-w-[800px]">
+      <table className="data-table cards-sm min-w-[860px]">
         <thead>
           <tr>
+            <th className="c" style={{ width: 60 }}>ลำดับ</th>
             <th style={{ width: 220 }}>ลูกค้า</th>
             <th style={{ width: 160 }}>ใบเสร็จ</th>
             <th style={{ width: 170 }}>ออกล่าสุด</th>
@@ -258,8 +287,8 @@ export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: Rec
         <tbody>
           {groups.length === 0 ? (
             <tr>
-              <td colSpan={5} className="py-10 text-center text-muted-foreground">
-                ยังไม่มีใบเสร็จ
+              <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                {empty}
               </td>
             </tr>
           ) : (
@@ -272,6 +301,7 @@ export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: Rec
                     style={{ cursor: "pointer" }}
                     onClick={() => setOpenCus((o) => ({ ...o, [g.cus]: !o[g.cus] }))}
                   >
+                    <td data-label="ลำดับ" className="c num muted">{cusNo.get(g.cus)}</td>
                     <td data-label="ลูกค้า" className="font-semibold">{g.cus}</td>
                     <td data-label="ใบเสร็จ" className="muted">{g.list.length} ใบ</td>
                     <td data-label="ออกล่าสุด" className="num muted">{thaiDate(g.last)}</td>
@@ -280,10 +310,11 @@ export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: Rec
                   </tr>
                   {isOpen && (
                     <tr className="sub">
-                      <td colSpan={5}>
+                      <td colSpan={6}>
                         <div className="subwrap">
                           <table className="inner">
                             <colgroup>
+                              <col style={{ width: 60 }} />
                               <col style={{ width: 220 }} />
                               <col style={{ width: 230 }} />
                               <col style={{ width: 170 }} />
@@ -304,6 +335,7 @@ export function ReceiptGroupsTable({ acc, groups }: { acc: AccState; groups: Rec
                                     }
                                   }}
                                 >
+                                  <td data-label="ลำดับ" className="c num muted">{rcNo.get(r.no)}</td>
                                   <td data-label="เลขที่ใบเสร็จ" className="num">
                                     <b className="font-semibold">{r.no}</b>
                                     <span className="why">{r.inv}</span>

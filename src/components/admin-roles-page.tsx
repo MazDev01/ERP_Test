@@ -14,6 +14,7 @@
  * บทบาทผู้ดูแลระบบแก้ตัวเองไม่ได้ กันผู้ดูแลปิดหน้านี้แล้วกลับเข้ามาไม่ได้
  */
 
+import { displayName, nameOf } from "@/lib/emp-name";
 import { useEffect, useState } from "react";
 import {
   configurableItems,
@@ -325,7 +326,7 @@ export function RoutePane() {
               </button>
             </span>
             <span className="block text-[12px] text-muted-foreground">
-              {a.name}
+              {nameOf(a.name)}
               {a.role === null && " · ยังไม่มีบทบาทให้ล็อกอิน"}
             </span>
             <p className="mt-1.5 text-[12.5px] leading-relaxed">
@@ -517,12 +518,12 @@ export function DualRolePane() {
   function toggle(id: string, name: string, role: Role, now: Role[]) {
     const off = now.includes(role);
     if (!off && now.length >= HR_MAX_ROLES) {
-      setWhy(`${name} ถือได้สูงสุด ${HR_MAX_ROLES} บทบาท — เอาบทบาทเดิมออกก่อนจึงเพิ่มบทบาทใหม่ได้`);
+      setWhy(`${nameOf(name)} ถือได้สูงสุด ${HR_MAX_ROLES} บทบาท — เอาบทบาทเดิมออกก่อนจึงเพิ่มบทบาทใหม่ได้`);
       return;
     }
     const next = off ? now.filter((r) => r !== role) : [...now, role];
     if (next.length === 0) {
-      setWhy(`${name} ต้องมีอย่างน้อยหนึ่งบทบาท ไม่งั้นบัญชีนี้เข้าระบบแล้วไม่มีหน้าให้เปิด`);
+      setWhy(`${nameOf(name)} ต้องมีอย่างน้อยหนึ่งบทบาท ไม่งั้นบัญชีนี้เข้าระบบแล้วไม่มีหน้าให้เปิด`);
       return;
     }
     /* ทุกปุ่มกดสลับได้อิสระ กดครั้งแรกติด กดซ้ำหลุด เหมือนปุ่มอื่นในหน้านี้ */
@@ -554,7 +555,7 @@ export function DualRolePane() {
             <li key={e.id} className="rounded-[14px] border border-border bg-card px-3.5 py-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <b className="block text-[14.5px] font-semibold">{e.name}</b>
+                  <b className="block text-[14.5px] font-semibold">{displayName(e)}</b>
                   <span className="block text-[12px] text-muted-foreground">
                     ตำแหน่ง {hrPos(e.pos).label} · <span className="num break-all">{e.account!.user}</span>
                   </span>
@@ -623,7 +624,7 @@ export function DualRolePane() {
               return (
                 <tr key={e.id}>
                   <td data-label="บัญชีผู้ใช้">
-                    <b className="block text-[13.5px] font-semibold">{e.name}</b>
+                    <b className="block text-[13.5px] font-semibold">{displayName(e)}</b>
                     <span className="why">ตำแหน่ง {hrPos(e.pos).label}</span>
                     <span className="why num">{e.account!.user}</span>
                     {now.length > 1 && (

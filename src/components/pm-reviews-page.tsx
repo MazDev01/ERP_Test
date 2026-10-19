@@ -17,6 +17,7 @@ import { memberName, memberOf, sendBackWork, usePm } from "@/lib/pm-store";
 import { roleLabel } from "@/lib/pm-data";
 import { hrPos } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
+import { displayName, nameOf } from "@/lib/emp-name";
 import { Field, Sheet } from "./lead-dialogs";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { ClockIcon, TasksIcon } from "./icons";
@@ -39,11 +40,14 @@ function agoText(day: string, today: string) {
  * ตำแหน่งของผู้ส่ง — อ่านตำแหน่งตามสัญญาจ้างจากทะเบียนฝ่ายบุคคล (จับคู่ด้วยชื่อ
  * เพราะรหัสพนักงานของสองชุดยังชนกันที่ E11 ดู erp-maz-hr-pages) ไม่เจอค่อยใช้ตำแหน่งในทีม
  */
+/* ชื่อผู้ส่ง — รหัสในทีม หรือชื่อเต็มที่เก็บไว้ใน sub.by โชว์เป็นชื่อเล่น (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+const whoName = (k: string) => nameOf(memberName(k));
+
 function usePosition() {
   const hr = useHr();
   return (id: string) => {
     const name = memberName(id);
-    const e = hr.emp.find((x) => x.name === name);
+    const e = hr.emp.find((x) => x.name === name || displayName(x) === name);
     if (e) return hrPos(e.pos).label;
     return memberOf(id)?.roles.map(roleLabel).join(" · ") ?? "";
   };
@@ -70,8 +74,8 @@ export function PmReviewsPage() {
 
   return (
     <div className="space-y-4">
-      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-      <h1 className="sr-only">งานรอตรวจ</h1>
+      {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1">งานรอตรวจ</h1>
       <ReadOnlyNote />
 
       {/* แท็บ: งานที่ทีมส่งมาให้ PM ตรวจ · รอบที่ลูกค้าตอบกลับผ่านลิงก์ตรวจงาน */}
@@ -153,7 +157,7 @@ export function PmReviewsPage() {
                       {t.name}
                     </b>
                     <span className="mt-0.5 flex flex-wrap items-center gap-1.5" style={{ gridArea: "who" }}>
-                      <b className="text-[13px] font-semibold text-[#6E6164]">{memberName(who)}</b>
+                      <b className="text-[13px] font-semibold text-[#6E6164]">{whoName(who)}</b>
                       {pos && (
                         <em className="rounded-full bg-[#F3EEF0] px-[9px] py-0.5 text-[11.5px] font-semibold text-[#6E6164] not-italic">
                           {pos}
@@ -220,7 +224,7 @@ export function PmReviewsPage() {
                     >
                       <td data-label="งาน">{t.name}</td>
                       <td data-label="ผู้ส่ง">
-                        <b className="block font-semibold">{memberName(who)}</b>
+                        <b className="block font-semibold">{whoName(who)}</b>
                         <em className="block text-[11.5px] text-muted-foreground not-italic">{position(who)}</em>
                       </td>
                       <td data-label="โปรเจค" className="muted">
@@ -338,7 +342,7 @@ export function ReviewDialog({
       </Section>
 
       <Section title="ผู้ส่ง">
-        <Row2 k="ชื่อ" v={memberName(who)} />
+        <Row2 k="ชื่อ" v={whoName(who)} />
         <Row2 k="ตำแหน่ง" v={position(who) || "—"} />
       </Section>
 

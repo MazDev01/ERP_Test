@@ -4,46 +4,108 @@
  * เนื้อหาในกล่องประวัติ (.he-dbody .he-sect .he-kv) ยังขึ้นต้นด้วย body:has(.he-m) เพื่อไม่ให้หลุดไปหน้าอื่นที่ใช้ชิ้นส่วนเดียวกัน
  * จุดตัดเดียวกับแถบล่างของ app-shell (md = 768px) จอคอมไม่ถูกแตะ
  * สีตัวอักษรจางของต้นแบบ (#8A7E81 / #9A8E91) ต่ำกว่า 4.5:1 บนพื้นขาว จึงใช้ #6E6164 แทน
+ * เขียนนอก @layer — คลาส Tailwind ของการ์ด (อยู่ใน layer) จึงถูกทับได้บนมือถือ
  */
 @media (max-width: 767.98px) {
-  /* แถบหัวเรื่องจอคอม (ค้นหา/ตัวกรอง/ปุ่มเพิ่ม) — มือถือใช้แถวบน ช่องค้นหา ชิป แผ่นตัวกรอง และปุ่มลอยแทน */
-  .he-m > .bar { display: none; }
+  /* หน้านี้มีหัวของตัวเอง (.m-he-head) — ซ่อนแถบบนและชิปเมนูย่อยของ shell · พื้น #F7F5F6 (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  body:has(.he-m) { background: #f7f5f6; }
+  body:has(.he-m) .app-top,
+  body:has(.he-m) .app-sub { display: none; }
+  body:has(.he-m) #main { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
+  /* แผ่นตัวกรองเปิดอยู่ ซ่อนแถบล่าง (ปุ่มลอยซ่อนจาก React) */
+  body:has(.he-fsheet) .botnav { display: none; }
 
-  /* การ์ดพนักงาน: รูปกลม 52px | ชื่อ + สถานะ / ตำแหน่ง / แผนก · ชิปแถวล่างคั่นเส้นประ */
-  .he-m .he-list { gap: 10px; }
-  .he-m .he-card {
-    display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 12px; row-gap: 2px;
-    align-items: start; padding: 14px; border: 0; border-radius: 20px; background: #fff;
-    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
+  /* แถบหัวเรื่องจอคอม (ค้นหา/ตัวกรอง/ปุ่มเพิ่ม) — มือถือใช้หัว ช่องค้นหา ชิป แผ่นตัวกรอง และปุ่มลอยแทน */
+  .he-m > .bar { display: none; }
+  .he-m > .m-he-top { margin: 0; color: #2a1f22; }
+
+  /* หัว: ปุ่มกลม 42px · "พนักงาน N คน" · ปุ่มตัวกรอง (จุดแดงเมื่อเลือกแผนก/ตำแหน่งไว้) */
+  .m-he-head { display: flex; align-items: center; gap: 10px; padding: 0 0 6px; }
+  .m-he-head > a,
+  .m-he-head > button {
+    position: relative; flex: none; display: flex; align-items: center; justify-content: center;
+    width: 42px; height: 42px; padding: 0; border-radius: 50%; border: 1px solid #efe3e5;
+    background: #fff; color: #2a1f22; box-shadow: 0 4px 10px -6px rgba(90, 20, 35, 0.3);
   }
-  .he-m .he-card:hover { border: 0; box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04); }
-  .he-m .he-photo {
-    grid-row: 1 / 4; width: 52px; height: 52px; border-radius: 50%; border: 0; background: #f3eef0;
+  .m-he-head h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 700; }
+  .m-he-head h1 small { margin-left: 6px; font-size: 12.5px; font-weight: 500; color: #6e6164; }
+  .m-he-head button i {
+    display: none; position: absolute; top: 6px; right: 7px; width: 8px; height: 8px;
+    border-radius: 50%; background: #c8102e; border: 2px solid #fff;
   }
-  .he-m .he-photo svg { width: 24px; height: 24px; margin: 0; }
-  .he-m .he-photo em { display: none; }
-  .he-m .he-info { display: contents; }
-  .he-m .he-top {
-    grid-column: 2; display: flex; flex-wrap: nowrap; align-items: flex-start;
-    justify-content: space-between; gap: 8px;
+  .m-he-head button.on i { display: block; }
+
+  /* ค้นหาแบบเม็ดยา 46px */
+  .m-he-search {
+    display: flex; align-items: center; gap: 8px; height: 46px; margin: 8px 0 0; padding: 0 14px;
+    border-radius: 999px; background: #fff; border: 1px solid #efe6e8;
   }
-  .he-m .he-name { min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.3; }
-  .he-m .he-top > span { flex: none; font-size: 11.5px; padding: 3px 9px; white-space: nowrap; }
-  .he-m .he-pos { grid-column: 2; margin: 0; font-size: 13px; font-weight: 600; color: #2a1f22; }
-  .he-m .he-dept { grid-column: 2; font-size: 13px; color: #6e6164; }
-  .he-m .he-chips {
-    grid-column: 1 / -1; margin: 10px 0 0; padding-top: 10px; gap: 6px;
-    border-top: 1.5px dashed #ece3e5;
+  .m-he-search input {
+    flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: none;
+    font: inherit; font-size: 14.5px; color: #2a1f22;
   }
-  .he-m .he-chip { font-size: 12px; padding: 3px 10px; border: 0; border-radius: 999px; }
-  .he-m .he-chip-plain { background: #faf6f7; color: #6e6164; }
-  /* วงแหวนทดลองงาน — คนที่ไม่ได้ทดลองงานไม่ต้องขึ้น (หัวกลุ่มบอกประเภทแล้ว) */
-  .he-m .he-side {
-    grid-column: 1 / -1; display: flex; align-items: center; gap: 10px;
-    width: 100%; margin: 6px 0 0; padding: 0; border: 0; text-align: left;
+
+  /* ชิปสถานะ เลื่อนแนวนอน ชิดขอบจอ */
+  .m-he-chips {
+    display: flex; gap: 8px; margin: 0 -16px; padding: 12px 16px 4px;
+    overflow-x: auto; scrollbar-width: none;
   }
-  .he-m .he-side:not(:has(svg)) { display: none; }
-  .he-m .he-side > span:last-child { margin: 0; font-size: 12px; color: #6e6164; }
+  .m-he-chips::-webkit-scrollbar { display: none; }
+  .m-he-chips button {
+    flex: none; height: 38px; padding: 0 16px; border: 0; border-radius: 999px;
+    background: #ede8ea; color: #6e6164; font: inherit; font-size: 13.5px; font-weight: 600;
+  }
+  .m-he-chips button.on { background: #c8102e; color: #fff; }
+
+  /* รายการ (ต้นแบบ .elist / .elist .erow): คอลัมน์เดียว ห่าง 10px — ไม่แบ่งกลุ่ม */
+  .he-m > .he-list { margin-top: 0; padding-top: 8px; }
+  .m-he-list { display: flex; flex-direction: column; gap: 10px; }
+
+  /* การ์ด: รูปกลม 52px | ชื่อ + สถานะ / ตำแหน่ง / แผนก · ชิปคั่นเส้นประ · บรรทัดท้าย */
+  .m-he-card {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px;
+    align-items: start; padding: 14px; border-radius: 20px; background: #fff;
+    box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04); color: #2a1f22; cursor: pointer;
+  }
+  .m-he-card.dim { opacity: 0.62; }
+  .m-he-card:focus-visible { outline: 2.5px solid #c8102e; outline-offset: -2px; }
+  .m-he-photo {
+    grid-row: 1 / 3; display: flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 50%; overflow: hidden; background: #f3eef0; color: #6e6164;
+  }
+  .m-he-top2 {
+    grid-column: 2 / -1; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  }
+  .m-he-top2 > b { min-width: 0; font-size: 16px; font-weight: 700; line-height: 1.3; }
+  .m-he-st {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px;
+    border-radius: 20px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .m-he-st i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .m-he-st.on { color: #14875a; background: #e7f5ee; }
+  .m-he-st.off { color: #6e6164; background: #eff0f3; }
+  .m-he-role { grid-column: 2 / -1; font-size: 13px; font-weight: 600; color: #2a1f22; }
+  .m-he-dept { grid-column: 2 / -1; font-size: 13px; color: #6e6164; }
+  .m-he-chips2 {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: 10px; padding-top: 10px; border-top: 1.5px dashed #ece3e5;
+  }
+  .m-he-chips2 > span {
+    padding: 3px 10px; border-radius: 999px; background: #faf6f7; color: #6e6164; font-size: 12px;
+  }
+  /* ครบกำหนดทดลองงาน = ส้ม · เลยกำหนด / พ้นสภาพ = แดง */
+  .m-he-chips2 > span.due { background: #fdf2e3; color: #b4630b; font-weight: 600; }
+  .m-he-chips2 > span.late { background: #fdecee; color: #c0121f; font-weight: 600; }
+  .m-he-eside { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+  .m-he-eside p { margin: 6px 0 0; font-size: 12px; color: #6e6164; }
+  .m-he-donut { position: relative; display: block; flex: none; width: 56px; height: 56px; margin-top: 6px; }
+  .m-he-donut svg { display: block; transform: rotate(-90deg); }
+  .m-he-donut .ring { fill: none; stroke: #dfe3ea; stroke-width: 5; }
+  .m-he-donut .val { fill: none; stroke-width: 5; stroke-linecap: round; }
+  .m-he-donut b {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800;
+  }
 }
 
 /* กล่องเพิ่ม / แก้ไข / ผ่านทดลองงาน (Sheet) เป็นแผ่นจากล่างจอด้วย Sheet กลาง (styles/mobile/sheet.css) + คลาส .he-dlg
@@ -56,15 +118,28 @@
     width: 100%; max-width: none; max-height: 92vh; margin: 0; border-radius: 24px 24px 0 0;
     background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none;
   }
+  /* แบนเนอร์แดงซ่อน ใช้หัวขาวแทน (ต้นแบบ .veil .bhead) */
+  .he-detail .he-banner { display: none; }
+  .he-detail .he-bhead {
+    display: flex; flex: none; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 16px 18px 10px; border-bottom: 1px solid #f2eaec;
+  }
+  .he-detail .he-bhead h2 { margin: 0; font-size: 18px; font-weight: 700; color: #2a1f22; }
+  .he-detail .he-bhead button {
+    display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+    border-radius: 10px; border: 1px solid #ece3e5; background: #fff; color: #2a1f22;
+  }
+  /* แถบล่าง (ต้นแบบ .veil .bfoot): สองคอลัมน์ 1 : 1.4 ปุ่มสูง 48 */
   .he-detail .he-dfoot {
+    display: grid; grid-template-columns: 1fr 1.4fr; flex: none;
     gap: 10px; padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
     border-top: 1px solid #f2eaec; background: #fff;
   }
-  .he-detail .he-dfoot > .btn { flex: 1; height: 48px; border-radius: 14px; justify-content: center; }
-  .he-detail .he-dfoot > .btn:last-child { flex: 1.4; }
+  .he-detail .he-dfoot > .btn { height: 48px; border-radius: 14px; justify-content: center; }
+  .he-detail .he-dfoot > .btn:only-child { grid-column: 1 / -1; }
 
   /* กล่องประวัติ: เนื้อหาเว้นข้าง 18px หัวข้อหมวดไม่มีกรอบ */
-  body:has(.he-m) .he-dbody { padding: 0 18px 18px; }
+  body:has(.he-m) .he-dbody { padding: 6px 18px 18px; }
   body:has(.he-m) .he-sect { margin-top: 12px; padding: 0; border: 0; border-radius: 0; background: none; }
   body:has(.he-m) .he-sect h3 { margin: 6px 0; font-size: 14px; }
 

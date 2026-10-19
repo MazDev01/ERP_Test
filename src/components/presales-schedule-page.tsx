@@ -26,6 +26,7 @@ import { type PresalesRequest } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { parseIsoDate, TH_MONTHS_SHORT } from "@/lib/format";
 import { useLeaveRecords } from "@/lib/leave-store";
+import { fmtLeaveHours, leaveHoursOf } from "@/lib/leave-data";
 import { USERS } from "@/lib/mock-data";
 import {
   invitedEvents,
@@ -41,6 +42,7 @@ import { AppointmentSheet } from "./appointment-sheet";
 import { Sheet } from "./lead-dialogs";
 import { ThaiDatePicker } from "./thai-date-picker";
 import { Field, Input, Select } from "./ui";
+import { Time24Input, UI_TIME_CLS } from "./time24-input"; // ช่องเวลา 24 ชม. แทน input[type=time] (ผู้ใช้สั่ง 13 ต.ค. 2569)
 import {
   ColorPick,
   ScheduleBoard,
@@ -83,7 +85,7 @@ export function PresalesSchedulePage() {
   const [open, setOpen] = useState<PmEvent | null>(null);
   /* ฟอร์มตั้งนัดของตัวเอง — เปิดจากปุ่มเพิ่ม หรือกดที่นัดที่ตัวเองตั้งไว้ */
   const [form, setForm] = useState<{ day: string; event?: PmEvent } | null>(null);
-  const nameOfCus = (code: string) => crm.customers.find((c) => c.code === code)?.name ?? code;
+  const nameOfCus = (code: string) => crm.customers.find((c) => c.code === code)?.name ?? "—";
   /* คำขอที่ยังทำอยู่ของเรา — นัดต้องผูกกับใบใดใบหนึ่งในนี้ */
   const myRequests = crm.presales.filter((r) => mine(r) && r.status !== "ปิดคำขอ");
 
@@ -107,9 +109,9 @@ export function PresalesSchedulePage() {
     };
     const nameOf = new Map(crm.customers.map((c) => [c.code, c.name]));
     for (const r of crm.presales.filter(mine)) {
-      const cus = nameOf.get(r.customerCode) ?? r.customerCode;
+      const cus = nameOf.get(r.customerCode) ?? "—";
       if (r.status === "รอรับงาน" || r.status === "กำลังทำ" || r.status === "รอข้อมูลเพิ่ม")
-        add("due", `due-${r.no}`, r.due, r.due, `กำหนดส่งข้อเสนอ · ${cus}`, `${r.no} · ${r.problem}`, psWorkLink(r.no));
+        add("due", `due-${r.no}`, r.due, r.due, `กำหนดส่งข้อเสนอ · ${cus}`, r.problem, psWorkLink(r.no));
       for (const x of crm.presalesRounds.filter((x) => x.requestNo === r.no))
         add("sent", `sent-${r.no}-${x.round}`, x.at, x.at, `ส่งข้อเสนอรอบที่ ${x.round} · ${cus}`, x.note, psWorkLink(r.no));
     }
@@ -131,7 +133,7 @@ export function PresalesSchedulePage() {
     for (const l of leave) {
       if (l.status === "ไม่อนุมัติ" || l.status === "ยกเลิก") continue;
       const state = l.status === "อนุมัติแล้ว" ? "อนุมัติแล้ว" : "รออนุมัติ";
-      add("leave", `leave-${l.id}`, l.date, l.toDate || l.date, l.type, `${state} · ${l.id}`, `/leave?find=${encodeURIComponent(l.id)}`);
+      add("leave", `leave-${l.id}`, l.date, l.toDate || l.date, `${l.type} · ${fmtLeaveHours(leaveHoursOf(l))}` /* จำนวนลาเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) */, state, `/leave?find=${encodeURIComponent(l.id)}`);
     }
     /* นัดที่เราตั้งเอง กับนัดที่ PM/GM เชิญเรา — กดแล้วเปิดกล่องในหน้านี้ ไม่มีที่ให้ไปต่อ */
     for (const e of invitedEvents(sc.events, ME.employeeId))
@@ -157,7 +159,8 @@ export function PresalesSchedulePage() {
   return (
     <div className="space-y-4">
       {/* หน้าตาเดียวกับตารางงาน PM — ไม่มีหัวข้อหน้า ดับเบิลคลิกช่องวันเพื่อเพิ่มนัด (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-      <h1 className="sr-only">ตารางงาน</h1>
+      {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1">ตารางงาน</h1>
 
       <ScheduleBoard
         nav={nav}
@@ -346,7 +349,7 @@ function PsEventForm({
             >
               {requests.map((r) => (
                 <option key={r.no} value={r.no}>
-                  {r.no} · {customerName(r.customerCode)}
+                  {customerName(r.customerCode)} · {r.problem.length > 40 ? `${r.problem.slice(0, 40)}…` : r.problem}
                 </option>
               ))}
             </Select>
@@ -382,10 +385,10 @@ function PsEventForm({
             />
           </Field>
           <Field label="เวลาเริ่ม">
-            <Input type="time" step={900} value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Time24Input step={900} className={UI_TIME_CLS} value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>
           <Field label="ถึง">
-            <Input type="time" step={900} value={to} onChange={(e) => setTo(e.target.value)} />
+            <Time24Input step={900} className={UI_TIME_CLS} value={to} onChange={(e) => setTo(e.target.value)} />
           </Field>
         </div>
 

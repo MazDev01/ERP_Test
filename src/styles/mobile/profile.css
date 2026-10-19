@@ -228,6 +228,8 @@
     letter-spacing: normal;
     color: #2a1f22;
   }
+  /* ผู้ติดต่อฉุกเฉินเป็นกล่องแยก เห็นง่ายด้วยแถบแดงซ้าย (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  .pf-m .pf-grp.pf-sos { border-left: 4px solid var(--destructive); }
   .pf-m .pf-grp-head { margin-bottom: 14px; }
   .pf-m .pf-grp-head h3 { margin: 0; }
 

@@ -27,12 +27,12 @@ export function CustomerCombo({
   invalid?: boolean;
   /** ล็อกไว้ เช่น ตอนแก้ใบเสนอราคาเดิมที่เปลี่ยนลูกค้าไม่ได้ */
   disabled?: boolean;
-  /** เลือกแล้วแสดงแค่ชื่อ (ต้นแบบ quotation-new) — ปกติแสดง "ชื่อ (รหัส)" ตามต้นแบบ presales-new */
+  /** เลือกแล้วแสดงแค่ชื่อ — ปกติแสดง "ชื่อ (ผู้ติดต่อ)" ไม่แสดงรหัส (ผู้ใช้สั่ง 14 ต.ค. 2569) */
   nameOnly?: boolean;
   /** ป้าย "ไม่มีเลขภาษี" ท้ายแถว — ต้นแบบมีเฉพาะหน้าใบเสนอราคา */
   taxFlag?: boolean;
 }) {
-  const label = (c: Customer) => (nameOnly ? c.name : `${c.name} (${c.code})`);
+  const label = (c: Customer) => (nameOnly || !c.contact ? c.name : `${c.name} (${c.contact})`);
   const [text, setText] = useState(value ? label(value) : "");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(-1);
@@ -85,7 +85,7 @@ export function CustomerCombo({
           aria-controls={listId}
           aria-autocomplete="list"
           autoComplete="off"
-          placeholder="พิมพ์ชื่อ ผู้ติดต่อ เบอร์โทร หรือรหัส"
+          placeholder="พิมพ์ชื่อ ผู้ติดต่อ หรือเบอร์โทร"
           onChange={(e) => {
             setText(e.target.value);
             if (value) onChange(null);
@@ -158,7 +158,7 @@ export function CustomerCombo({
                     <span className="min-w-0 flex-1">
                       <b className="clip block text-[13.5px] font-medium">{c.name}</b>
                       <span className="clip block text-[11.5px] text-muted-foreground">
-                        {[c.contact, c.phone, c.code].filter(Boolean).join(" · ")}
+                        {[c.contact, c.phone].filter(Boolean).join(" · ")}
                       </span>
                     </span>
                     {taxFlag && !c.taxId && (

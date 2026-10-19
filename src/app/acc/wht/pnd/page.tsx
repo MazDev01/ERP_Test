@@ -1,13 +1,6 @@
-import { Suspense } from "react";
-import { AccWhtPndPage } from "@/components/acc-wht-forms";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "ใบแนบ ภ.ง.ด.3 / ภ.ง.ด.53 — ERP MAZ" };
-
-/* อยู่ใต้เมนูหัก ณ ที่จ่าย สิทธิ์เข้าหน้าตามเมนูนั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+/* บริษัทไม่ใช้ใบแนบ ภ.ง.ด.3 / ภ.ง.ด.53 — ถอดหน้านี้ออก ลิงก์เก่าพากลับหน้ายื่นภาษี (ผู้ใช้สั่ง 16 ต.ค. 2569) */
 export default function Page() {
-  return (
-    <Suspense fallback={null}>
-      <AccWhtPndPage />
-    </Suspense>
-  );
+  redirect("/acc/wht");
 }

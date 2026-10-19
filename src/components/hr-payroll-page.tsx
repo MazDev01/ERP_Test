@@ -9,7 +9,7 @@
  *
  * พนักงานทดลองงานจ่ายค่าจ้างรายวันตามวันที่มาทำงานจริง คนละฐานกับเงินเดือน จึงแยกตารางและคอลัมน์
  *
- * ก่อนปิดรอบต้องส่งยอดให้ CEO อนุมัติ (แยกกลุ่ม) — ปิดได้เมื่อ CEO อนุมัติแล้วเท่านั้น
+ * ก่อนปิดรอบเงินเดือนต้องส่งยอดให้ CEO อนุมัติ (แยกกลุ่ม) — ปิดได้เมื่อ CEO อนุมัติแล้วเท่านั้น แล้วจึงออกสลิป/เผยแพร่ (ผู้ใช้สั่ง 19 ต.ค. 2569)
  *
  * ปิดแล้วแก้ไม่ได้ทุกช่อง (HR-BR-03) ถ้าคำนวณผิดให้บันทึกเป็นรายการปรับปรุงในรอบถัดไป
  * ปิดแล้วปิดเลย (ผู้ใช้สั่ง 6 ต.ค. 2569)
@@ -18,6 +18,7 @@
  * ปล่อยให้เห็นตัวเลขเวลาที่หน้าสรุปเวลาทำงานไปก่อน ดีกว่าหักตามที่เดาเอง
  */
 
+import { displayName } from "@/lib/emp-name";
 import { settings } from "@/lib/system-settings";
 import Link from "next/link";
 import { useState } from "react";
@@ -31,19 +32,17 @@ import {
   otKindAt,
   commissionBase,
   empOf,
-  payApproval,
   reimbItems,
   baseSalaryIn,
   ceilingOf,
   cycleMonthOf,
   defaultHrMonth,
   earnOf,
-  extraOf,
   hourly,
   hrCycle,
   hrPos,
   isDaily,
-  extraKeyOf,
+  probPayNote,
   payLines,
   linesOfGroup,
   sumOfGroup,
@@ -55,15 +54,27 @@ import {
   defaultDailyRange,
   isDailyRoundKey,
   rangeLabel,
+  probRoundLabel,
+  PAY_CUT_ITEMS,
+  PAY_INCOME_ITEMS,
   type Cycle,
   type Employee,
   type PaySlipCalc,
   type CycleSum,
   type PayGroup,
+  type PayApproval,
   type ComSource,
   type PayLine,
   GROUP_LABEL,
+  payApproval,
+  payDrifted,
+  payNamesOf,
+  paySnapOf,
+  PROB_DAY_DIVISOR,
+  LEAVE_CUT_KEY,
+  HR_LEAVE_LABEL,
 } from "@/lib/hr-data";
+import { fmtLeave, fmtLeaveHours } from "@/lib/leave-data";
 import { sendPayrollToCeo, useHr } from "@/lib/hr-store";
 import { closeDailyPayFlow, closePayrunFlow } from "@/lib/flow";
 import {
@@ -83,15 +94,17 @@ import {
   type PayCardRow,
   MonthStepper,
 } from "./hr-steps";
-import { useComSource, useHrTime, useMissingApproved, usePayrollVoidWatch, type MissingReq } from "@/lib/hr-link";
+import { useComSource, useHrTime, useMissingApproved, usePayrollAutoResubmit, usePayrollSumFn, type MissingReq } from "@/lib/hr-link";
+import { TESTING_ALLOW_CLOSE, leaveText, useOpenClashes, type ClashItem } from "@/lib/hr-clash";
 import type { Role } from "@/lib/role";
 import { EyeIcon, PencilIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { ThaiDatePicker } from "./thai-date-picker";
 import { EditExtra } from "./hr-extra-edit";
+import { PayrollSummarySheet } from "./payroll-summary-sheet";
 
 type Tab = "month" | "daily";
-/* บรรทัดเงินเดือนคิดที่ hr-data ที่เดียว หน้าอนุมัติของ CEO อ่านตัวเดียวกัน ห้ามคิดเองที่นี่ */
+/* บรรทัดเงินเดือนคิดที่ hr-data ที่เดียว หน้าสลิปและประวัติรอบอ่านตัวเดียวกัน ห้ามคิดเองที่นี่ */
 type Line = PayLine;
 
 /* เหตุผลเดียวกันทุกปุ่มที่กดไม่ลงเพราะรอบปิดแล้ว (HR-BR-03) */
@@ -113,6 +126,8 @@ export function HrPayrollPage() {
   const [closing, setClosing] = useState(false);
   /* แก้ค่าตอบแทนที่ไม่มีสูตร ทำได้เฉพาะตอนรอบยังเปิด — ย้ายมาจากหน้าสลิปซึ่งเป็นขั้นหลังปิดรอบ */
   const [editing, setEditing] = useState<string | null>(null);
+  /* ตารางสรุปเงินเดือน A4 แนวนอน ของรอบเดือน (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const [summary, setSummary] = useState(false);
   /* ตัวเลือกวันเปิดได้ทีละช่อง กดที่อื่นในหน้า = ปิด */
   const [pick, setPick] = useState<"from" | "to" | null>(null);
   /* มือถือ: เลือกกลุ่มจากสี่เหลี่ยมก่อน (ต้นแบบ m-pay-tiles) · แผ่นปฏิทินเลือกรอบแทนช่องวันที่ */
@@ -145,7 +160,7 @@ export function HrPayrollPage() {
   const month = isDay ? undefined : cycleMonthOf(range, months);
   const timePeriod = month ? hr.periods.find((p) => p.month === month) : undefined;
   const payrun = month ? hr.payruns.find((p) => p.month === month) : undefined;
-  /* คีย์ของรอบ — การอนุมัติของ CEO ผูกกับคีย์นี้ · รายวันใช้รหัสรอบ "จาก~ถึง" */
+  /* คีย์ของรอบ — รายวันใช้รหัสรอบ "จาก~ถึง" */
   const runKey = isDay ? round?.id : month;
   /* ปิดรอบแยกกลุ่ม ปุ่มและด่านกันข้ามขั้นจึงอ่านจากแท็บที่เปิดอยู่ */
   const timeClosed = isDay ? Boolean(round) : Boolean(timePeriod?.closed);
@@ -160,8 +175,11 @@ export function HrPayrollPage() {
   const rows: Line[] = isDay
     ? dailyPayLines(hr.emp, calcRange, time, hr.extras, today, src, round)
     : payLines(hr.emp, range, time, hr.extras, today, src, payrun, month);
-  const monthly = linesOfGroup(rows, "month");
-  const daily = linesOfGroup(rows, "day");
+  /* ผ่านทดลองงานกลางรอบ — บอกใต้ชื่อในรอบที่ยังจ่ายแบบทดลองงานและรอบแรกที่เริ่มเงินเดือน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const passNote = (e: Employee) =>
+    e.probPass && (isDaily(e, calcRange) || calcRange.from === e.probPass.payFrom) ? probPayNote(e) : null;
+  const monthly = linesOfGroup(rows, "month", calcRange);
+  const daily = linesOfGroup(rows, "day", calcRange);
 
   const total = monthly.reduce(
     (a, { c }) => ({
@@ -183,18 +201,18 @@ export function HrPayrollPage() {
     { days: 0, net: 0 },
   );
 
-  /* CEO อนุมัติยอดของกลุ่มนี้หรือยัง — ยอดที่อนุมัติต้องเท่ากับยอดตอนนี้ ถ้าตัวเลขขยับหลังอนุมัติต้องส่งใหม่
-     ตัวเลขขยับเมื่อไร ตัวเฝ้าจะยกเลิกการอนุมัติให้เอง ป้ายสถานะจะบอกเหตุผลไว้ */
-  usePayrollVoidWatch();
   const groupLines = group === "month" ? monthly : daily;
   const groupSum = isDay ? dailySumOf(groupLines, calcRange, hr.extras) : sumOfGroup(groupLines, group, range, hr.extras);
-  const ap = runKey ? payApproval(hr.payApprove, runKey, group) : { status: "draft" as const };
-  const drifted =
-    ap.status === "approved" && ap.net !== undefined && Math.abs(ap.net - groupSum.net) > 0.005;
+  /*
+   * CEO อนุมัติยอดก่อนปิดรอบเงินเดือน — กลับมาใช้ (ผู้ใช้สั่ง 19 ต.ค. 2569 · ยกเลิกคำสั่ง 13 ต.ค.)
+   * แก้ยอดหลังส่ง (รอ/อนุมัติแล้ว/ไม่อนุมัติ) ระบบส่งให้ CEO อนุมัติใหม่เอง ไม่ต้องกดส่งซ้ำ (ผู้ใช้สั่ง 19 ต.ค. 2569)
+   */
+  usePayrollAutoResubmit();
+  const sumOf = usePayrollSumFn();
+  const ap: PayApproval = runKey ? payApproval(hr.payApprove, runKey, group) : { status: "draft" };
+  /* ช่วงสั้น ๆ ก่อนตัวเฝ้าส่งใหม่ — อนุมัติแล้วแต่ยอดขยับ ห้ามปิดรอบ */
+  const drifted = !payClosed && ap.status === "approved" && Boolean(runKey) && payDrifted(ap, groupSum);
   const approved = ap.status === "approved" && !drifted;
-  const canSend =
-    Boolean(runKey) && timeClosed && !payClosed &&
-    (ap.status === "draft" || ap.status === "rejected" || drifted);
 
   /*
    * ใบที่อนุมัติแล้วแต่ไม่อยู่ในผลคำนวณของรอบนี้ — ปิดรอบไม่ได้เด็ดขาด (ผู้ใช้กำหนด 23 ก.ย. 2569)
@@ -207,6 +225,18 @@ export function HrPayrollPage() {
     missing.length > 0
       ? `มีใบที่อนุมัติแล้วยังไม่เข้ารอบนี้ ${missing.length} ใบ — ปิดรอบตอนนี้เงินก้อนนี้จะหาย`
       : undefined;
+  /*
+   * วันลาที่มีเช็คอินและ HR ยังไม่ยืนยัน นับเป็นรายการที่ต้องตรวจเหมือนหน้าสรุปเวลาทำงาน (ผู้ใช้สั่ง 15 ต.ค. 2569)
+   * ช่วงทดสอบ (TESTING_ALLOW_CLOSE = true) แค่เตือน · false = กันปิดรอบเงินเดือนด้วย
+   */
+  const clashes = useOpenClashes(groupLines.map((x) => x.e.id), calcRange);
+  const clashWhy =
+    !TESTING_ALLOW_CLOSE && clashes.length > 0
+      ? `ยังมีรายการที่ต้องตรวจ ${clashes.length} รายการ — ลาแล้วแต่มีเช็คอินที่ยังไม่ยืนยัน`
+      : undefined;
+  /* ลิงก์ไปกล่องรายวันของคนนั้นที่หน้าสรุปเวลาทำงาน */
+  const dayHref = (id: string) =>
+    `${payHref("/hr/timesheet", tab, month, isDay ? dayRange : null)}&emp=${encodeURIComponent(id)}`;
 
   /* เหตุผลที่ยังปิดรอบเงินเดือนไม่ได้ — ใช้ทั้งตอนปิดปุ่มและตอนบอกเหตุผลบนมือถือ */
   const payCloseWhy = !runKey
@@ -216,18 +246,28 @@ export function HrPayrollPage() {
     : !timeClosed
       ? "ต้องปิดรอบเวลาทำงานของกลุ่มนี้ก่อน"
       : /* ใบที่ยังไม่เข้ารอบมาก่อนเรื่องการอนุมัติ — ตัวเลขยังไม่นิ่ง อนุมัติไปก็เป็นโมฆะอยู่ดี */
-        missWhy
-        ? missWhy
-        : !approved
-          ? "ต้องให้ CEO อนุมัติยอดก่อนจึงปิดรอบได้"
-          : "";
+        (missWhy ??
+          clashWhy ??
+          (!approved
+            ? ap.status === "waiting"
+              ? (ap.ver ?? 0) > 0
+                ? "แก้ไขแล้ว รอ CEO อนุมัติยอดใหม่ก่อนจึงปิดรอบได้"
+                : "รอ CEO อนุมัติยอดก่อนจึงปิดรอบได้"
+              : "ต้องส่งให้ CEO อนุมัติยอดก่อนจึงปิดรอบได้"
+            : ""));
+  /* ส่ง/ส่งใหม่ได้เมื่อรอบเวลาปิดแล้ว ยังไม่ปิดเงินเดือน และยังไม่มีใบค้างเข้ารอบ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const canSend =
+    Boolean(runKey) && timeClosed && !payClosed && !missWhy && !clashWhy &&
+    (ap.status === "draft" || ap.status === "rejected");
 
   function sendToCeo() {
     if (!runKey || !canSend) return;
+    /* ยอดชุดเดียวกับที่ตัวเฝ้าเทียบ (usePayrollSumFn) — ส่งแล้วจะไม่ถูกนับว่าแก้ทันที */
+    const snap = sumOf(runKey, group);
     sendPayrollToCeo(
       runKey,
       group,
-      { people: groupSum.n, net: groupSum.net, ss: groupSum.ss },
+      { people: snap.n, net: snap.net, ss: snap.ss, lines: paySnapOf(snap), names: payNamesOf(snap) },
       bkkStamp(),
     );
   }
@@ -243,7 +283,7 @@ export function HrPayrollPage() {
   return (
     <div className={`hp-page space-y-4 ${g.picked ? "" : "hp-pick"}`} onClick={() => setPick(null)}>
       <PayHead
-        title={isDay ? rangeLabel(dayRange) : month ? thaiMonth(month) : "กำหนดช่วงเอง"}
+        title={isDay ? probRoundLabel(dayRange) : month ? thaiMonth(month) : "กำหนดช่วงเอง"}
         onBack={g.picked ? g.home : undefined}
         onCal={isDay ? undefined : () => setCal(true)}
       />
@@ -251,20 +291,29 @@ export function HrPayrollPage() {
 
       {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
-        <h1 className="sr-only">คำนวณเงินเดือน</h1>
+        {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+        <h1 className="page-h1">คำนวณเงินเดือน</h1>
         <div className="tools ml-auto">
           {isDay ? (
-            <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+            <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
           ) : (
-            /* ไม่มีช่องวันที่และรอบสำเร็จรูป — เลือกเป็นเดือนอย่างเดียว (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-            <MonthStepper
-              months={months}
-              value={month ?? months[months.length - 1]}
-              onChange={(m) => {
-                setRange(hrCycle(m));
-                setViewing(null);
-              }}
-            />
+            <>
+              {/* ไม่มีช่องวันที่และรอบสำเร็จรูป — เลือกเป็นเดือนอย่างเดียว (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+              <MonthStepper
+                months={months}
+                value={month ?? months[months.length - 1]}
+                onChange={(m) => {
+                  setRange(hrCycle(m));
+                  setViewing(null);
+                }}
+              />
+              {/* ตารางสรุปเงินเดือนของรอบเดือนนี้ — พิมพ์/บันทึก PDF (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+              {month && (
+                <button type="button" className="btn glass-thin" style={{ height: 38 }} onClick={() => setSummary(true)}>
+                  ตารางสรุปเงินเดือน
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -272,7 +321,7 @@ export function HrPayrollPage() {
       <HrSteps month={month ?? undefined} range={isDay ? dayRange : null} group={tab} className="md:hidden" />
       {isDay && (
         <div className="hp-only-m">
-          <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+          <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
         </div>
       )}
 
@@ -280,9 +329,7 @@ export function HrPayrollPage() {
         <div className="strip">
           <HrStepTabs month={month ?? undefined} range={isDay ? dayRange : null} group={tab} />
           {payClosed ? (
-            /* ปิดแล้วปิดเลย ป้ายแทนที่ปุ่ม
-               ป้าย CEO ยังอยู่คู่กัน (ต้นแบบ hr-payroll.html · ceoTag ไม่ถูกซ่อนตอนปิดรอบ)
-               เพราะต้องเห็นได้ว่ารอบที่ปิดไปนั้นใครอนุมัติยอดและอนุมัติเมื่อไร */
+            /* ปิดแล้วปิดเลย ป้ายแทนที่ปุ่ม · ป้าย CEO อยู่คู่กันให้เห็นว่าใครอนุมัติเมื่อไร (ผู้ใช้สั่ง 19 ต.ค. 2569) */
             <div className="my-2 ml-auto flex flex-wrap items-center gap-2 max-md:ml-0 max-md:w-full max-md:justify-center">
               <CeoTag ap={ap} drifted={false} />
               <span className="tag t-ok">
@@ -290,13 +337,20 @@ export function HrPayrollPage() {
                 ปิดรอบแล้ว{" "}
                 {thaiDate((isDay ? round?.payClosedAt : payrun?.closedAt) ?? "")}
               </span>
+              <Link
+                href={payHref("/hr/payslip", tab, month, isDay ? dayRange : null)}
+                className="btn solid btn-solid"
+                style={{ height: 38 }}
+              >
+                ออกสลิปและเผยแพร่
+              </Link>
             </div>
           ) : (
-            /* มือถือ: เหลือแค่ป้ายสถานะ CEO กลางแถว ปุ่มย้ายไปท้ายรายการ (.hp-bottom) */
-            <div className="my-2 ml-auto flex flex-wrap items-center gap-2 max-md:my-0 max-md:ml-0 max-md:w-full max-md:justify-center">
+            /* มือถือ: ปุ่มย้ายไปท้ายรายการ (.hp-bottom) · ส่งให้ CEO อนุมัติก่อนปิดรอบ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+            <div className="my-2 ml-auto flex flex-wrap items-center gap-2 max-md:my-0 max-md:ml-0 max-md:w-full max-md:justify-center max-md:hidden">
               {canSend && (
                 <button type="button" className="btn glass-thin" style={{ height: 38 }} onClick={sendToCeo}>
-                  ส่งให้ CEO อนุมัติ
+                  {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
                 </button>
               )}
               <CeoTag ap={ap} drifted={drifted} />
@@ -316,6 +370,8 @@ export function HrPayrollPage() {
 
         {/* ใบที่อนุมัติแล้วแต่ไม่เข้ารอบ — ต้องเห็นว่าเป็นใบไหน ของใคร เท่าไร ไม่ใช่รู้แค่ว่ามี */}
         {!payClosed && missing.length > 0 && <MissingBox rows={missing} emp={hr.emp} />}
+        {/* ลาแล้วแต่มีเช็คอินที่ HR ยังไม่ยืนยัน — กดไปเปิดกล่องรายวันของคนนั้น (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+        {!payClosed && clashes.length > 0 && <ClashBox rows={clashes} emp={hr.emp} href={dayHref} />}
 
         {/* ไม่มีข้อความอธิบายการทำงานของระบบตอนปิดรอบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
         {/* ไม่มีกล่องประวัติรอบ และไม่จองร่องแถบเลื่อน ตารางเต็มกล่อง (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
@@ -354,6 +410,7 @@ export function HrPayrollPage() {
                       <PayRow
                         key={e.id}
                         emp={e}
+                        note={passNote(e)}
                         onOpen={() => setViewing(e.id)}
                       >
                         <td data-label="เงินเดือน (บาท)" className="c num">{baht(c.base)}</td>
@@ -401,21 +458,23 @@ export function HrPayrollPage() {
                   <Th w={104} unit="บาท">Incentive</Th>
                   <Th w={104} unit="บาท">ค่าตำแหน่ง</Th>
                   <Th w={112} unit="บาท">หักมาสาย</Th>
+                  {/* ภาษีหัก ณ ที่จ่าย 3% คิดในการคำนวณเงินเดือน บันทึกพร้อมรอบ (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+                  <Th w={120} unit="บาท">ภาษีหัก ณ ที่จ่าย 3%</Th>
                   <Th w={126} unit="บาท">สุทธิ</Th>
                 </tr>
               </thead>
               <tbody>
                 {blocked ? (
-                  <BlockedRow cols={9} month={month} range={isDay ? dayRange : null} group={tab} />
+                  <BlockedRow cols={10} month={month} range={isDay ? dayRange : null} group={tab} />
                 ) : daily.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-muted-foreground">
-                      ไม่มีพนักงานจ่ายรายวันในช่วงนี้
+                    <td colSpan={10} className="py-12 text-center text-muted-foreground">
+                      ไม่มีพนักงานทดลองงานในสัปดาห์นี้
                     </td>
                   </tr>
                 ) : (
                   daily.map(({ e, c, days, rate }) => (
-                    <PayRow key={e.id} emp={e} onOpen={() => setViewing(e.id)}>
+                    <PayRow key={e.id} emp={e} note={passNote(e)} onOpen={() => setViewing(e.id)}>
                       <td data-label="อัตรารายวัน (บาท)" className="c num">
                         {baht(rate)}
                       </td>
@@ -427,6 +486,7 @@ export function HrPayrollPage() {
                       <Money label="Incentive (บาท)" v={c.inc} />
                       <Money label="ค่าตำแหน่ง (บาท)" v={c.allow} />
                       <Minus label="หักมาสาย (บาท)" v={c.late} />
+                      <Minus label="ภาษีหัก ณ ที่จ่าย 3% (บาท)" v={c.wht} />
                       <td data-label="สุทธิ (บาท)" className="c num font-bold">{baht(c.net)}</td>
                     </PayRow>
                   ))
@@ -451,22 +511,22 @@ export function HrPayrollPage() {
                 </Link>
               </>
             ) : groupLines.length === 0 ? (
-              tab === "month" ? "ไม่มีพนักงานรายเดือนในช่วงที่เลือก" : "ไม่มีพนักงานจ่ายรายวันในช่วงนี้"
+              tab === "month" ? "ไม่มีพนักงานรายเดือนในช่วงที่เลือก" : "ไม่มีพนักงานทดลองงานในสัปดาห์นี้"
             ) : undefined
           }
         >
           {groupLines.map(({ e, c, days, rate }) => (
             <PayCard
               key={e.id}
-              title={e.name}
-              sub={hrPos(e.pos).label}
+              title={displayName(e)}
+              sub={[hrPos(e.pos).label, passNote(e)].filter(Boolean).join(" · ")}
               onOpen={() => setViewing(e.id)}
-              openLabel={`ดูที่มาของตัวเลขของ ${e.name}`}
+              openLabel={`ดูที่มาของตัวเลขของ ${displayName(e)}`}
               corner={
                 /* มีรอบแล้ว: ปุ่มดินสอแก้ค่าตอบแทน (รอบปิดแล้วกดไม่ลงพร้อมเหตุผล) · ยังไม่มีรอบ: ปุ่มตาดูที่มาของตัวเลข */
                 runKey ? (
                   <PayIconBtn
-                    label={`แก้ค่าตอบแทนของ ${e.name}`}
+                    label={`แก้ค่าตอบแทนของ ${displayName(e)}`}
                     title={payClosed ? LOCK_WHY : "แก้ค่าตอบแทนที่ไม่มีสูตร"}
                     disabled={payClosed}
                     onClick={() => setEditing(e.id)}
@@ -474,7 +534,7 @@ export function HrPayrollPage() {
                     <PencilIcon strokeWidth={1.9} />
                   </PayIconBtn>
                 ) : (
-                  <PayIconBtn label={`ดูที่มาของตัวเลขของ ${e.name}`} onClick={() => setViewing(e.id)}>
+                  <PayIconBtn label={`ดูที่มาของตัวเลขของ ${displayName(e)}`} onClick={() => setViewing(e.id)}>
                     <EyeIcon strokeWidth={1.9} />
                   </PayIconBtn>
                 )
@@ -496,10 +556,16 @@ export function HrPayrollPage() {
                       moneyRow("Incentive", c.inc),
                       moneyRow("ค่าตำแหน่ง", c.allow),
                     ]),
-                moneyRow("ปรับปรุง", c.adj),
+                /* รายการตามแบบสลิป (ผู้ใช้สั่ง 16 ต.ค. 2569) — รายได้อื่นที่กรอกเอง · รายการหักที่กรอกเอง */
+                moneyRow("รายได้อื่น", c.more),
+                moneyRow("รายการหัก", c.adj),
                 ...(tab === "month"
                   ? [{ label: "ประกันสังคม", value: `-${baht(c.ss)}`, tone: "text-destructive" }]
-                  : []),
+                  : [
+                      c.wht
+                        ? { label: "ภาษีหัก ณ ที่จ่าย 3%", value: `-${baht(c.wht)}`, tone: "text-destructive" }
+                        : { label: "ภาษีหัก ณ ที่จ่าย 3%", value: "—", muted: true },
+                    ]),
                 /* บวกลบตามได้ครบบนมือถือ — รายได้ − ประกันสังคม − หักมาสาย + ค่าใช้จ่ายคืน = สุทธิ */
                 c.late
                   ? { label: "หักมาสาย", value: `-${baht(c.late)}`, tone: "text-destructive" }
@@ -513,15 +579,17 @@ export function HrPayrollPage() {
           ))}
         </PayList>
 
-        {/* มือถือ: ปุ่มส่งให้ CEO / ปิดรอบ อยู่ท้ายรายการ ให้ไล่ดูข้อมูลก่อน (ต้นแบบ m-pay-bottom)
+        {/* มือถือ: ปุ่มปิดรอบ อยู่ท้ายรายการ ให้ไล่ดูข้อมูลก่อน (ต้นแบบ m-pay-bottom)
             บนมือถือไม่มีการชี้ค้าง เหตุผลที่ปิดรอบไม่ได้จึงต้องอยู่บนหน้าจอ ไม่ใช่ซ่อนใน title */}
-        {/* รอบปิดแล้วไม่มีปุ่มท้ายรายการ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+        {/* รอบปิดแล้วไม่มีปุ่มท้ายรายการ (ผู้ใช้สั่ง 6 ต.ค. 2569) · ไม่มีปุ่มส่งให้ CEO แล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
         {!payClosed && (
           <div className="hp-bottom">
             {payCloseWhy && <p className="hp-why">ยังปิดรอบเงินเดือนไม่ได้ — {payCloseWhy}</p>}
+            {/* ส่งให้ CEO อนุมัติ + ป้ายสถานะ บนมือถือ (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+            <CeoTag ap={ap} drifted={drifted} />
             {canSend && (
               <button type="button" className="btn glass-thin" onClick={sendToCeo}>
-                ส่งให้ CEO อนุมัติ
+                {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
               </button>
             )}
             <button
@@ -539,7 +607,7 @@ export function HrPayrollPage() {
         {blocked || tab === "month" ? null : (
           <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
             <span>
-              {rangeLabel(calcRange)}
+              {probRoundLabel(calcRange)}
               {/* รอบที่จบแล้วนับครบทั้งรอบ ไม่ต้องบอกว่านับถึงวันนี้ */}
               {daily.length > 0 && today < calcRange.to && ` · นับวันที่มาทำงานถึง ${thaiDate(today)}`}
             </span>
@@ -593,15 +661,19 @@ export function HrPayrollPage() {
         />
       )}
 
+      {summary && month && <PayrollSummarySheet month={month} onClose={() => setSummary(false)} />}
+
       {closing && runKey && !payClosed && (
         <CloseDialog
           runKey={runKey}
-          title={isDay ? `รอบจ่าย ${rangeLabel(calcRange)}` : `รอบ ${thaiMonth(runKey)}`}
+          title={isDay ? `รอบจ่าย ${probRoundLabel(calcRange)}` : `รอบ ${thaiMonth(runKey)}`}
           range={calcRange}
           group={group}
-          blocked={!timeClosed || !approved || missing.length > 0}
+          blocked={!timeClosed || missing.length > 0 || Boolean(clashWhy) || !approved}
           lines={groupLines}
           missing={missing}
+          clashes={clashes}
+          dayHref={dayHref}
           emp={hr.emp}
           /* ใบเบิกที่จ่ายคืนในรอบนี้ของคนในกลุ่ม — บันทึกว่าจ่ายแล้วพร้อมกับการปิดรอบ */
           reimbursed={groupLines.flatMap(({ e }) =>
@@ -629,12 +701,35 @@ export function MissingBox({ rows, emp }: { rows: MissingReq[]; emp: Employee[] 
       <b>มีใบที่อนุมัติแล้วแต่ไม่อยู่ในรอบนี้ {rows.length} ใบ — ปิดรอบไม่ได้จนกว่าจะครบ</b>
       {rows.map((x) => (
         <span key={`${x.kind}-${x.no}`} className="mt-1 block">
-          · {MISSING_KIND[x.kind]} {x.no} · {empOf(emp, x.emp)?.name ?? x.emp} ·{" "}
+          · {MISSING_KIND[x.kind]} · {displayName(empOf(emp, x.emp)) || "—"} ·{" "}
           {x.unit === "บาท" ? baht(x.amount) : x.amount} {x.unit} · {thaiDate(x.date)}
         </span>
       ))}
       <span className="mt-1 block">
         ตรวจที่ใบต้นทางก่อนปิดรอบ ไม่งั้นยอดเหล่านี้จะไม่ได้จ่ายในรอบนี้
+      </span>
+    </div>
+  );
+}
+
+/**
+ * รายการที่ต้องตรวจ: วันที่ลาแล้วแต่มีเช็คอินและ HR ยังไม่ยืนยัน (ผู้ใช้สั่ง 15 ต.ค. 2569)
+ * บอกว่าใคร วันไหน ลาอะไร พร้อมลิงก์ไปเปิดกล่องรายวันที่หน้าสรุปเวลาทำงาน
+ */
+export function ClashBox({ rows, emp, href }: { rows: ClashItem[]; emp: Employee[]; href: (id: string) => string }) {
+  return (
+    <div className="mx-3 mt-3 rounded-[11px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed text-destructive">
+      <b>ยังมีรายการที่ต้องตรวจ {rows.length} รายการ</b>
+      {rows.map((x) => (
+        <span key={`${x.emp}-${x.d}`} className="mt-1 block">
+          · {displayName(empOf(emp, x.emp)) || "—"} · {thaiDate(x.d)} · {leaveText(x.lv)} — ลาแล้วแต่มีเช็คอิน — ตรวจสอบ ·{" "}
+          <Link href={href(x.emp)} className="font-semibold underline">
+            เปิดดูรายวัน
+          </Link>
+        </span>
+      ))}
+      <span className="mt-1 block">
+        แก้เวลาไม่ให้ทับช่วงลา หรือกด &quot;ยืนยันแล้ว&quot; ที่วันนั้นในหน้าสรุปเวลาทำงาน
       </span>
     </div>
   );
@@ -661,12 +756,15 @@ function Th({ w, unit, children }: { w: number; unit?: string; children: React.R
 /** แถวพนักงาน — กดที่ไหนก็ได้ในแถวเพื่อดูที่มาของตัวเลข ปุ่มตาทำหน้าที่เดียวกัน */
 function PayRow({
   emp,
+  note,
   onOpen,
   onEdit,
   editWhy,
   children,
 }: {
   emp: Employee;
+  /** ผ่านทดลองงานกลางรอบ — "จ่ายแบบทดลองงานถึงรอบ … · เริ่มเงินเดือนรอบ …" (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  note?: string | null;
   onOpen: () => void;
   /** แก้ค่าตอบแทนที่ไม่มีสูตร — ไม่ส่งมา = แถวนี้ไม่มีอะไรให้แก้ (กลุ่มจ่ายรายวัน) */
   onEdit?: () => void;
@@ -687,10 +785,11 @@ function PayRow({
       className="cursor-pointer"
     >
       <td data-label="พนักงาน">
-        <b className="block truncate text-[13.5px] font-semibold">{emp.name}</b>
+        <b className="block truncate text-[13.5px] font-semibold">{displayName(emp)}</b>
         <em className="block truncate text-[11.5px] not-italic text-muted-foreground">
           {hrPos(emp.pos).label}
         </em>
+        {note && <em className="block text-[11.5px] not-italic text-muted-foreground">{note}</em>}
       </td>
       {children}
     </tr>
@@ -747,7 +846,6 @@ function PayDetail({
   snapped,
   days,
   rate,
-  hr,
   time,
   src,
   onClose,
@@ -774,9 +872,17 @@ function PayDetail({
   const full = baseSalaryIn(emp, range);
   const pr = prorateIn(emp, range);
   const r = recInRange(time, emp.id, range);
-  const daily = isDaily(emp);
+  const daily = isDaily(emp, range);
   /* ทดลองงานอ่านค่าตอบแทนตามรอบรายช่วง รายเดือนตามรอบเดือน — ชุดเดียวกับที่ payIn ใช้ */
-  const x = extraOf(hr.extras, emp.id, extraKeyOf(emp, range));
+  /* รายการตามแบบสลิป — รอบที่ปิดแล้วอ่านจากยอดที่บันทึกไว้ (pay.items) ไม่ใช่ข้อมูลปัจจุบัน (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  /* หักลาเกินสิทธิ์ที่ระบบคิดให้แยกแสดงอีกกล่อง — ส่วนที่กรอกเองเหลือเท่าที่ HR กรอก (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const x = { ...c.items };
+  for (const o of c.leaveOver ?? []) {
+    const k = LEAVE_CUT_KEY[o.kind];
+    x[k] = Math.round(((x[k] ?? 0) - o.amt) * 100) / 100 || undefined;
+  }
+  const incRows = PAY_INCOME_ITEMS.filter(({ k }) => x[k]);
+  const cutRows = PAY_CUT_ITEMS.filter(({ k }) => x[k]);
   const cap = ceilingOf(range.to);
   const comRate = hrCommission()[emp.pos];
   const rbl = reimbItems(emp, range, src);
@@ -815,9 +921,10 @@ function PayDetail({
         <Kv>
           {daily ? (
             <>
-              <Row k="รูปแบบการจ่าย" v="รายวัน (พนักงานทดลองงาน)" />
-              <Row k="อัตราค่าจ้างรายวัน" v={`${baht(rate)} บาท`} num />
-              <Row k="วันที่มาทำงานจริง" v={`${days} วัน`} />
+              {/* จ่ายรายสัปดาห์ อัตรารายวัน = เงินเดือน ÷ 22 · วันทำงานหักชั่วโมงลา (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+              <Row k="รูปแบบการจ่าย" v="รายสัปดาห์ (พนักงานทดลองงาน)" />
+              <Row k="อัตราค่าจ้างรายวัน" v={`${baht(rate)} บาท (เงินเดือน ÷ ${PROB_DAY_DIVISOR})`} num />
+              <Row k="วันที่มาทำงานจริง" v={fmtLeave(days)} />
               <Row k="ค่าจ้างรอบนี้" v={`${baht(c.base)} บาท`} num />
             </>
           ) : (
@@ -902,33 +1009,41 @@ function PayDetail({
         )}
       </Sect>
 
-      <Sect title="ค่าตอบแทนที่ CEO พิจารณา">
-        <Kv>
-          <Row k="Incentive" v={`${baht(x.incentive)} บาท`} num />
-          <Row k="ค่าตำแหน่ง" v={`${baht(x.allowance)} บาท`} num />
-        </Kv>
-      </Sect>
-
-      <Sect title="รายการปรับปรุงด้วยมือ" mEmpty={x.adjust.length === 0}>
-        {x.adjust.length === 0 ? (
-          <Note>ไม่มีรายการปรับปรุง</Note>
+      {/* รายการเงินได้/รายการหักที่กรอกเองตามแบบสลิป แทน Incentive/ค่าตำแหน่ง/รายการปรับปรุง (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+      <Sect title="รายได้ที่กรอกเอง" mEmpty={incRows.length === 0}>
+        {incRows.length === 0 ? (
+          <Note>ไม่มีรายการ</Note>
         ) : (
-          <ul className="text-[12.5px]">
-            {x.adjust.map((a) => (
-              <li
-                key={`${a.why}-${a.amt}`}
-                className="flex justify-between gap-3 border-t border-border py-1.5"
-              >
-                <span>{a.why}</span>
-                <b className={`num whitespace-nowrap ${a.amt < 0 ? "text-destructive" : ""}`}>
-                  {a.amt > 0 ? "+" : ""}
-                  {baht(a.amt)}
-                </b>
-              </li>
+          <Kv>
+            {incRows.map(({ k, label }) => (
+              <Row key={k} k={label} v={`${baht(x[k] ?? 0)} บาท`} num />
             ))}
-          </ul>
+          </Kv>
         )}
       </Sect>
+
+      <Sect title="รายการหักที่กรอกเอง" mEmpty={cutRows.length === 0}>
+        {cutRows.length === 0 ? (
+          <Note>ไม่มีรายการ</Note>
+        ) : (
+          <Kv>
+            {cutRows.map(({ k, label }) => (
+              <Row key={k} k={label} v={`-${baht(x[k] ?? 0)} บาท`} num />
+            ))}
+          </Kv>
+        )}
+      </Sect>
+
+      {/* ลาเกินสิทธิ์ของรายเดือน — ระบบหักให้ (เงินเดือน ÷ 30) × ชั่วโมงที่เกิน ÷ 8 รวมอยู่ในบรรทัดหักลาของสลิปแล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+      {c.leaveOver && c.leaveOver.length > 0 && (
+        <Sect title="ลาเกินสิทธิ์ (หักอัตโนมัติ)">
+          <Kv>
+            {c.leaveOver.map((o) => (
+              <Row key={o.kind} k={`${HR_LEAVE_LABEL[o.kind]} เกิน ${fmtLeaveHours(o.hours)}`} v={`-${baht(o.amt)} บาท`} num />
+            ))}
+          </Kv>
+        </Sect>
+      )}
 
       {/* ค่าใช้จ่ายคืน ไม่ใช่รายได้ ไม่คิดประกันสังคม บวกเข้ายอดโอนอย่างเดียว (ต้นแบบ) */}
       <Sect title="ค่าใช้จ่ายคืน" mEmpty={rbl.length === 0}>
@@ -966,6 +1081,8 @@ function PayDetail({
           {(c.lateMin > 0 || daily) && (
             <Row k={`หักมาสาย ${c.lateMin} นาที`} v={c.late ? `${baht(c.late)} บาท` : "—"} num />
           )}
+          {/* 3% ของ (รวมเงินได้ − รายการหักก่อนภาษี) ปัด 2 ตำแหน่ง (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+          {daily && <Row k="ภาษีหัก ณ ที่จ่าย 3%" v={c.wht ? `${baht(c.wht)} บาท` : "—"} num />}
         </Kv>
       </Sect>
 
@@ -977,10 +1094,11 @@ function PayDetail({
           {!daily && <Row k="หักประกันสังคม" v={`-${baht(c.ss)} บาท`} num />}
           <Row k="หักมาสาย" v={c.late ? `-${baht(c.late)} บาท` : "—"} num />
           <Row
-            k="รายการปรับปรุงอื่น"
+            k="รายการหักที่กรอกเอง"
             v={c.adj ? `${c.adj < 0 ? "-" : "+"}${baht(Math.abs(c.adj))} บาท` : "—"}
             num
           />
+          {daily && <Row k="ภาษีหัก ณ ที่จ่าย 3%" v={c.wht ? `-${baht(c.wht)} บาท` : "—"} num />}
           {/* ใบเบิกที่อนุมัติในรอบนี้ — นอกรายได้ ไม่คิดประกันสังคม */}
           <Row k="ค่าใช้จ่ายคืน" v={c.reimb ? `+${baht(c.reimb)} บาท` : "—"} num />
           <Row k="ยอดสุทธิที่ต้องจ่าย" v={`${baht(c.net)} บาท`} num strong />
@@ -1055,6 +1173,8 @@ function CloseDialog({
   blocked,
   lines,
   missing,
+  clashes,
+  dayHref,
   emp,
   reimbursed,
   sum,
@@ -1069,6 +1189,9 @@ function CloseDialog({
   blocked: boolean;
   lines: Line[];
   missing: MissingReq[];
+  /** ลาแล้วแต่มีเช็คอินที่ยังไม่ยืนยัน (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  clashes: ClashItem[];
+  dayHref: (id: string) => string;
   emp: Employee[];
   reimbursed: { role: Role; month: string }[];
   sum: CycleSum;
@@ -1080,7 +1203,7 @@ function CloseDialog({
   const ss = sum.ss;
 
   function confirm() {
-    /* กันอีกชั้น รอบเวลาทำงานต้องปิดและ CEO ต้องอนุมัติยอดแล้ว */
+    /* กันอีกชั้น รอบเวลาทำงานต้องปิดและไม่มีใบค้างเข้ารอบ (ไม่มีด่าน CEO แล้ว ผู้ใช้สั่ง 13 ต.ค. 2569) */
     if (blocked) return;
     /* เก็บยอดที่ปิดไว้ในตัวรอบ หน้าประวัติรอบอ่านตัวเลขชุดนี้ ไม่คำนวณใหม่ */
     if (isDailyRoundKey(runKey)) closeDailyPayFlow(runKey, today, sum, reimbursed);
@@ -1127,6 +1250,11 @@ function CloseDialog({
           <MissingBox rows={missing} emp={emp} />
         </div>
       )}
+      {clashes.length > 0 && (
+        <div className="-mx-3">
+          <ClashBox rows={clashes} emp={emp} href={dayHref} />
+        </div>
+      )}
 
         <>
           <dl className="hp-kv mt-3 grid gap-2 text-[13.5px] sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-x-4">
@@ -1138,7 +1266,7 @@ function CloseDialog({
             <dd className="num font-semibold">{baht(ss * 2)} บาท</dd>
           </dl>
           <p className="hp-warn mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
-            ปิดรอบแล้วแก้ไขไม่ได้อีก และข้อมูลจะถูกส่งไปออกสลิปเงินเดือน ตรวจให้ครบก่อนกดปิด
+            ปิดรอบแล้วแก้ไขไม่ได้อีก และออกสลิปและเผยแพร่ได้ทันที ตรวจให้ครบก่อนกดปิด
           </p>
         </>
       </div>
@@ -1173,13 +1301,22 @@ function BlockedRow({
   );
 }
 
-/** ป้ายสถานะการอนุมัติของ CEO ข้างปุ่มปิดรอบ */
-function CeoTag({ ap, drifted }: { ap: ReturnType<typeof payApproval>; drifted: boolean }) {
+
+/** กติกาหักมาสายที่ผู้ดูแลระบบเลือกไว้ (/admin/schedule) เป็นข้อความสั้น */
+function lateRuleText() {
+  const r = settings().rates;
+  return r.lateMode === "fixed"
+    ? `มาสายหักนาทีละ ${baht(r.latePerMinute)} บาท`
+    : "มาสายหักตามนาทีจากฐานเงินเดือน";
+}
+
+/** ป้ายสถานะการอนุมัติของ CEO ข้างปุ่มปิดรอบ (กลับมาใช้ ผู้ใช้สั่ง 19 ต.ค. 2569) */
+function CeoTag({ ap, drifted }: { ap: PayApproval; drifted: boolean }) {
   if (drifted) {
     return (
       <span className="tag t-late">
         <i />
-        ยอดเปลี่ยนหลัง CEO อนุมัติ ต้องส่งใหม่
+        ยอดเปลี่ยนหลัง CEO อนุมัติ กำลังส่งใหม่
       </span>
     );
   }
@@ -1187,7 +1324,7 @@ function CeoTag({ ap, drifted }: { ap: ReturnType<typeof payApproval>; drifted: 
     return (
       <span className="tag t-early">
         <i />
-        รอ CEO อนุมัติ
+        {(ap.ver ?? 0) > 0 ? `แก้ไขแล้ว รออนุมัติใหม่ (ส่งใหม่ครั้งที่ ${ap.ver})` : "รอ CEO อนุมัติ"}
       </span>
     );
   }
@@ -1195,7 +1332,7 @@ function CeoTag({ ap, drifted }: { ap: ReturnType<typeof payApproval>; drifted: 
     return (
       <span className="tag t-ok">
         <i />
-        CEO อนุมัติแล้ว {thaiStamp(ap.at ?? "")}
+        CEO อนุมัติแล้ว {ap.at ? thaiStamp(ap.at) : ""}
       </span>
     );
   }
@@ -1203,11 +1340,11 @@ function CeoTag({ ap, drifted }: { ap: ReturnType<typeof payApproval>; drifted: 
     return (
       <span className="tag t-late">
         <i />
-        CEO ตีกลับ: {ap.reason}
+        CEO ไม่อนุมัติ: {ap.reason}
       </span>
     );
   }
-  /* กลับมาเป็นร่างทั้งที่เคยส่งไปแล้ว — ต้องบอกเหตุผลไว้ ไม่งั้นฝ่ายบุคคลไม่รู้ว่าทำไมต้องส่งใหม่ */
+  /* กลับเป็นร่างทั้งที่เคยส่งไปแล้ว — บอกเหตุผลไว้ HR จะได้รู้ว่าทำไมต้องส่งใหม่ */
   if (ap.status === "draft" && ap.reason) {
     return (
       <span className="tag t-late">
@@ -1217,12 +1354,4 @@ function CeoTag({ ap, drifted }: { ap: ReturnType<typeof payApproval>; drifted: 
     );
   }
   return null;
-}
-
-/** กติกาหักมาสายที่ผู้ดูแลระบบเลือกไว้ (/admin/schedule) เป็นข้อความสั้น */
-function lateRuleText() {
-  const r = settings().rates;
-  return r.lateMode === "fixed"
-    ? `มาสายหักนาทีละ ${baht(r.latePerMinute)} บาท`
-    : "มาสายหักตามนาทีจากฐานเงินเดือน";
 }

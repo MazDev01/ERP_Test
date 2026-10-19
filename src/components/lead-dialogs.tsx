@@ -5,6 +5,7 @@ import { useHydrated } from "@/lib/pwa";
 import { cloneElement, isValidElement, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { todayIso } from "@/lib/format";
+import { REJECT_KINDS, rejectText, type RejectKind } from "@/lib/crm-data";
 import { lockScroll } from "@/lib/scroll-lock";
 import { CloseIcon } from "./icons";
 import "@/styles/mobile/sheet.css";
@@ -22,8 +23,11 @@ export function Sheet({
   narrow = false,
   steady = false,
   className = "",
+  subhead,
 }: {
   title: string;
+  /** แถบเล็กใต้หัวกล่อง เช่นตัวบอกขั้นของฟอร์มหลายขั้น */
+  subhead?: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
   footer: React.ReactNode;
@@ -76,6 +80,9 @@ export function Sheet({
             <CloseIcon className="size-[15px]" strokeWidth={2.2} />
           </button>
         </div>
+        {subhead && (
+          <div className="ui-sheet-subhead flex-none border-b border-border px-4 py-2.5 md:px-5">{subhead}</div>
+        )}
         <div
           className={`ui-sheet-body scroll-stable min-h-0 flex-1 overflow-auto px-4 py-4 md:px-5 md:py-[18px] ${
             steady ? "md:max-h-[min(70dvh,560px)] md:min-h-[280px] md:flex-none" : ""
@@ -147,11 +154,14 @@ export function Field({
 export function ActivityDialog({
   customerName,
   channels,
+  initialSummary = "",
   onClose,
   onSubmit,
 }: {
   customerName: string;
   channels: string[];
+  /** สรุปผลที่เติมไว้ก่อน เช่นตอนย้ายการ์ดเข้าคอลัมน์ย่อยใน Pipeline (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  initialSummary?: string;
   onClose: () => void;
   onSubmit: (v: {
     date: string;
@@ -169,7 +179,7 @@ export function ActivityDialog({
     setExtra((x) => (channels.includes(v) || x.includes(v) ? x : [...x, v]));
     setChannel(v);
   });
-  const [summary, setSummary] = useState("");
+  const [summary, setSummary] = useState(initialSummary);
   const [nextAction, setNextAction] = useState("");
   const [followUp, setFollowUp] = useState("");
   const [touched, setTouched] = useState(false);
@@ -283,22 +293,27 @@ export function ActivityDialog({
   );
 }
 
+/*
+ * ปฏิเสธรายการ — เลือกเหตุผลจากรายการแทนการพิมพ์เองอย่างเดียว (ผู้ใช้สั่ง 14 ต.ค. 2569)
+ * "อื่นๆ" ต้องพิมพ์หมายเหตุสั้น ๆ · หมวดอื่นพิมพ์เพิ่มได้ไม่บังคับ
+ * onSubmit ได้ข้อความแสดงผล "<หมวด> · <หมายเหตุ>" — closeLead แยกกลับเป็นหมวด/หมายเหตุเอง (parseRejectText)
+ */
 export function CloseLeadDialog({
   customerName,
-  code,
   onClose,
   onSubmit,
 }: {
   customerName: string;
-  /** รหัสผู้สนใจ — ขึ้นคู่กับชื่อใต้หัวกล่อง ตามต้นแบบ lead-detail.html */
+  /** รหัสผู้สนใจ — ไม่แสดงบนจอแล้ว เก็บไว้ให้ผู้เรียกเดิม (ผู้ใช้สั่ง 14 ต.ค. 2569) */
   code?: string;
   onClose: () => void;
   onSubmit: (reason: string) => void;
 }) {
-  const [reason, setReason] = useState("");
-  const addReason = useAddOption({ list: "leadClose" }, setReason);
+  const [kind, setKind] = useState<RejectKind | "">("");
   const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
+  const noKind = !kind;
+  const noNote = kind === "อื่นๆ" && !note.trim();
 
   return (
     <Sheet
@@ -318,8 +333,8 @@ export function CloseLeadDialog({
             className="btn solid btn-solid flex-1 justify-center sm:flex-none"
             onClick={() => {
               setTouched(true);
-              if (!reason) return;
-              onSubmit(note.trim() ? `${reason} — ${note.trim()}` : reason);
+              if (!kind || noNote) return;
+              onSubmit(rejectText(kind, note));
             }}
           >
             ยืนยันปฏิเสธ
@@ -329,34 +344,48 @@ export function CloseLeadDialog({
     >
       <p className="mb-4 text-[13px] text-muted-foreground">
         {customerName}
-        {code ? ` · ${code}` : ""}
       </p>
 
-      <Field
-        label="เหตุผล"
-        required
-        error={touched && !reason ? "เลือกเหตุผลก่อนยืนยัน" : undefined}
-      >
-        <select
-          value={reason}
-          onChange={(e) => addReason.pick(e.target.value) || setReason(e.target.value)}
-          className="field-control cursor-pointer"
-        >
-          <option value="">— เลือกเหตุผล —</option>
-          {optionsOf("leadClose").map((r) => (
-            <option key={r}>{r}</option>
+      <fieldset className="mb-4">
+        <legend className="mb-2 text-[13px] font-semibold">
+          เหตุผล <span className="text-destructive">*</span>
+        </legend>
+        <div role="radiogroup" aria-label="เหตุผล" className="grid gap-2 sm:grid-cols-2">
+          {REJECT_KINDS.map((k) => (
+            <label
+              key={k}
+              className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl border border-border px-3 text-[14px] has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:font-semibold"
+            >
+              <input
+                type="radio"
+                name="reject-kind"
+                value={k}
+                checked={kind === k}
+                onChange={() => setKind(k)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              {k}
+            </label>
           ))}
-          {addReason.option}
-        </select>
-      </Field>
-      {addReason.dialog}
+        </div>
+        {touched && noKind && (
+          <p role="alert" className="mt-1.5 text-[12.5px] text-destructive">
+            เลือกเหตุผลก่อนยืนยัน
+          </p>
+        )}
+      </fieldset>
 
-      <Field label="รายละเอียดเพิ่มเติม" labelNote="ถ้ามี">
+      <Field
+        label="หมายเหตุ"
+        labelNote={kind === "อื่นๆ" ? undefined : "ไม่บังคับ"}
+        required={kind === "อื่นๆ"}
+        error={touched && noNote ? "เลือก “อื่นๆ” ต้องระบุเหตุผลสั้น ๆ" : undefined}
+      >
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="บันทึกไว้ให้คนอื่นเข้าใจบริบท"
-          className="field-control h-[78px] resize-y py-2.5 leading-relaxed"
+          className="field-control resize-y py-2.5 leading-relaxed"
+          style={{ height: 80 }}
         />
       </Field>
     </Sheet>
@@ -376,8 +405,6 @@ export function TakeOverDialog({
   onSubmit: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
-  const addReason = useAddOption({ list: "leadTakeover" }, setReason);
-  const [note, setNote] = useState("");
   const [touched, setTouched] = useState(false);
 
   return (
@@ -398,8 +425,8 @@ export function TakeOverDialog({
             className="btn solid btn-solid flex-1 justify-center sm:flex-none"
             onClick={() => {
               setTouched(true);
-              if (!reason) return;
-              onSubmit(note.trim() ? `${reason} — ${note.trim()}` : reason);
+              if (!reason.trim()) return;
+              onSubmit(reason.trim());
             }}
           >
             ยืนยันรับช่วง
@@ -413,31 +440,13 @@ export function TakeOverDialog({
         มาอยู่กับคุณ
       </p>
 
-      <Field
-        label="เหตุผล"
-        required
-        error={touched && !reason ? "เลือกเหตุผลก่อนยืนยัน" : undefined}
-      >
-        <select
-          value={reason}
-          onChange={(e) => addReason.pick(e.target.value) || setReason(e.target.value)}
-          className="field-control cursor-pointer"
-        >
-          <option value="">— เลือกเหตุผล —</option>
-          {optionsOf("leadTakeover").map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-          {addReason.option}
-        </select>
-      </Field>
-      {addReason.dialog}
-
-      <Field label="รายละเอียดเพิ่มเติม">
+      {/* เหตุผลพิมพ์เอง ไม่ใช่รายการจากข้อมูลหลัก (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <Field label="เหตุผล" required error={touched && !reason.trim() ? "กรอกเหตุผลก่อนยืนยัน" : undefined}>
         <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="บันทึกไว้ให้คนอื่นเข้าใจบริบท"
-          className="field-control h-[78px] resize-y py-2.5 leading-relaxed"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="field-control resize-y py-2.5 leading-relaxed"
+          style={{ height: 96 }}
         />
       </Field>
     </Sheet>

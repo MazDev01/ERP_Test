@@ -13,6 +13,7 @@
 import { useCrm } from "@/lib/crm-store";
 import { thaiDate } from "@/lib/format";
 import { useHr } from "@/lib/hr-store";
+import { displayName, useNameOf } from "@/lib/emp-name";
 import { usePm } from "@/lib/pm-store";
 import { isRef } from "@/lib/pm-data";
 import { endOf, eventKind, lastEdit, type PmEvent } from "@/lib/pm-schedule-data";
@@ -47,12 +48,15 @@ export function AppointmentSheet({
   const kind = eventKind(event.kind);
   /* ชื่อผู้เข้าร่วมอ่านจากทะเบียนฝ่ายบุคคล — ครอบคลุมคนที่ไม่ได้อยู่ในทีมผลิตงาน เช่น PM และ GM */
   const emp = useHr().emp;
+  const empName = useNameOf();
   const project = usePm().projects.find((p) => isRef(p, event.pj));
   const end = endOf(event);
   const customers = useCrm().customers;
   /* นัดของฝ่ายขายเก็บรหัสผู้สนใจ — หาจากทะเบียนพนักงานไม่เจอก็หาจากรายชื่อผู้สนใจ */
-  const nameOf = (id: string) =>
-    emp.find((e) => e.id === id)?.name ?? customers.find((c) => c.code === id)?.name ?? id;
+  const nameOf = (id: string) => {
+    const e = emp.find((x) => x.id === id);
+    return e ? displayName(e) : (customers.find((c) => c.code === id)?.name ?? id);
+  };
   /* บอกการแก้ครั้งล่าสุดครั้งเดียว — คนอ่านอยากรู้ว่า "ตกลงตอนนี้เป็นยังไง" ไม่ได้อยากอ่านประวัติทั้งเส้น */
   const edit = event.cancel ? undefined : lastEdit(event);
   const editLines = edit
@@ -61,7 +65,7 @@ export function AppointmentSheet({
         edit.time && `เปลี่ยนเวลาจาก ${timeText(edit.time.before)} เป็น ${timeText(edit.time.after)}`,
         edit.added.length > 0 && `เพิ่มผู้เข้าร่วม ${edit.added.map(nameOf).join(" · ")}`,
         edit.removed.length > 0 && `ถอดออก ${edit.removed.map(nameOf).join(" · ")}`,
-        `${edit.by} · ${edit.at}`,
+        `${empName(edit.by)} · ${edit.at}`,
       ].filter((x): x is string => Boolean(x))
     : [];
 
@@ -88,7 +92,7 @@ export function AppointmentSheet({
         {note?.trim() && <Kv k="บันทึก" v={note} />}
         {editLines.length > 0 && <Kv k="แก้ล่าสุด" v={editLines.join(NEWLINE)} />}
         {event.cancel && (
-          <Kv k="ยกเลิกแล้ว" v={`${event.cancel.by} · ${event.cancel.at}${event.cancel.why ? `\n${event.cancel.why}` : ""}`} />
+          <Kv k="ยกเลิกแล้ว" v={`${empName(event.cancel.by)} · ${event.cancel.at}${event.cancel.why ? `\n${event.cancel.why}` : ""}`} />
         )}
       </dl>
     </Sheet>

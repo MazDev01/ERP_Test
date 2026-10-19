@@ -16,6 +16,7 @@ import { daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
 import { psEventsOf, type PmEvent } from "@/lib/pm-schedule-data";
 import { useSchedule } from "@/lib/pm-schedule-store";
 import { psKindText, psLastAsk, psThreadOf, usePsThreads, addPsReply } from "@/lib/presales-work";
+import { useNameOf } from "@/lib/emp-name";
 import { ChevronDownIcon, ClockIcon, DownloadIcon, FileIcon, EyeIcon, LinkIcon, PlusIcon } from "./icons";
 import { ConfirmDialog } from "./confirm-dialog";
 import { FileDrop, type PickedFile } from "./file-drop";
@@ -23,6 +24,7 @@ import { Sheet } from "./lead-dialogs";
 import { PsThread } from "./presales-work-page";
 import { ProposalDialog, isCanva } from "./proposal-doc";
 import { Pager, SearchBox, TabStrip, Who, usePaged } from "./sales-ui";
+import { stackNo } from "@/lib/stack-no";
 
 const PER_PAGE = 7;
 
@@ -39,13 +41,16 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function PresalesPage() {
   const crm = useCrm();
+  const empName = useNameOf();
   const threads = usePsThreads();
   /* นัดที่ทีมก่อนการขายตั้งไว้กับใบนี้ — ฝ่ายขายเจ้าของผู้สนใจต้องเห็น (เจ้าของตัดสิน 25 ก.ย. 2569) */
   const sc = useSchedule();
   const [tab, setTab] = useState<TabKey>("all");
   /* ลิงก์จากหน้าอื่นเจาะมาที่คำขอเดียวได้ด้วย ?find=<เลขที่> */
   const find = useFindParam();
-  const [query, setQuery] = useState(find);
+  /* เลขที่คำขอจากลิงก์ใช้กรองเงียบ ๆ ไม่ใส่ลงช่องค้นหา — ห้ามโชว์รหัสบนจอ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const [pin, setPin] = useState(find);
+  const [query, setQuery] = useState("");
   const [lateOnly, setLateOnly] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     find ? { [find]: true } : {},
@@ -75,16 +80,21 @@ export function PresalesPage() {
   const isLate = (r: PresalesRequest) =>
     PRESALES_OPEN.includes(r.status) && daysBetween(today, r.due) < 0;
 
+  /* ลำดับแบบกองซ้อน — นับจากคำขอทั้งหมดตามวันที่ส่ง ใหม่สุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  const noOf = useMemo(() => stackNo(crm.presales, (r) => r.createdAt, (r) => r.id), [crm.presales]);
+
   const scoped = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return crm.presales.filter((r) => {
-      if (lateOnly && !isLate(r)) return false;
-      if (!q) return true;
-      const name = nameOf.get(r.customerCode) ?? "";
-      return `${r.no} ${name} ${r.customerCode} ${r.problem}`.toLowerCase().includes(q);
-    });
+    const q = (query.trim() || pin).toLowerCase();
+    return crm.presales
+      .filter((r) => {
+        if (lateOnly && !isLate(r)) return false;
+        if (!q) return true;
+        const name = nameOf.get(r.customerCode) ?? "";
+        return `${r.no} ${name} ${r.customerCode} ${r.problem}`.toLowerCase().includes(q);
+      })
+      .sort((a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crm.presales, query, lateOnly, nameOf, today]);
+  }, [crm.presales, query, pin, lateOnly, nameOf, today, noOf]);
 
   const rows = tab === "all" ? scoped : scoped.filter((r) => r.status === tab);
   const paged = usePaged(rows, PER_PAGE);
@@ -133,7 +143,7 @@ export function PresalesPage() {
         <ProposalDialog
           request={doc.request}
           round={doc.round}
-          customerName={nameOf.get(doc.request.customerCode) ?? doc.request.customerCode}
+          customerName={nameOf.get(doc.request.customerCode) ?? "—"}
           onClose={() => setDoc(null)}
         />
       )}
@@ -141,21 +151,29 @@ export function PresalesPage() {
 
       <div className="bar">
         <div>
-          <h1>คำขอก่อนการขาย</h1>
-          <p>พบ {rows.length} ใบงาน</p>
+          <h1>ขอทำข้อเสนอ</h1>
+          <p>
+            พบ {rows.length} ใบงาน
+            {pin && !query && (
+              <button type="button" className="ml-2 font-semibold text-primary hover:underline" onClick={() => setPin("")}>
+                ดูทั้งหมด
+              </button>
+            )}
+          </p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <SearchBox
             value={query}
             onChange={(v) => {
               setQuery(v);
+              setPin("");
               paged.setPage(1);
             }}
-            placeholder="ค้นหาเลขที่ใบงาน ผู้สนใจ หรือโจทย์"
+            placeholder="ค้นหาผู้สนใจ หรือโจทย์"
           />
           <Link href="/presales/new" className="btn solid btn-solid btn-block-mobile shrink-0">
             <PlusIcon className="size-[15px]" strokeWidth={2.2} />
-            ส่งคำขอใหม่
+            ส่งโจทย์ใหม่
           </Link>
         </div>
       </div>
@@ -190,10 +208,11 @@ export function PresalesPage() {
         </div>
 
         <div className="scroll-stable hidden min-h-0 flex-1 overflow-auto md:block">
-          <table className="data-table min-w-[1040px]">
+          <table className="data-table min-w-[1100px]">
             <thead>
               <tr>
                 {/* ความกว้างตามต้นแบบ · คอลัมน์ท้ายกว้างกว่าเพราะมีปุ่มตอบข้อมูล/ปิดคำขอเพิ่มจากต้นแบบ */}
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th>ผู้สนใจ</th>
                 <th style={{ width: "24%" }}>โจทย์จากลูกค้า</th>
                 <th style={{ width: 112 }}>ผู้รับผิดชอบ</th>
@@ -206,7 +225,7 @@ export function PresalesPage() {
             <tbody>
               {paged.list.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-[50px] text-center text-muted-foreground">
+                  <td colSpan={8} className="py-[50px] text-center text-muted-foreground">
                     ไม่พบคำขอที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -226,9 +245,11 @@ export function PresalesPage() {
                         style={{ cursor: hasMore ? "pointer" : "default" }}
                       >
                         {/* เลขที่ใบงานเก็บไว้ในข้อมูลอย่างเดียว ไม่ขึ้นในตาราง (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
+                        <td className="c num muted">{noOf.get(r.id)}</td>
                         <td>
                           <Link href={`/leads/${r.customerCode}`} onClick={(e) => e.stopPropagation()}>
-                            <Who name={nameOf.get(r.customerCode) ?? r.customerCode} sub={r.customerCode} />
+                            {/* ไม่แสดงรหัสผู้สนใจใต้ชื่อ — ค้นด้วยรหัสยังได้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+                            <Who name={nameOf.get(r.customerCode) ?? "—"} />
                           </Link>
                         </td>
                         <td className="muted">
@@ -237,7 +258,7 @@ export function PresalesPage() {
                           {/* ระดับความเร่งด่วนเป็นข้อมูลของฝั่ง SA/BD ฝั่งขายไม่ต้องเห็น (ต้นแบบ presales.html) */}
                         </td>
                         <td className="muted">
-                          <span className="clip">{r.assignee}</span>
+                          <span className="clip">{empName(r.assignee)}</span>
                         </td>
                         <td className="num muted">
                           <span className="whitespace-nowrap">{thaiDate(r.due)}</span>
@@ -297,7 +318,7 @@ export function PresalesPage() {
                       </tr>
                       {isOpen && hasMore && (
                         <tr className="sub">
-                          <td colSpan={7}>
+                          <td colSpan={8}>
                             {rounds.length > 0 && (
                               <RoundTable rounds={rounds} onOpen={(x) => setDoc({ request: r, round: x })} />
                             )}
@@ -329,7 +350,7 @@ export function PresalesPage() {
                 <li key={r.id} className="px-5 py-4 max-sm:px-4">
                   <div className="flex items-start justify-between gap-3">
                     <Link href={`/leads/${r.customerCode}`} className="min-w-0">
-                      <Who name={nameOf.get(r.customerCode) ?? r.customerCode} sub={r.no} />
+                      <Who name={nameOf.get(r.customerCode) ?? "—"} sub={`#${noOf.get(r.id)}`} />
                     </Link>
                     <span className={`tag shrink-0 ${PRESALES_STATUS[r.status]}`}>
                       <i />
@@ -341,7 +362,7 @@ export function PresalesPage() {
                     <p className="mt-1 text-xs text-[var(--warning)]">ทีมขอข้อมูล: {askOf(r)?.tx}</p>
                   )}
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    {psKindText(r.kind)} · ผู้รับผิดชอบ {r.assignee} · กำหนดส่ง {thaiDate(r.due)}
+                    {psKindText(r.kind)} · ผู้รับผิดชอบ {empName(r.assignee)} · กำหนดส่ง {thaiDate(r.due)}
                     {isLate(r) && (
                       <span className="font-semibold text-destructive">
                         {" "}· เลย {Math.abs(daysBetween(today, r.due))} วัน
@@ -459,6 +480,7 @@ function ReplyDialog({ request, onClose }: { request: PresalesRequest; onClose: 
   const threads = usePsThreads();
   const thread = psThreadOf(threads, request);
   const ask = psLastAsk(threads, request);
+  const empName = useNameOf();
   const [reply, setReply] = useState("");
   /* แนบไฟล์ประกอบคำตอบได้ (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   const [files, setFiles] = useState<PickedFile[]>([]);
@@ -495,7 +517,7 @@ function ReplyDialog({ request, onClose }: { request: PresalesRequest; onClose: 
       {ask ? (
         <div className="rounded-[11px] bg-[var(--warning-soft)] px-3.5 py-2.5">
           <p className="flex flex-wrap items-baseline gap-x-2 text-[11.5px] text-muted-foreground">
-            <b className="font-semibold text-foreground">{ask.by}</b>
+            <b className="font-semibold text-foreground">{empName(ask.by)}</b>
             <span>ขอข้อมูลเพิ่ม</span>
             {ask.at && <span className="num">{thaiStamp(ask.at)} น.</span>}
           </p>
@@ -591,6 +613,7 @@ function FileButton({ round, onOpen }: { round: PresalesRound; onOpen: () => voi
 
 /** รอบการจัดทำบนมือถือ — ข้อมูลเดียวกับ RoundTable เรียงเป็นรายการ ไม่ต้องเลื่อนตารางด้านข้าง */
 function RoundCards({ rounds, onOpen }: { rounds: PresalesRound[]; onOpen: (r: PresalesRound) => void }) {
+  const empName = useNameOf();
   return (
     <ol className="mt-2 divide-y divide-border rounded-[10px] border border-border sm:hidden">
       {rounds.map((x, i) => (
@@ -612,7 +635,7 @@ function RoundCards({ rounds, onOpen }: { rounds: PresalesRound[]; onOpen: (r: P
             {i === 0 && <b className="font-semibold">รอบล่าสุด · </b>}
             {x.note}
           </p>
-          <p className="mt-0.5 text-muted-foreground">{x.by}</p>
+          <p className="mt-0.5 text-muted-foreground">{empName(x.by)}</p>
           <div className="mt-1.5 min-w-0">
             <FileButton round={x} onOpen={() => onOpen(x)} />
           </div>
@@ -623,6 +646,7 @@ function RoundCards({ rounds, onOpen }: { rounds: PresalesRound[]; onOpen: (r: P
 }
 
 function RoundTable({ rounds, onOpen }: { rounds: PresalesRound[]; onOpen: (r: PresalesRound) => void }) {
+  const empName = useNameOf();
   return (
     <div className="subwrap">
       <h4>รอบการจัดทำ {rounds.length} รอบ</h4>
@@ -654,7 +678,7 @@ function RoundTable({ rounds, onOpen }: { rounds: PresalesRound[]; onOpen: (r: P
                 {i === 0 && <b className="font-semibold">รอบล่าสุด · </b>}
                 {x.note}
               </td>
-              <td className="muted">{x.by}</td>
+              <td className="muted">{empName(x.by)}</td>
               <td className="r num">{x.hours} ชม.</td>
               <td>
                 <span className="clip">

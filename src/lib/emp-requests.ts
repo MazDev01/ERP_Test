@@ -18,6 +18,8 @@
 import { useSyncExternalStore } from "react";
 import { bkkStamp } from "./format";
 import { createPersistedStore } from "./persisted-store";
+import { companySchedule, minutesOfDay } from "./work-schedule";
+import { fmtLeaveHours, leaveHoursOfDays } from "./leave-data";
 
 export type EmpRequest = {
   id: string;
@@ -75,7 +77,7 @@ const SEED: EmpRequest[] = [
   { id: "LV-2569-0018", emp: "E13", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-09-14", toDate: "2026-09-14", days: 1, span: "full", files: [], note: "ติดต่อราชการ", at: "2026-09-06 18:40", status: "pending" },
   { id: "LV-2569-0008", emp: "E02", to: "gm", kind: "leave", leaveType: "ลาพักร้อน", from: "2026-09-21", toDate: "2026-09-25", days: 5, span: "full", files: [], note: "พักผ่อนประจำปี", at: "2026-09-04 17:26", status: "pending" },
   { id: "LV-2569-0012", emp: "E06", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-09-11", toDate: "2026-09-11", days: 1, span: "full", files: [], note: "ติดต่อราชการที่อำเภอ", at: "2026-09-07 08:15", status: "pending" },
-  { id: "LV-2569-0013", emp: "E08", to: "gm", kind: "leave", leaveType: "ลาป่วย", from: "2026-09-07", toDate: "2026-09-07", days: 0.5, span: "half", period: "am", start: "09:00", end: "13:00", files: ["ใบนัดทันตแพทย์.pdf"], note: "พบทันตแพทย์ตามนัด", at: "2026-09-06 20:31", status: "pending" },
+  { id: "LV-2569-0013", emp: "E08", to: "gm", kind: "leave", leaveType: "ลาป่วย", from: "2026-09-07", toDate: "2026-09-07", days: 0.375, span: "half", period: "am", start: "09:00", end: "13:00", files: ["ใบนัดทันตแพทย์.pdf"], note: "พบทันตแพทย์ตามนัด", at: "2026-09-06 20:31", status: "pending" },
   { id: "EX-2569-0006", emp: "E01", to: "gm", kind: "expense", month: "2026-08", plate: "1กจ 4471 เชียงใหม่", note: "", at: "2026-09-01 09:12", status: "pending", fuel: [
     { date: "2026-08-18", place: "ออฟฟิศ – เอ็มเทคเอ็นจิเนียริ่ง อ.สารภี", km: 34, work: "เก็บความต้องการรอบสอง", note: "" },
     { date: "2026-08-27", place: "ออฟฟิศ – สยามพลาสติก ต.หนองหอย", km: 18, work: "ยืนยันขอบเขตงานกับลูกค้า", note: "จอดเสียค่าที่จอด 40 บาท ไม่ได้เบิก" },
@@ -101,7 +103,7 @@ const SEED: EmpRequest[] = [
   { id: "LV-2569-0051", emp: "E02", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-10-12", toDate: "2026-10-12", days: 1, span: "full", files: [], note: "ไปทำเรื่องโอนรถที่ขนส่ง", at: "2026-10-05 16:20", status: "pending" },
   { id: "LV-2569-0052", emp: "E17", to: "gm", kind: "leave", leaveType: "ลาพักร้อน", from: "2026-10-19", toDate: "2026-10-21", days: 3, span: "full", files: [], note: "กลับบ้านที่น่านช่วงงานบุญ", at: "2026-10-04 11:35", status: "pending" },
   { id: "LV-2569-0053", emp: "E03", to: "gm", kind: "leave", leaveType: "ลาป่วย", from: "2026-09-30", toDate: "2026-09-30", days: 1, span: "full", files: [], note: "เป็นไข้หวัด", at: "2026-09-30 07:35", status: "approved", decidedAt: "2026-09-30 08:40" },
-  { id: "LV-2569-0054", emp: "E09", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-10-02", toDate: "2026-10-02", days: 0.5, span: "half", period: "am", start: "09:00", end: "12:00", files: [], note: "พาลูกไปฉีดวัคซีน", at: "2026-09-30 17:05", status: "approved", decidedAt: "2026-10-01 09:00" },
+  { id: "LV-2569-0054", emp: "E09", to: "gm", kind: "leave", leaveType: "ลากิจ", from: "2026-10-02", toDate: "2026-10-02", days: 0.375, span: "half", period: "am", start: "09:00", end: "12:00", files: [], note: "พาลูกไปฉีดวัคซีน", at: "2026-09-30 17:05", status: "approved", decidedAt: "2026-10-01 09:00" },
   { id: "LV-2569-0055", emp: "E06", to: "gm", kind: "leave", leaveType: "ลาพักร้อน", from: "2026-10-26", toDate: "2026-10-27", days: 2, span: "full", files: [], note: "พักผ่อน", at: "2026-10-03 10:00", status: "rejected", reason: "ช่วงนั้นมีงานติดตั้งที่บุญมีฟาร์ม ขอเลื่อนเป็นต้นเดือน พ.ย.", decidedAt: "2026-10-03 14:30" },
   { id: "EX-2569-0027", emp: "E04", to: "gm", kind: "expense", month: "2026-09", plate: "3กก 5521 เชียงใหม่", note: "", at: "2026-10-01 08:45", status: "pending", fuel: [
     { date: "2026-09-12", place: "ออฟฟิศ – บุญมีฟาร์ม อ.สันทราย", km: 41, work: "สำรวจจุดติดตั้งกล้องวงจรปิด", note: "" },
@@ -173,4 +175,25 @@ export function decideEmpRequest(id: string, approve: boolean, reason = "", appr
         : r,
     ),
   );
+}
+
+/**
+ * ชั่วโมงลาของคำขอลาในคิวรายรหัส — ไม่เต็มวันคิดจากเวลาเริ่ม–สิ้นสุดหักพักเที่ยง (สูตรเดียวกับ reqLeaveHours ใน hr-link.ts)
+ * เต็มวัน/ไม่มีเวลา = days × 8 (ผู้ใช้สั่ง 19 ต.ค. 2569) — ใช้แสดงผลเท่านั้น
+ */
+export function empReqLeaveHours(r: Pick<EmpRequest, "days" | "span" | "start" | "end">) {
+  if (r.span === "half" && r.start && r.end) {
+    const sch = companySchedule();
+    const a = minutesOfDay(r.start);
+    const b = minutesOfDay(r.end);
+    const lunch = Math.max(0, Math.min(b, minutesOfDay(sch.lunchEnd)) - Math.max(a, minutesOfDay(sch.lunchStart)));
+    const m = Math.max(0, b - a - lunch);
+    if (m > 0) return m / 60;
+  }
+  return leaveHoursOfDays(r.days ?? 0);
+}
+
+/** จำนวนการลาของคำขอเป็นข้อความ — "3 ชม." · "2 วัน" · "1 วัน 4 ชม." (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+export function empReqLeaveText(r: Pick<EmpRequest, "days" | "span" | "start" | "end">) {
+  return fmtLeaveHours(empReqLeaveHours(r));
 }

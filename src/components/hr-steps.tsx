@@ -20,7 +20,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { thaiMonth } from "@/lib/format";
-import { hrCycle, type Cycle } from "@/lib/hr-data";
+import { hrCycle, probRoundLabel, weekRangeFor, type Cycle, type DailyRound } from "@/lib/hr-data";
 import { CalendarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import { DateField } from "./thai-date-picker";
 
@@ -130,39 +130,51 @@ export function useUrlRange(): Cycle | null {
 }
 
 /**
- * ตัวเลือกช่วงวันของรอบจ่ายรายวัน (เริ่มต้น – สิ้นสุด) (ผู้ใช้สั่ง 6 ต.ค. 2569)
- * วันเดียวก็ได้ หลายวันก็ได้ · เลือกกลับด้านสลับให้เอง · max = วันสุดท้ายที่เลือกได้ (ปกติคือวันนี้)
+ * ตัวเลือกรอบจ่ายรายสัปดาห์ของทดลองงาน — จันทร์–อาทิตย์ (ผู้ใช้สั่ง 19 ต.ค. 2569 · เดิมเลือกช่วงวันเอง)
+ * ‹ › เลื่อนทีละสัปดาห์ · เลือกวันไหนก็ได้ = สัปดาห์ของวันนั้น
+ * rounds = รอบที่มีอยู่ — สัปดาห์ที่คร่อมรอบรายวันเก่าตัดวันที่จ่ายไปแล้วออก วันที่อยู่ในรอบเก่าเปิดรอบเก่านั้น
+ * max = วันสุดท้ายที่เลือกได้ (ปกติคือวันนี้) — สัปดาห์ที่ยังไม่เริ่มเลือกไม่ได้
  */
 export function DayRangePicker({
   value,
   max,
   onChange,
+  rounds = [],
 }: {
   value: Cycle;
   max?: string;
   onChange: (c: Cycle) => void;
+  rounds?: DailyRound[];
 }) {
-  const set = (from: string, to: string) => onChange(from > to ? { from: to, to: from } : { from, to });
+  const shift = (iso: string, n: number) => {
+    const d = new Date(`${iso}T00:00:00`);
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const prev = weekRangeFor(shift(value.from, -1), rounds);
+  const nextDay = shift(value.to, 1);
+  const canNext = !max || nextDay <= max;
   return (
     <div className="hp-range flex flex-wrap items-center gap-2">
-      <span className="text-[12.5px] font-semibold text-muted-foreground">เริ่มต้น</span>
+      <button type="button" className="iconbtn glass-thin" aria-label="สัปดาห์ก่อนหน้า" onClick={() => onChange(prev)}>
+        <ChevronLeftIcon className="size-4" strokeWidth={2.2} />
+      </button>
+      <span className="num text-[13px] font-semibold">{probRoundLabel(value)}</span>
+      <button
+        type="button"
+        className="iconbtn glass-thin disabled:opacity-40"
+        aria-label="สัปดาห์ถัดไป"
+        disabled={!canNext}
+        onClick={() => canNext && onChange(weekRangeFor(nextDay, rounds))}
+      >
+        <ChevronRightIcon className="size-4" strokeWidth={2.2} />
+      </button>
       <DateField
         variant="chip"
-        label="วันที่เริ่มต้นของรอบจ่าย"
+        label="เลือกสัปดาห์จากวันที่"
         value={value.from}
         max={max}
-        onChange={(d) => d && set(d, value.to)}
-      />
-      <span aria-hidden className="text-muted-foreground">
-        –
-      </span>
-      <span className="text-[12.5px] font-semibold text-muted-foreground">สิ้นสุด</span>
-      <DateField
-        variant="chip"
-        label="วันที่สิ้นสุดของรอบจ่าย"
-        value={value.to}
-        max={max}
-        onChange={(d) => d && set(value.from, d)}
+        onChange={(d) => d && onChange(weekRangeFor(d, rounds))}
       />
     </div>
   );
@@ -222,7 +234,7 @@ export function PayTiles({ onOpen }: { onOpen: (k: PayKey) => void }) {
   return (
     <div className="hp-tiles" role="list">
       <button type="button" role="listitem" className="hp-tile" onClick={() => onOpen("month")}>
-        <b>พนักงานทั่วไป</b>
+        <b>พนักงานประจำ</b>
       </button>
       <button type="button" role="listitem" className="hp-tile" onClick={() => onOpen("daily")}>
         <b>ทดลองงาน</b>

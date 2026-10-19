@@ -1,7 +1,6 @@
-import { AdminDataPage } from "@/components/admin-data-page";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "ข้อมูลตัวอย่าง — ERP MAZ" };
-
+/* เลิกหน้าข้อมูลตัวอย่างแล้ว ลิงก์เก่าพาไปหน้าตั้งค่า (ผู้ใช้สั่ง 13 ต.ค. 2569) */
 export default function Page() {
-  return <AdminDataPage />;
+  redirect("/admin/settings?s=staff");
 }

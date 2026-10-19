@@ -4,6 +4,7 @@
  * ประวัติการตั้งค่า — ใครเปลี่ยนการตั้งค่าอะไรเมื่อไร (admin-log.ts) ล่าสุดขึ้นก่อน
  */
 
+import { useNameOf } from "@/lib/emp-name";
 import { useState } from "react";
 import { useAdminLog, type LogArea } from "@/lib/admin-log";
 import { thaiDate } from "@/lib/format";
@@ -24,15 +25,18 @@ const AREAS: LogArea[] = [
   "ข้อมูลตัวอย่าง",
   "การเชื่อมต่อ",
   "ตัวเลือกในรายการ",
+  "ประเภทงานคำขอก่อนการขาย",
+  "แม่แบบ Proposal",
 ];
 
 export function AdminLogPage() {
   const log = useAdminLog();
+  const nameOf = useNameOf();
   const [area, setArea] = useState<LogArea | "">("");
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const shown = log.filter(
-    (e) => (!area || e.area === area) && (!q || `${e.area} ${e.detail} ${e.by}`.toLowerCase().includes(q)),
+    (e) => (!area || e.area === area) && (!q || `${e.area} ${e.detail} ${e.by} ${nameOf(e.by)}`.toLowerCase().includes(q)),
   );
   const paged = usePaged(shown, 15);
 
@@ -77,7 +81,7 @@ export function AdminLogPage() {
                     </span>
                   </div>
                   <p className="mt-1.5 text-[13.5px] leading-relaxed">{e.detail}</p>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">โดย {e.by}</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">โดย {nameOf(e.by)}</p>
                 </li>
               );
             })
@@ -119,7 +123,7 @@ export function AdminLogPage() {
                         {e.detail}
                       </td>
                       <td data-label="ผู้เปลี่ยน" className="muted">
-                        {e.by}
+                        {nameOf(e.by)}
                       </td>
                     </tr>
                   );

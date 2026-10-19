@@ -270,6 +270,10 @@ export const TeamIcon = (p: IconProps) => (
 export const AccBoardIcon = (p: IconProps) => (
   <Base {...p}><rect x="3" y="3" width="7.5" height="8" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="5" rx="1.6" /><rect x="3" y="14" width="7.5" height="7" rx="1.6" /><rect x="13.5" y="11" width="7.5" height="10" rx="1.6" /></Base>
 );
+/** บัญชี — เครื่องคิดเลข (เมนูบัญชีของ CEO) */
+export const LedgerIcon = (p: IconProps) => (
+  <Base {...p}><rect x="5" y="2.5" width="14" height="19" rx="2.4" /><rect x="8" y="5.5" width="8" height="4" rx="1" /><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" /></Base>
+);
 /** วางบิล — ใบแจ้งหนี้ */
 export const BillingIcon = (p: IconProps) => (
   <Base {...p}><path d="M6 3h9l5 5v13H6Z" /><path d="M14 3v6h6" /><path d="M9 13h7M9 17h5" /></Base>
@@ -310,4 +314,8 @@ export const GripIcon = (p: IconProps) => (
     <circle cx="9" cy="18" r="1.6" />
     <circle cx="15" cy="18" r="1.6" />
   </svg>
+);
+/* แฟ้มเอกสาร — หมวดเอกสารของดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+export const FolderIcon = (p: IconProps) => (
+  <Base {...p}><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.5h8.4A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5Z" /></Base>
 );

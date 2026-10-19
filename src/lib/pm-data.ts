@@ -11,6 +11,7 @@
 
 import { merged } from "./catalog";
 import { settings } from "./system-settings";
+import { HR_EMP } from "./hr-data";
 
 // ═══ ตำแหน่งงานในทีม ═══════════════════════════════════════════
 /*
@@ -73,7 +74,10 @@ export const TEAM_ROLES_BY_POSITION: Record<string, TeamRole[]> = {
   dev: ["backend"],
 };
 
-export const PM_TEAM: Member[] = [
+/* ชื่อในทีมโชว์ชื่อเล่นจากทะเบียน (ผู้ใช้สั่ง 19 ต.ค. 2569) — ชุดตั้งต้นตรงกับที่ซิงก์จากฝ่ายบุคคล */
+const NICK = new Map(HR_EMP.map((e) => [e.id, e.nick?.trim() || e.name]));
+
+export const PM_TEAM: Member[] = ([
   /* ทีมงานตามทะเบียนต้นแบบ PM_PEOPLE — ตำแหน่งสายผลิต (ไม่รวมแม่บ้าน บัญชี GM PM) · ภาระงานคิดจากงานจริง */
   { id: "E01", name: "ปิยะวัฒน์ แก้วใส", roles: ["ba"], load: 0 },
   { id: "E02", name: "ณิชา วงศ์อารีย์", roles: ["design","artwork"], load: 0 },
@@ -88,7 +92,7 @@ export const PM_TEAM: Member[] = [
   { id: "E14", name: "ณัฐริกา ใจอารีย์", roles: ["design","artwork"], load: 0 },
   { id: "E17", name: "ภัทรพล คำมูล", roles: ["frontend"], load: 0 },
   { id: "E16", name: "สิทธิชัย รุ่งเรือง", roles: ["content","caption"], load: 0, left: true },
-];
+] as Member[]).map((m) => ({ ...m, name: NICK.get(m.id) ?? m.name }));
 
 // ═══ งานเข้าใหม่จากฝ่ายบัญชี ════════════════════════════════════
 /** new = รอ PM ตรวจเอกสาร · plan = ส่งเข้าขั้นตอนวางแผนแล้ว */

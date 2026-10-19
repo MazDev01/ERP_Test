@@ -5,7 +5,8 @@
  * แยกไว้ที่เดียวเพื่อไม่ให้สองหน้าอิมพอร์ตวนกันเอง
  */
 
-import { daysBetween, initials } from "@/lib/format";
+import { daysBetween } from "@/lib/format";
+import { initialOf } from "@/lib/emp-name";
 import { memberOf } from "@/lib/pm-store";
 
 /** กองรูปคนแบบซ้อนกัน เกินจำนวนที่แสดงได้จะสรุปเป็น +N */
@@ -20,7 +21,7 @@ export function Faces({ ids, limit }: { ids: string[]; limit: number }) {
           title={memberOf(id)?.name}
           className="-mr-2 grid size-[26px] place-items-center rounded-full border-2 border-white bg-accent text-[10px] font-bold text-primary"
         >
-          {initials(memberOf(id)?.name ?? "")}
+          {initialOf(memberOf(id)?.name ?? "")}
         </span>
       ))}
       {rest > 0 && (

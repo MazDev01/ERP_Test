@@ -24,10 +24,13 @@ import {
   hrPos,
   probDaysLeft,
   probLine,
+  probPayNote,
+  cycleMonthOfDay,
+  hrCycle,
   type Employee,
 } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
-import { CloseIcon } from "./icons";
+import { CloseIcon, PhoneIcon } from "./icons";
 
 /**
  * ช่องรูปพนักงาน — ยังไม่มีที่ให้อัปโหลดรูป จึงเป็นกรอบว่างบอกตรง ๆ ว่ายังไม่มีรูป
@@ -92,12 +95,15 @@ export function EmployeeDetail({
   today,
   onPass,
   onEdit,
+  onLeave,
   onClose,
 }: {
   emp: Employee;
   today: string;
   onPass: () => void;
   onEdit: () => void;
+  /** มือถือ: ปุ่มพ้นสภาพที่แถบล่าง (การ์ดมือถือไม่มีเมนูสามจุด · ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  onLeave?: () => void;
   onClose: () => void;
 }) {
   const hydrated = useHydrated();
@@ -125,9 +131,13 @@ export function EmployeeDetail({
   const cur = emp.history[emp.history.length - 1];
   const bossName = emp.boss ? hr.emp.find((e) => e.id === emp.boss)?.name : "";
   /* เงินเดือนเป็นข้อมูลค่าจ้างของคนอื่น — เปิดให้เฉพาะฝ่ายบุคคลกับผู้บริหาร */
-  const seePay = role === "hr" || role === "ceo";
+  /* บัญชีคือคนเดียวกับฝ่ายบุคคล (E12) เห็นเหมือนฝ่ายบุคคล (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const seePay = role === "hr" || role === "acc" || role === "ceo";
   const tabs = TABS.filter((t) => t.k !== "pay" || seePay);
   const onProbation = emp.type === "probat" && emp.status === "active";
+  /* ผ่านทดลองงานกลางรอบ — บอกจนจบรอบแรกที่เริ่มเงินเดือน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const passNote =
+    emp.probPass && today <= hrCycle(cycleMonthOfDay(emp.probPass.payFrom)).to ? probPayNote(emp) : null;
 
   return createPortal(
     <div
@@ -145,7 +155,7 @@ export function EmployeeDetail({
         <div
           /* เจ้าของทัก 28 ก.ย. 2569 ว่าแถบบนใหญ่ไป — ลดเหลือ 56px ขอบล่างตรงเหมือนเดิม
              รูปลอยทับแค่นิดเดียว เว้นระยะจากขอบบนให้เห็นชัด */
-          className="relative h-[56px] flex-none overflow-hidden"
+          className="he-banner relative h-[56px] flex-none overflow-hidden"
           style={{ background: "linear-gradient(105deg,var(--primary) 0%,var(--primary-hover) 100%)" }}
         >
           <span className="pointer-events-none absolute -top-8 -right-6 size-[100px] rounded-full bg-white/10" />
@@ -157,6 +167,14 @@ export function EmployeeDetail({
             /* ปุ่มปิดเป็นสี่เหลี่ยมมนมีเส้นขอบ ไม่ใช่วงกลม (เจ้าของสั่ง 28 ก.ย. 2569) */
             className="absolute top-2.5 right-3 flex size-8 items-center justify-center rounded-[10px] border border-white/45 bg-white/15 text-white hover:bg-white/30"
           >
+            <CloseIcon className="size-[15px]" strokeWidth={2.2} />
+          </button>
+        </div>
+
+        {/* มือถือ: หัวขาว "ประวัติพนักงาน" + ปุ่มปิด แทนแบนเนอร์แดง (ต้นแบบ .veil .bhead · ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+        <div className="he-bhead md:hidden">
+          <h2>ประวัติพนักงาน</h2>
+          <button type="button" onClick={onClose} aria-label="ปิด">
             <CloseIcon className="size-[15px]" strokeWidth={2.2} />
           </button>
         </div>
@@ -237,6 +255,10 @@ export function EmployeeDetail({
                     </Kv>
                   </Sect>
                 </div>
+                {/* ผู้ติดต่อฉุกเฉินเห็นได้ตั้งแต่หน้าภาพรวม (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+                <div className="mt-3">
+                  <SosCard sos={emp.sos} />
+                </div>
 
                 {onProbation && (
                   <div className="mt-3 rounded-[12px] border border-border bg-muted/50 px-3.5 py-3">
@@ -282,19 +304,16 @@ export function EmployeeDetail({
                     <Row k="โทรศัพท์" v={emp.phone || "—"} num />
                     <Row k="อีเมล" v={emp.email || "ไม่มี"} muted={!emp.email} />
                     <Row k="ที่อยู่" v={emp.address || "—"} />
-                    <Row
-                      k="ผู้ติดต่อฉุกเฉิน"
-                      v={
-                        emp.sos.name
-                          ? `${emp.sos.name}${emp.sos.rel ? ` (${emp.sos.rel})` : ""}${
-                              emp.sos.phone ? ` · ${emp.sos.phone}` : ""
-                            }`
-                          : "ยังไม่ได้บันทึก"
-                      }
-                      muted={!emp.sos.name}
-                    />
                   </Kv>
                 </Sect>
+                {/* บัญชีรับเงินเดือน (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+                <Sect title="บัญชีรับเงินเดือน">
+                  <Kv>
+                    <Row k="ธนาคาร" v={emp.bankName || "—"} />
+                    <Row k="เลขที่บัญชี" v={emp.bankNo || "—"} num />
+                  </Kv>
+                </Sect>
+                <SosCard sos={emp.sos} />
               </div>
             )}
 
@@ -312,6 +331,13 @@ export function EmployeeDetail({
                 <Sect title="สถานะการทำงาน">
                   <Kv>
                     <Row k="สถานะ" v={HR_STATUS[emp.status].label} />
+                    {emp.probPass && (
+                      <Row
+                        k="ผ่านทดลองงาน"
+                        v={`${thaiDate(emp.probPass.at)}${passNote && seePay ? ` · ${passNote}` : ""}`}
+                        num
+                      />
+                    )}
                     {emp.type === "probat" && (
                       <Row
                         k="ครบกำหนดทดลองงาน"
@@ -349,12 +375,16 @@ export function EmployeeDetail({
           </div>
         </div>
 
-        <div className="he-dfoot flex flex-none items-center gap-2.5 border-t border-border px-4 py-3.5 pb-[max(14px,env(safe-area-inset-bottom))] sm:justify-end sm:px-5">
-          <button type="button" className="btn glass-thin" onClick={onClose}>
-            ปิด
-          </button>
+        {/* ปิดด้วยกากบาทมุมขวาบนอย่างเดียว ไม่มีแถบปุ่มล่าง (ผู้ใช้สั่ง 13 ต.ค. 2569)
+            มือถือ: แถบล่างสองปุ่ม พ้นสภาพ | แก้ไข แทนเมนูสามจุดของการ์ด (ผู้ใช้สั่ง 13 ต.ค. 2569) — จอคอมไม่มีแถบนี้ */}
+        <div className="he-dfoot md:hidden">
+          {emp.status !== "left" && onLeave && (
+            <button type="button" className="btn text-destructive" onClick={onLeave}>
+              พ้นสภาพ
+            </button>
+          )}
           <button type="button" className="btn solid btn-solid" onClick={onEdit}>
-            แก้ไขข้อมูล
+            แก้ไข
           </button>
         </div>
       </div>
@@ -373,6 +403,44 @@ function InfoBox({ k, v, num }: { k: string; v: string; num?: boolean }) {
         {v}
       </div>
     </div>
+  );
+}
+
+/**
+ * กล่องผู้ติดต่อฉุกเฉิน — แยกจากข้อมูลติดต่อทั่วไป มีแถบแดงซ้ายให้หาเจอเร็ว
+ * เบอร์กดโทรได้ทันที (ผู้ใช้สั่ง 15 ต.ค. 2569)
+ */
+function SosCard({ sos }: { sos: { name: string; rel: string; phone: string } }) {
+  const has = !!(sos.name || sos.phone);
+  return (
+    <section className="he-sos rounded-[12px] border border-border border-l-4 border-l-[var(--destructive)] bg-card px-3.5 py-3">
+      <h3 className="mb-2 flex items-center gap-1.5 text-[12.5px] font-bold text-foreground">
+        <PhoneIcon className="size-[14px] text-destructive" aria-hidden />
+        ผู้ติดต่อฉุกเฉิน
+      </h3>
+      {has ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13.5px]">
+          <p className="min-w-0">
+            <span className="font-semibold">{sos.name || "—"}</span>
+            {sos.rel && <span className="text-muted-foreground"> · {sos.rel}</span>}
+          </p>
+          {sos.phone ? (
+            <a
+              href={`tel:${sos.phone.replace(/[^\d+]/g, "")}`}
+              className="btn glass-thin num inline-flex items-center gap-1.5 font-semibold text-primary"
+              aria-label={`โทรหาผู้ติดต่อฉุกเฉิน ${sos.phone}`}
+            >
+              <PhoneIcon className="size-[14px]" aria-hidden />
+              {sos.phone}
+            </a>
+          ) : (
+            <span className="text-muted-foreground">ไม่มีเบอร์โทร</span>
+          )}
+        </div>
+      ) : (
+        <p className="text-[13.5px] text-muted-foreground">ยังไม่ได้บันทึก</p>
+      )}
+    </section>
   );
 }
 

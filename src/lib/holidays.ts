@@ -18,6 +18,15 @@ export function isHoliday(iso: string) {
   return Boolean(holidays()[iso]);
 }
 
+/*
+ * วันแรงงาน — วันเดียวที่คิดโอทีอัตรา 3 เท่า (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * 1 พ.ค. ทุกปี หรือวันในรายการวันหยุดที่ชื่อมีคำว่า "วันแรงงาน" (เช่น วันชดเชยวันแรงงาน)
+ * วันหยุดบริษัทอื่นคิดอัตราวันหยุดเหมือนเสาร์-อาทิตย์
+ */
+export function isLabourDay(iso: string) {
+  return iso.slice(5, 10) === "05-01" || (holidays()[iso] ?? "").includes("วันแรงงาน");
+}
+
 /** วันทำงานจริง = ไม่ใช่เสาร์-อาทิตย์ และไม่ใช่วันหยุดราชการ */
 export function isWorkday(date: Date, iso: string) {
   const w = date.getDay();

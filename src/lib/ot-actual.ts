@@ -97,7 +97,7 @@ export function actualOt(
 
   const from = Math.max(req.startMin, inMin ?? req.startMin);
   const to = Math.min(req.endMin, outMin);
-  const suggested = Math.min(asked, floorQuarter(Math.max(0, otHours(from, to))));
+  const suggested = Math.min(asked, floorQuarter(Math.max(0, otHours(from, to, req.date))));
   if (suggested >= asked) return { inMin, outMin, suggested, proposed: asked, state: "match", note: "ตรงตามที่ขอ" };
 
   /* บอกว่าตัดเพราะออกก่อน หรือเข้าช้ากว่าเวลาที่ขอ (โอทีวันหยุด) */

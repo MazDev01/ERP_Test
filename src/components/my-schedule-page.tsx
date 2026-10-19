@@ -24,7 +24,9 @@ import { bkkNow, thaiDate, toIsoDate } from "@/lib/format";
 import { quotationValidUntil, PRESALES_OPEN } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { useHr } from "@/lib/hr-store";
+import { displayName } from "@/lib/emp-name";
 import { useLeaveRecords } from "@/lib/leave-store";
+import { fmtLeaveHours, leaveHoursOf } from "@/lib/leave-data";
 import { invitedEvents, type PmEvent } from "@/lib/pm-schedule-data";
 import { useSchedule } from "@/lib/pm-schedule-store";
 import { usePm } from "@/lib/pm-store";
@@ -105,9 +107,9 @@ export function MySchedulePage({ sales = false }: { sales?: boolean }) {
           kind: "ps",
           start: r.due,
           end: r.due,
-          title: `ต้องการข้อเสนอ · ${r.no}`,
+          title: `ต้องการข้อเสนอ · ${nameOf.get(r.customerCode) ?? "—"}`,
           bar: r.problem,
-          sub: `${nameOf.get(r.customerCode) ?? r.customerCode} · ${r.status}`,
+          sub: r.status,
           href: `/presales?find=${encodeURIComponent(r.no)}`,
           ...paint("ps"),
           data: null,
@@ -125,7 +127,7 @@ export function MySchedulePage({ sales = false }: { sales?: boolean }) {
           end: until,
           title: `ใบเสนอราคาหมดอายุ · ${q.no}`,
           bar: `หมดอายุ ${q.no}`,
-          sub: nameOf.get(q.customerCode) ?? q.customerCode,
+          sub: nameOf.get(q.customerCode) ?? "—",
           href: `/quotations/${encodeURIComponent(q.no)}`,
           ...paint("quote"),
           data: null,
@@ -158,8 +160,8 @@ export function MySchedulePage({ sales = false }: { sales?: boolean }) {
         kind: "leave",
         start: l.date,
         end: l.toDate || l.date,
-        title: l.type,
-        sub: `${l.status === "อนุมัติแล้ว" ? "อนุมัติแล้ว" : "รออนุมัติ"} · ${l.id}`,
+        title: `${l.type} · ${fmtLeaveHours(leaveHoursOf(l))}`, /* จำนวนลาเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+        sub: l.status === "อนุมัติแล้ว" ? "อนุมัติแล้ว" : "รออนุมัติ",
         href: `/leave?find=${encodeURIComponent(l.id)}`,
         ...paint("leave"),
         data: null,
@@ -185,12 +187,13 @@ export function MySchedulePage({ sales = false }: { sales?: boolean }) {
   }, [sales, crm, pm.projects, me.employeeId, leave, sc.events]);
 
   return (
-    /* ชื่อหน้ากับวันที่วันนี้อยู่ในแถบบนของเปลือกแอปแล้วทุกขนาดจอ จึงไม่มีหัวเรื่องซ้ำในหน้า */
     <div className="space-y-4">
       {/* มือถือ (< md) ใช้ปฏิทินแบบแอปตามต้นแบบ my-schedule.html (.ms) · จอกว้างคงกระดานเดิม */}
       <MyMobileCalendar nav={nav} events={events} onOpen={(e) => e.data && setOpen(e.data)} />
 
       <div className="max-md:hidden">
+        {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+        <h1 className="page-h1 mb-4">ตารางงาน</h1>
         <ScheduleBoard
           nav={nav}
           events={events}
@@ -511,7 +514,10 @@ function MyMobileCalendar({
                 const z = Math.min(e.time ? (minOf(e.timeEnd) ?? a + 60) : end, end);
                 const top = ((a - M_H0 * 60) / 60) * M_ROW;
                 const ht = Math.max(46, ((z - a) / 60) * M_ROW - 4);
-                const who = (e.data?.who ?? []).slice(0, 3).map((id) => emp.find((x) => x.id === id)?.name ?? id);
+                const who = (e.data?.who ?? []).slice(0, 3).map((id) => {
+                  const x = emp.find((y) => y.id === id);
+                  return x ? displayName(x) : id;
+                });
                 return (
                   <button
                     key={e.id}

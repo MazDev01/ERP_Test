@@ -17,33 +17,26 @@
  * และการแก้ค่าตอบแทนย้ายไปอยู่หน้าคำนวณเงินเดือนตอนรอบยังเปิด — ที่นี่เหลือปุ่มที่กดไม่ลงพร้อมเหตุผล
  */
 
-import { settings } from "@/lib/system-settings";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { baht, thaiDate, thaiMonth, todayIso } from "@/lib/format";
 import {
   HR_EMPTYPE,
   calcOfLine,
-  ceilingOf,
-  cutOf,
   earnOf,
   hrCycle,
-  hrDept,
   hrPos,
   inRange,
   dailyRateIn,
   dailyRoundId,
   defaultDailyRange,
   rangeLabel,
+  probRoundLabel,
   isDaily,
   payIn,
-  prorateIn,
   workedDaysIn,
   type Cycle,
-  extraKeyOf,
-  extraOf,
   lineIn,
-  type Adjust,
   type Employee,
   type PaySlipCalc,
   type PayGroup,
@@ -88,10 +81,11 @@ import {
   ChevronRightIcon,
   DownloadIcon,
   PencilIcon,
+  PrintIcon,
 } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { Field, Input } from "./ui";
-import { downloadCsv, toCsv } from "@/lib/report-export";
+import { PayslipPaper, printSlip, slipModel, slipYtd } from "./payslip-paper";
 
 type SlipState = "none" | "made" | "pub";
 
@@ -180,8 +174,8 @@ export function HrPayslipPage() {
   }
 
   const cycle: Cycle = day ? dayRange : hrCycle(month);
-  const roundLabel = day ? rangeLabel(dayRange) : thaiMonth(month);
-  const people = hr.emp.filter((e) => inRange(e, cycle) && (day ? isDaily(e) : !isDaily(e)));
+  const roundLabel = day ? probRoundLabel(dayRange) : thaiMonth(month);
+  const people = hr.emp.filter((e) => inRange(e, cycle) && (day ? isDaily(e, cycle) : !isDaily(e, cycle)));
   /* ส่ง today เข้าไปเสมอ — ค่าจ้างรายวันนับถึงวันนี้เหมือนหน้าคำนวณเงินเดือน
      ถ้าไม่ส่ง ยอดค่าจ้างจะคิดทั้งรอบแต่คอลัมน์ "วันที่มาทำงาน" นับถึงวันนี้ สองช่องในแถวเดียวกันจะไม่ตรงกัน */
   /*
@@ -195,8 +189,6 @@ export function HrPayslipPage() {
     return {
       e,
       c: saved ? calcOfLine(saved) : payIn(e, cycle, time, hr.extras, today, src),
-      /* รายการปรับปรุงพร้อมเหตุผลของรอบที่ปิดไว้ — ของเดือนนั้นอาจถูกแก้ภายหลัง จึงอ่านจาก snapshot ก่อน */
-      adjust: saved?.adjust ?? extraOf(hr.extras, e.id, extraKeyOf(e, cycle)).adjust,
       days: saved ? saved.days : workedDaysIn(e, cycle, time, today),
       rate: saved ? saved.rate : dailyRateIn(e, cycle),
       snapped: Boolean(saved),
@@ -237,10 +229,11 @@ export function HrPayslipPage() {
 
       {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
-        <h1 className="sr-only">สลิปเงินเดือน</h1>
+        {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+        <h1 className="page-h1">สลิปเงินเดือน</h1>
         <div className="tools ml-auto">
           {day ? (
-            <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+            <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
           ) : (
             /* เลื่อนรอบทีละเดือนตามต้นแบบ — ไปได้เฉพาะรอบที่มีในระบบ */
             <MonthStepper months={months} value={month} onChange={switchMonth} />
@@ -251,7 +244,7 @@ export function HrPayslipPage() {
       <HrSteps month={month} range={day ? dayRange : null} group={g.group} className="md:hidden" />
       {day && (
         <div className="hp-only-m">
-          <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} />
+          <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
         </div>
       )}
 
@@ -357,7 +350,7 @@ export function HrPayslipPage() {
                     className="py-12 text-center text-muted-foreground"
                   >
                     {day
-                      ? "ไม่มีพนักงานจ่ายรายวันในรอบนี้"
+                      ? "ไม่มีพนักงานทดลองงานในรอบนี้"
                       : "ไม่มีพนักงานรายเดือนในรอบนี้"}
                   </td>
                 </tr>
@@ -430,7 +423,7 @@ export function HrPayslipPage() {
                 </Link>
               </>
             ) : rows.length === 0 ? (
-              day ? "ไม่มีพนักงานจ่ายรายวันในรอบนี้" : "ไม่มีพนักงานรายเดือนในรอบนี้"
+              day ? "ไม่มีพนักงานทดลองงานในรอบนี้" : "ไม่มีพนักงานรายเดือนในรอบนี้"
             ) : undefined
           }
         >
@@ -461,7 +454,8 @@ export function HrPayslipPage() {
                    บวกลบตามได้ครบ: รายได้ − ประกันสังคม − หักมาสาย ± ปรับปรุง + ค่าใช้จ่ายคืน = สุทธิ */
                 ...(day ? [] : [cutRow("ประกันสังคม", pay.ss)]),
                 cutRow("หักมาสาย", pay.late),
-                cutRow("ปรับปรุงอื่น", -pay.adj),
+                cutRow("รายการหักอื่น", -pay.adj),
+                ...(day ? [cutRow("ภาษีหัก ณ ที่จ่าย 3%", pay.wht)] : []),
                 pay.reimb
                   ? { label: "ค่าใช้จ่ายคืน", value: `+${baht(pay.reimb)}` }
                   : { label: "ค่าใช้จ่ายคืน", value: "—", muted: true },
@@ -485,13 +479,13 @@ export function HrPayslipPage() {
         <SlipView
           emp={current.e}
           label={roundLabel}
-          range={cycle}
-          fileKey={day ? `${dayRange.from}_${dayRange.to}` : month}
+          slipKey={day ? dailyRoundId(dayRange) : month}
+          day={day}
           pay={current.c}
-          adjust={current.adjust}
+          /* วันที่บนสลิปทดลองงาน = วันที่เผยแพร่ของรอบ ยังไม่เผยแพร่ = วันนี้ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+          pubAt={day ? round?.publishedAt : undefined}
           days={current.days}
           rate={current.rate}
-          snapped={current.snapped}
           stats={
             day
               ? round && { views: round.views[current.e.id] ?? 0, downloads: round.downloads[current.e.id] ?? 0 }
@@ -578,16 +572,19 @@ function cutRow(label: string, v: number): PayCardRow {
 
 // ─── ตัวสลิป ──────────────────────────────────────────────────────
 
+/*
+ * กระดาษสลิปตามแบบที่เจ้าของส่งมา (ผู้ใช้สั่ง 16 ต.ค. 2569) — ใช้ PayslipPaper ตัวเดียวกับสลิปของฉัน
+ * ดาวน์โหลดเป็น PDF (สั่งพิมพ์เฉพาะกระดาษ) แทน CSV เดิม ซึ่งมีรหัสพนักงานติดไปด้วย
+ */
 function SlipView({
   emp,
   label,
-  range: c,
-  fileKey,
+  slipKey,
+  day,
   pay,
-  adjust,
+  pubAt,
   days,
   rate,
-  snapped,
   stats,
   onDownloaded,
   published,
@@ -596,106 +593,34 @@ function SlipView({
   emp: Employee;
   /** ชื่อรอบ — รอบเดือน "กันยายน 2569" หรือรอบจ่ายรายวัน "6 – 8 ต.ค. 2569" (ผู้ใช้สั่ง 6 ต.ค. 2569) */
   label: string;
-  range: Cycle;
-  /** ส่วนของชื่อไฟล์ที่ดาวน์โหลด */
-  fileKey: string;
+  /** คีย์รอบ — "yyyy-mm" หรือ "จาก~ถึง" ของรอบจ่ายรายวัน */
+  slipKey: string;
+  day: boolean;
   /** ยอดของคนนี้ — มาจาก snapshot ตอนปิดรอบถ้ามี ไม่ได้คำนวณใหม่ในนี้ */
   pay: PaySlipCalc;
-  adjust: Adjust[];
+  pubAt?: string;
   days: number;
   rate: number;
-  /** ตัวเลขชุดนี้มาจากยอดที่ปิดรอบไว้หรือเปล่า — snapshot ไม่ได้เก็บจำนวนนาทีที่สาย */
-  snapped: boolean;
   /** ครั้งที่เปิดดู/ดาวน์โหลดของคนนี้ — ไม่มี = ยังไม่มีบันทึกของรอบนี้ */
   stats: { views: number; downloads: number } | undefined;
   onDownloaded: () => void;
   published: boolean;
   onClose: () => void;
 }) {
-  const pr = prorateIn(emp, c);
-  const cap = ceilingOf(c.to);
-  const p = hrPos(emp.pos);
-
-  /* คนจ่ายรายวันคิดจากวันที่มาทำงานจริง บอกที่มาของค่าจ้างเป็นจำนวนวันคูณอัตราต่อวัน (ต้นแบบ slipHTML) */
-  const income: [string, number][] = [
-    [
-      isDaily(emp)
-        ? `ค่าจ้าง ${days} วัน (${baht(rate)} บาทต่อวัน)`
-        : `เงินเดือน${pr.days < pr.total ? ` (${pr.days}/${pr.total} วัน)` : ""}`,
-      pay.base,
-    ],
-  ];
-  if (pay.ot) income.push(["ค่าล่วงเวลา", pay.ot]);
-  if (pay.com) income.push(["ค่าคอมมิชชั่น", pay.com]);
-  if (pay.inc) income.push(["Incentive", pay.inc]);
-  if (pay.allow) income.push(["ค่าตำแหน่ง", pay.allow]);
-  /* รายการปรับปรุงย้ายไปอยู่ตารางรายการหักพร้อมเหตุผล (ผู้ใช้กำหนด 24 ก.ย. 2569)
-     รวมรายได้ของสลิปจึงไม่รวมปรับปรุง เหมือนกันทุกหน้าจอ */
-  const earn = earnOf(pay.gross, pay.adj);
-
-  /*
-   * ดาวน์โหลดเป็นไฟล์จริง ตัวเลขชุดเดียวกับที่แสดงบนกระดาษสลิปทุกบรรทัด
-   * (เดิมปุ่มนี้แค่นับจำนวนครั้ง ไม่มีไฟล์ออกมา)
-   * เป็น CSV เพราะเปิดใน Excel ได้ตรง ๆ และระบบมีตัวส่งออกนี้อยู่แล้ว
-   * นับครั้งหลังโยนไฟล์เสร็จ ตัวนับจะได้หมายถึงการดาวน์โหลดที่เกิดขึ้นจริง
-   */
-  /*
-   * รายการหักสามกลุ่มบนกระดาษสลิป — ประกันสังคม · หักมาสาย · รายการปรับปรุงอื่น
-   * สามบรรทัดนี้ขึ้นเสมอแม้เป็นศูนย์ พนักงานจะได้อ่านจบในใบเดียวว่าถูกหักอะไรไปบ้าง
-   * ปรับปรุงลงเป็นยอดที่ถูกหักไป (-amt) ติดลบคือรายการที่คืนกลับเข้ายอด
-   */
-  /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-  const noSs = isDaily(emp);
-  const deductions: [string, number][] = [
-    ...(noSs
-      ? []
-      : [
-          [
-            `ประกันสังคม ${settings().rates.socialSecurity}% (เพดาน ${baht(cap.ceiling)})`,
-            pay.ss,
-          ] as [string, number],
-        ]),
-    [
-      /* ยอดที่ปิดรอบไว้ไม่ได้เก็บจำนวนนาที จึงไม่พิมพ์ตัวเลขนาทีที่ไม่มีอยู่จริง */
-      snapped || pay.late === 0 ? "หักมาสาย" : `หักมาสาย ${pay.lateChargedMin} นาที`,
-      pay.late,
-    ],
-    ...(adjust.length > 0
-      ? adjust.map((a): [string, number] => [`รายการปรับปรุงอื่น · ${a.why}`, -a.amt || 0])
-      /* -0 ไม่ใช่ตัวเลขที่คนอ่านออก บังคับให้เป็น 0 ก่อนพิมพ์ */
-      : [["รายการปรับปรุงอื่น", -pay.adj || 0] as [string, number]]),
-  ];
+  const hr = useHr();
+  const time = useHrTime();
+  const src = useComSource();
+  const model = slipModel({ emp, key: slipKey, day, pay, days, rate, time });
+  const ytd = slipYtd(hr, emp, time, src, slipKey, model);
 
   function download() {
-    const csv = toCsv([
-      ["สลิปเงินเดือน MAZ"],
-      ["รอบ", label, `${thaiDate(c.from)} – ${thaiDate(c.to)}`],
-      ["ชื่อพนักงาน", emp.name],
-      ["รหัสพนักงาน", emp.id],
-      ["ตำแหน่ง", p.label],
-      ["แผนก", hrDept(p.dept).label],
-      [],
-      ["รายได้", "จำนวนเงิน (บาท)"],
-      ...income,
-      ["รวมรายได้", earn],
-      [],
-      ["รายการหัก", "จำนวนเงิน (บาท)"],
-      ...deductions,
-      ["รวมรายการหัก", cutOf(pay)],
-      [],
-      ...(pay.reimb > 0 ? [["ค่าใช้จ่ายคืน (ใบเบิกที่อนุมัติ)", pay.reimb] as [string, number], []] : []),
-      ["ยอดสุทธิที่ได้รับ", pay.net],
-      [],
-      ...(noSs ? [] : [["บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก", pay.ss] as [string, number]]),
-      ["เอกสารนี้ออกจากระบบ ERP MAZ ไม่ต้องลงลายมือชื่อ"],
-    ]);
-    downloadCsv(`สลิปเงินเดือน-${fileKey}-${emp.id}.csv`, csv);
+    printSlip();
     onDownloaded();
   }
 
   return (
     <Sheet
-      title={`สลิปเงินเดือน · ${emp.name}`}
+      title={`สลิปเงินเดือน · ${emp.name} · ${label}`}
       wide
       onClose={onClose}
       footer={
@@ -707,133 +632,34 @@ function SlipView({
           </span>
           <button
             type="button"
+            className="btn glass-thin disabled:opacity-45"
+            disabled={!published}
+            title={published ? undefined : "เผยแพร่ก่อนจึงจะพิมพ์ได้"}
+            onClick={printSlip}
+          >
+            <PrintIcon className="size-[15px]" strokeWidth={1.9} />
+            พิมพ์
+          </button>
+          <button
+            type="button"
             className="btn solid btn-solid disabled:opacity-45"
             disabled={!published}
             title={published ? undefined : "เผยแพร่ก่อนจึงจะดาวน์โหลดได้"}
             onClick={download}
           >
             <DownloadIcon className="size-3.5" strokeWidth={2} />
-            ดาวน์โหลด
+            ดาวน์โหลด PDF
           </button>
         </>
       }
     >
-      {/* กระดาษสลิปทึบเสมอ ไม่ให้พื้นหลังทะลุขึ้นมา เพราะเป็นเอกสารที่ต้องอ่านชัด
-          hp-dlg = มือถือเปิดเป็นแผ่นเลื่อนขึ้นแบบเดียวกับกล่องอื่นของรอบเงินเดือน */}
+      {/* hp-dlg = มือถือเปิดเป็นแผ่นเลื่อนขึ้นแบบเดียวกับกล่องอื่นของรอบเงินเดือน · กระดาษ A4 เลื่อนข้างได้บนจอแคบ */}
       <div className="hp-dlg">
-      <article className="rounded-[14px] border border-border bg-white px-6 py-6 shadow-sm max-sm:px-4 max-sm:py-5">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-primary pb-3.5">
-          <div>
-            <p className="text-[26px] leading-none font-extrabold tracking-[0.05em] text-primary">
-              MAZ
-            </p>
-            <p className="mt-1 text-[9.5px] font-semibold tracking-[0.12em] text-muted-foreground">
-              DIGITAL BUSINESS SOLUTION
-            </p>
-          </div>
-          <div className="text-right">
-            <h4 className="text-[17px] font-bold">สลิปเงินเดือน</h4>
-            <p className="num mt-1 text-xs text-muted-foreground">
-              รอบ {label} · {thaiDate(c.from)} – {thaiDate(c.to)}
-            </p>
-          </div>
-        </header>
-
-        <div className="mt-4 grid gap-2 text-[13px] sm:grid-cols-3">
-          <Fact k="ชื่อพนักงาน" v={emp.name} />
-          <Fact k="ตำแหน่ง" v={p.label} />
-          <Fact k="แผนก" v={hrDept(p.dept).label} />
+        <div className="overflow-x-auto">
+          <PayslipPaper emp={emp} input={{ key: slipKey, day, at: pubAt }} model={model} ytd={ytd} />
         </div>
-
-        <SlipTable
-          head="รายได้"
-          rows={income}
-          total={["รวมรายได้", earn]}
-        />
-        <SlipTable
-          head="รายการหัก"
-          rows={deductions}
-          total={["รวมรายการหัก", cutOf(pay)]}
-        />
-        {pay.reimb > 0 && (
-          /* ใบเบิกที่อนุมัติแล้ว จ่ายคืนพร้อมเงินเดือน — ไม่ใช่รายได้ จึงไม่อยู่ในตารางรายได้และไม่คิดประกันสังคม */
-          <SlipTable
-            head="ค่าใช้จ่ายคืน"
-            rows={[["ใบเบิกค่าใช้จ่ายที่อนุมัติแล้ว", pay.reimb]]}
-            total={["รวมค่าใช้จ่ายคืน", pay.reimb]}
-          />
-        )}
-
-        <div className="mt-4 flex items-center justify-between gap-4 rounded-[11px] bg-muted px-4 py-3.5 font-bold">
-          <span>ยอดสุทธิที่ได้รับ</span>
-          <b className="num text-[19px] text-primary">{baht(pay.net)} บาท</b>
-        </div>
-
-        <p className="mt-4 text-[11.5px] leading-[1.7] text-muted-foreground">
-          {!noSs && (
-            <>
-              บริษัทสมทบประกันสังคมเท่ากับที่ลูกจ้างถูกหัก {baht(pay.ss)} บาท
-              <br />
-            </>
-          )}
-          เอกสารนี้ออกจากระบบ ERP MAZ ไม่ต้องลงลายมือชื่อ
-        </p>
-      </article>
       </div>
     </Sheet>
-  );
-}
-
-function Fact({ k, v }: { k: string; v: string }) {
-  return (
-    <p>
-      <span className="text-muted-foreground">{k}</span>
-      <br />
-      <b className="font-semibold">{v}</b>
-    </p>
-  );
-}
-
-function SlipTable({
-  head,
-  rows,
-  total,
-}: {
-  head: string;
-  rows: [string, number][];
-  total: [string, number];
-}) {
-  return (
-    <table className="mt-4 w-full text-[13px]">
-      <thead>
-        <tr>
-          <th className="border-b border-border py-1.5 text-left text-[11.5px] font-bold text-primary">
-            {head}
-          </th>
-          <th className="border-b border-border py-1.5 text-right text-[11.5px] font-bold text-primary">
-            จำนวนเงิน
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([label, v]) => (
-          <tr key={label}>
-            <td className="border-b border-border py-1.5">{label}</td>
-            <td className="num border-b border-border py-1.5 text-right whitespace-nowrap">
-              {baht(v)}
-            </td>
-          </tr>
-        ))}
-        <tr>
-          <td className="border-t border-border py-1.5 font-bold">
-            {total[0]}
-          </td>
-          <td className="num border-t border-border py-1.5 text-right font-bold whitespace-nowrap">
-            {baht(total[1])}
-          </td>
-        </tr>
-      </tbody>
-    </table>
   );
 }
 

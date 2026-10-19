@@ -7,28 +7,31 @@ import { CalendarPanel } from "./thai-date-picker";
 import { todayIso } from "@/lib/format";
 import { lockScroll } from "@/lib/scroll-lock";
 import { isWorkday } from "@/lib/holidays";
-import { leaveLabel, leaveTypes, type LeaveRecord, type LeaveType } from "@/lib/leave-data";
+import { fmtLeave, fmtLeaveHours, leaveDaysOfHours, leaveLabel, leaveTypes, LEAVE_DAY_HOURS, type LeaveRecord, type LeaveType } from "@/lib/leave-data";
 import { addLeaveRequest, excessDays, leaveUsage } from "@/lib/leave-store";
 import { useOtRecords } from "@/lib/ot-store";
 import { hasNoApprover, useApprovalRoute, useRole } from "@/lib/role";
 import { currentProfile } from "@/lib/profile-data";
-import { formatMinutesOfDay, minutesOfDay, WORK_SCHEDULE } from "@/lib/work-schedule";
+import { breakOf, companySchedule, formatMinutesOfDay, minutesOfDay, type DaySchedule } from "@/lib/work-schedule";
+import { useMySchedule } from "@/lib/hr-link";
 import {
   CalendarIcon,
   CloseIcon,
 } from "./icons";
 import "@/styles/mobile/sheet.css";
+import { Time24Input } from "./time24-input"; // ช่องเวลา 24 ชม. แทน input[type=time] (ผู้ใช้สั่ง 13 ต.ค. 2569)
 
-/* อ่านเวลาทำงานสดทุกครั้ง — ผู้ดูแลระบบแก้เวลาได้ (ดู work-schedule.ts) */
-const lunchA = () => minutesOfDay(WORK_SCHEDULE.lunchStart);
-const lunchB = () => minutesOfDay(WORK_SCHEDULE.lunchEnd);
-const fullMin = () =>
-  minutesOfDay(WORK_SCHEDULE.end) - minutesOfDay(WORK_SCHEDULE.start) - WORK_SCHEDULE.breakMinutes;
+/* อ่านเวลาทำงานสดทุกครั้ง — ผู้ดูแลระบบแก้เวลาได้ (ดู work-schedule.ts)
+   sch = เวลาทำงานของคนที่ยื่น — แม่บ้าน 08:00–17:00 (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+const lunchA = (sch: DaySchedule) => minutesOfDay(sch.lunchStart);
+const lunchB = (sch: DaySchedule) => minutesOfDay(sch.lunchEnd);
+const fullMin = (sch: DaySchedule = companySchedule()) =>
+  minutesOfDay(sch.end) - minutesOfDay(sch.start) - breakOf(sch);
 
-function preset() {
+function preset(sch: DaySchedule) {
   return {
-    morning: { start: minutesOfDay(WORK_SCHEDULE.start), end: lunchA() },
-    afternoon: { start: lunchB(), end: minutesOfDay(WORK_SCHEDULE.end) },
+    morning: { start: minutesOfDay(sch.start), end: lunchA(sch) },
+    afternoon: { start: lunchB(sch), end: minutesOfDay(sch.end) },
   } as const;
 }
 
@@ -57,6 +60,7 @@ export function LeaveDialog({
   /* เปิดกล่องได้หลัง hydrate เท่านั้น — ถ้าใช้ typeof document เซิร์ฟเวอร์จะวาดว่าง แต่เบราว์เซอร์วาดกล่อง
      ตอนที่กล่องเปิดมาตั้งแต่แรก (เช่นลิงก์ ?new=1) React จะฟ้อง hydration ไม่ตรงกัน */
   const hydrated = useHydrated();
+  const sch = useMySchedule();
   const types = leaveTypes();
   const [type, setType] = useState<LeaveType>(types[0]);
   /* กดส่งแล้วยังไม่ครบ — ค่อยขึ้นข้อความว่าขาดอะไร ไม่ทักตั้งแต่ยังไม่ได้กรอก */
@@ -68,11 +72,11 @@ export function LeaveDialog({
   /* ลาด่วน = นับเป็นชั่วโมง แล้วแปลงเป็นวันไปหักสิทธิ์ (เจ้าของสั่ง 28 ก.ย. 2569) */
   const [span, setSpan] = useState<"full" | "half" | "hours">("full");
   /* เลือกเป็นช่วงเวลา "เริ่มลา – จนถึง" แล้วระบบคิดชั่วโมงให้ (เจ้าของสั่ง 28 ก.ย. 2569) */
-  const [startAt, setStartAt] = useState(() => formatMinutesOfDay(minutesOfDay(WORK_SCHEDULE.start)));
-  const [endAt, setEndAt] = useState(() => formatMinutesOfDay(minutesOfDay(WORK_SCHEDULE.start) + 60));
+  const [startAt, setStartAt] = useState(() => formatMinutesOfDay(minutesOfDay(sch.start)));
+  const [endAt, setEndAt] = useState(() => formatMinutesOfDay(minutesOfDay(sch.start) + 60));
   const [half, setHalf] = useState<"morning" | "afternoon">("morning");
   /* ครึ่งวันคือเช้าหรือบ่ายเท่านั้น เวลาจึงตายตัวตามกะ ไม่ให้กรอกเองซ้ำ */
-  const { start: startMin, end: endMin } = preset()[half];
+  const { start: startMin, end: endMin } = preset(sch)[half];
   const [reason, setReason] = useState("");
   const [files, setFiles] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,16 +100,23 @@ export function LeaveDialog({
   const urgentStart = minutesOfDay(startAt);
   const urgentEnd = minutesOfDay(endAt);
   const hours = useMemo(
-    () => Math.round((netMinutes(urgentStart, urgentEnd) / 60) * 100) / 100,
-    [urgentStart, urgentEnd],
+    () => Math.round((netMinutes(urgentStart, urgentEnd, sch) / 60) * 100) / 100,
+    [urgentStart, urgentEnd, sch],
   );
 
-  const days = useMemo(() => {
-    if (!from || !to || workdayCount === 0) return workdayCount;
-    if (span === "hours") return hoursToDays(hours);
-    if (span === "full" || from !== to) return workdayCount;
-    return minutesToDays(netMinutes(startMin, endMin));
-  }, [from, to, span, hours, startMin, endMin, workdayCount]);
+  /* ครึ่งวัน = ชั่วโมงจริงของช่วงที่เลือก (เช้า 09:00–12:00 = 3 ชม.) ไม่ใช่ 0.5 วันตายตัว (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const halfH = Math.round((netMinutes(startMin, endMin, sch) / 60) * 100) / 100;
+  /* ชั่วโมงลาของใบนี้ — เต็มวัน = วันทำงาน × 8 ชม. */
+  const leaveH =
+    !from || !to || workdayCount === 0
+      ? 0
+      : span === "hours"
+        ? hours
+        : span === "full" || from !== to
+          ? workdayCount * LEAVE_DAY_HOURS
+          : halfH;
+  /* days ยังเป็นหน่วยหักสิทธิ์ภายใน = ชั่วโมง ÷ 8 */
+  const days = useMemo(() => leaveDaysOfHours(leaveH), [leaveH]);
 
   const overlap = useMemo(() => {
     if (!from || !to) return null;
@@ -167,8 +178,8 @@ export function LeaveDialog({
       problems.push("เวลาที่เลือกยังไม่มีชั่วโมงทำงาน — ตั้งเวลา \"จนถึง\" ให้อยู่หลังเวลาเริ่มลา");
       blocked = true;
     }
-    if (hours * 60 > fullMin()) {
-      problems.push(`ลาด่วนได้ไม่เกิน ${fmt(fullMin() / 60)} ชั่วโมง (เท่ากับหนึ่งวันทำงาน) — เกินกว่านี้ให้ลาเต็มวัน`);
+    if (hours * 60 > fullMin(sch)) {
+      problems.push(`ลาด่วนได้ไม่เกิน ${fmtLeaveHours(fullMin(sch) / 60)} (เท่ากับหนึ่งวันทำงาน) — เกินกว่านี้ให้ลาเต็มวัน`);
       blocked = true;
     }
   }
@@ -189,15 +200,10 @@ export function LeaveDialog({
   const over = excessDays(records, type, days, period);
   if (over > 0) {
     problems.push(
-      `เกินสิทธิ์คงเหลือ ${fmt(over)} วัน — ส่วนที่เกินหักจากเงินเดือน`,
+      `เกินสิทธิ์คงเหลือ ${fmtLeave(over)} — ส่วนที่เกินหักจากเงินเดือน`,
     );
   }
-  if (quota.pending > 0 && days > 0) {
-    const after = Math.max(0, quota.remaining - quota.pending - days);
-    problems.push(
-      `มีใบลาประเภทนี้รออนุมัติอยู่ ${fmt(quota.pending)} วัน — ถ้าอนุมัติครบทุกใบรวมใบนี้ จะเหลือ ${fmt(after)} วัน`,
-    );
-  }
+  /* ไม่บอกใบลาที่รออนุมัติในกล่องนี้แล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */
 
   /*
    * ช่องที่ยังไม่ได้กรอก — บอกว่าขาดอะไรหลังกดส่งครั้งแรก ไม่ใช่ปิดปุ่มเงียบ ๆ
@@ -223,7 +229,8 @@ export function LeaveDialog({
       half: span === "half" ? half : undefined,
       startMin: span === "half" ? startMin : span === "hours" ? urgentStart : undefined,
       endMin: span === "half" ? endMin : span === "hours" ? urgentEnd : undefined,
-      hours: span === "hours" ? hours : undefined,
+      /* เก็บชั่วโมงไว้ทุกใบที่ไม่เต็มวัน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+      hours: span === "hours" ? hours : span === "half" ? halfH : undefined,
       reason: reason.trim(),
       employee: currentProfile().name,
       files,
@@ -268,13 +275,10 @@ export function LeaveDialog({
               className="field-control cursor-pointer"
             >
               {types.map((t) => {
-                const q = leaveUsage(records, t, period);
                 return (
                   <option key={t} value={t}>
-                    {leaveLabel(t)}{" "}
-                    {q.entitled > 0
-                      ? `(คงเหลือ ${fmt(q.remaining)} วัน${q.pending > 0 ? ` · รออนุมัติ ${fmt(q.pending)} วัน` : ""})`
-                      : "(ไม่มีสิทธิ์)"}
+                    {/* ชื่อประเภทลาอย่างเดียว ไม่มีวงเล็บคงเหลือ (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+                    {leaveLabel(t)}
                   </option>
                 );
               })}
@@ -319,8 +323,7 @@ export function LeaveDialog({
           {span === "hours" && (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="เริ่มลา">
-                <input
-                  type="time"
+                <Time24Input
                   value={startAt}
                   step={900}
                   aria-label="เวลาที่เริ่มลาด่วน"
@@ -329,8 +332,7 @@ export function LeaveDialog({
                 />
               </Field>
               <Field label="จนถึง">
-                <input
-                  type="time"
+                <Time24Input
                   value={endAt}
                   step={900}
                   aria-label="เวลาที่สิ้นสุดการลาด่วน"
@@ -339,9 +341,7 @@ export function LeaveDialog({
                 />
               </Field>
               <p className="text-[12px] leading-relaxed text-muted-foreground sm:col-span-2">
-                รวม <b className="font-semibold text-foreground">{fmt(hours)} ชั่วโมง</b>
-                {" · "}หักสิทธิ์วันลา{" "}
-                <b className="font-semibold text-foreground">{fmt(hoursToDays(hours))} วัน</b>
+                รวม <b className="font-semibold text-foreground">{fmtLeaveHours(hours)}</b>
               </p>
             </div>
           )}
@@ -366,8 +366,11 @@ export function LeaveDialog({
                       />
                       <span>ลาช่วง{p === "morning" ? "เช้า" : "บ่าย"}</span>
                       <em className="num ml-auto text-xs not-italic opacity-70">
-                        {formatMinutesOfDay(preset()[p].start)}–
-                        {formatMinutesOfDay(preset()[p].end)}
+                        {formatMinutesOfDay(preset(sch)[p].start)}–
+                        {formatMinutesOfDay(preset(sch)[p].end)}
+                        {/* ชั่วโมงจริงของช่วง (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+                        {" · "}
+                        {fmtLeaveHours(netMinutes(preset(sch)[p].start, preset(sch)[p].end, sch) / 60)}
                       </em>
                     </label>
                   ))}
@@ -415,23 +418,7 @@ export function LeaveDialog({
             </div>
           </Field>
 
-          <div className="glass-thin flex items-center justify-between gap-3 rounded-[11px] px-[13px] py-[11px] text-[13px]">
-            <span>
-              {span === "hours"
-                ? "จำนวนวันลาที่หักจากสิทธิ์"
-                : "จำนวนวันลา"}
-            </span>
-            <b className="num text-[15px] font-bold">
-              {span === "hours" && `${fmt(hours)} ชม. = `}
-              {fmt(days)} วัน
-            </b>
-          </div>
-
-          {/* สิทธิ์ยังไม่ถูกหักตอนยื่น — บอกไว้ตรงนี้ ผู้ยื่นจะได้ไม่เข้าใจว่าเสียสิทธิ์ไปแล้ว */}
-          <p className="num mt-[9px] text-[12.5px] leading-relaxed text-muted-foreground">
-            {type} คงเหลือ {fmt(quota.remaining)} จาก {fmt(quota.entitled)} วัน
-            {quota.pending > 0 && ` · รออนุมัติอยู่ ${fmt(quota.pending)} วัน`}
-          </p>
+          {/* เอากล่องจำนวนวันลาและบรรทัดคงเหลือออก (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
 
           {problems.length === 0 && otClash.length > 0 && (
             <p className="mt-[9px] rounded-[11px] border border-[var(--info)]/20 bg-[var(--info-soft)] px-[13px] py-2.5 text-[12.5px] leading-relaxed text-[var(--info)]">
@@ -562,9 +549,13 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/* ลาด่วนเป็นชั่วโมงทำให้ได้วันเป็นเศษสองตำแหน่ง (2 ชม. ของวัน 8 ชม. = 0.25) ต้องไม่ปัดทิ้ง */
-function fmt(n: number) {
-  return String(Math.round(n * 100) / 100);
+/*
+ * ชั่วโมง → วันหักสิทธิ์ — 1 วัน = 8 ชม. เสมอ (ผู้ใช้สั่ง 19 ต.ค. 2569 · เดิมหารด้วยชั่วโมงของกะและปัดครึ่งวัน)
+ * sch เหลือไว้ให้ผู้เรียกเดิมส่งมาได้ ไม่ได้ใช้แล้ว
+ */
+export function hoursToDays(h: number, _sch?: DaySchedule) {
+  void _sch;
+  return leaveDaysOfHours(h);
 }
 
 function toIso(d: Date) {
@@ -594,22 +585,8 @@ function countWorkdays(from: string, to: string) {
 }
 
 /** นาทีทำงานสุทธิ หักเวลาพักกลางวันที่คาบเกี่ยว */
-function netMinutes(a: number, b: number) {
+function netMinutes(a: number, b: number, sch: DaySchedule) {
   if (b <= a) return 0;
-  const lunch = Math.max(0, Math.min(b, lunchB()) - Math.max(a, lunchA()));
+  const lunch = Math.max(0, Math.min(b, lunchB(sch)) - Math.max(a, lunchA(sch)));
   return Math.max(0, b - a - lunch);
-}
-
-/*
- * ลาด่วนคิดเป็นชั่วโมง แล้วแปลงเป็นวันไปหักสิทธิ์ตามชั่วโมงทำงานจริงของกะ
- * ปัดทศนิยมสองตำแหน่งพอ (2 ชั่วโมงของวัน 8 ชั่วโมง = 0.25 วัน) ไม่ปัดขึ้นครึ่งวันเหมือนลาปกติ
- */
-export function hoursToDays(h: number) {
-  const m = Math.max(0, h) * 60;
-  return Math.round((m / fullMin()) * 100) / 100;
-}
-
-/** ปัดเป็นครึ่งวัน อย่างต่ำ 0.5 — ระบบเงินเดือนคิดเป็นครึ่งวันเท่านั้น */
-function minutesToDays(m: number) {
-  return Math.max(0.5, Math.round((m / fullMin()) * 2) / 2);
 }

@@ -25,7 +25,9 @@ import {
   canBillQuotation,
   canRejectQuotation,
   findParty,
+  parseRejectText,
   quotationTotals,
+  rejectText,
   type Activity,
   type BuyerType,
   type ChangeLog,
@@ -171,9 +173,27 @@ function migrateCrm(saved: CrmState): CrmState {
       : { ...c, leadCode: leadHead + c.code.replace(/^[A-Za-z]+-/, "") },
   );
   const buyerOf = new Map(withLead.map((c) => [c.code, c.type]));
+  /* เหตุผลปฏิเสธแบบเลือกจากรายการ (ผู้ใช้สั่ง 14 ต.ค. 2569) — รายเก่าที่พิมพ์เองถือเป็น "อื่นๆ"
+     วันที่ปฏิเสธเอาจากประวัติเปลี่ยนสถานะครั้งล่าสุด */
+  const rejectedOn = (code: string) =>
+    v.changeLogs
+      .filter((l) => l.customerCode === code && l.kind !== "owner" && l.to === "ปฏิเสธ")
+      .map((l) => l.at)
+      .sort()
+      .at(-1);
+  const withReject = withLead.map((c) => {
+    if (c.status !== "ปฏิเสธ" || c.rejectKind) return c;
+    /* รายตั้งต้นที่ข้อความเหตุผลยังตรงกับชุดตั้งต้น — ใช้หมวดที่กำหนดไว้ในชุดตั้งต้น */
+    const seed = [...CUSTOMERS, ...DEMO_OCT_CUSTOMERS].find((x) => x.code === c.code && x.rejectNote === c.closedReason);
+    const { kind, note } = seed?.rejectKind
+      ? { kind: seed.rejectKind, note: seed.rejectNote ?? "" }
+      : parseRejectText(c.closedReason);
+    const at = c.rejectedAt ?? rejectedOn(c.code);
+    return { ...c, rejectKind: kind, rejectNote: note, closedReason: rejectText(kind, note), ...(at ? { rejectedAt: at } : {}) };
+  });
   return {
     ...v,
-    customers: withLead,
+    customers: withReject,
     /* ใบเสนอราคาไม่มีร่างแล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569: ไม่มีร่าง ออกแล้วแก้ไม่ได้ ต้องออกใบใหม่)
        ร่างที่ค้างในเครื่องเก่า (สถานะ "ร่าง" และยังไม่มีเลขที่) ทิ้งไป ไม่ให้โผล่ในรายการโดยไม่มีทางจัดการ */
     /* ตัวอย่างใบของลูกค้าเดิมที่ยังไม่วางบิล — เติมเฉพาะที่ยังไม่มีทั้งรหัสและเลขที่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
@@ -226,7 +246,8 @@ const store = createPersistedStore<CrmState>(
      v5 (28 ก.ย. 2569) — ลูกค้าตั้งต้นทั้ง 14 รายกรอกข้อมูลออกใบกำกับภาษีครบแล้ว (เจ้าของยืนยันว่าเป็นข้อมูลสมมติ)
      เครื่องที่ยังถือชุด v4 อยู่จะออกใบเสร็จของลูกค้าเก่าไม่ได้ จึงเปลี่ยนคีย์ให้เริ่มจากชุดใหม่ */
   "maz-erp.crm.v5",
-  INITIAL,
+  /* เครื่องใหม่ก็ต้องได้ตัวอย่างที่เติมทีหลังด้วย (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  migrateCrm(INITIAL),
   (v): v is CrmState =>
     typeof v === "object" && v !== null && Array.isArray((v as CrmState).customers),
   migrateCrm,
@@ -321,7 +342,10 @@ function moveCustomer(
     ...s,
     customers: s.customers.map((c) =>
       c.code === code
-        ? { ...c, status: to, closedReason: to === "ปฏิเสธ" ? reason : "" }
+        ? to === "ปฏิเสธ"
+          ? /* เก็บหมวด + หมายเหตุ + วันที่ปฏิเสธ แยกจากข้อความแสดงผล (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+            { ...c, status: to, closedReason: reason, rejectKind: parseRejectText(reason).kind, rejectNote: parseRejectText(reason).note, rejectedAt: today() }
+          : { ...c, status: to, closedReason: "", rejectKind: undefined, rejectNote: undefined, rejectedAt: undefined }
         : c,
     ),
     changeLogs: [log, ...s.changeLogs],
@@ -383,6 +407,7 @@ export function addLead(input: {
     code = nextLeadCode(s.customers);
     const customer: Customer = {
       code,
+      createdAt: bkkNow().toISOString(),
       name: input.name,
       contact: input.contact,
       phone: input.phone,
@@ -445,12 +470,18 @@ export function addPresalesRequest(input: {
   kind: "BD" | "SA";
   problem: string;
   due: string;
-  urgency: Urgency;
-  urgentReason: string;
+  /** ไม่ส่งมา = "ปกติ" — ฟอร์มเอาช่องความเร่งด่วนออกแล้ว (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  urgency?: Urgency;
+  urgentReason?: string;
   budget: number;
   attachments: string[];
   /** ผู้รับงานที่เลือกจากพนักงานในบริษัท (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   assignee?: string;
+  /** ประเภทงานและตำแหน่งที่ได้จากประเภทงาน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  service?: string;
+  toPos?: string;
+  /** รหัสพนักงานที่รับคำขอ — เลือกตัวคน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  toEmp?: string;
 }) {
   let no = "";
   store.update((s) => {
@@ -463,9 +494,12 @@ export function addPresalesRequest(input: {
       problem: input.problem,
       /* ผู้รับผิดชอบตั้งต้นตามคิวของแต่ละประเภท (ต้นแบบ presales.html) — คนที่กดรับงานจะถูกบันทึกแทน */
       assignee: input.assignee || (input.kind === "SA" ? "ปิยะวัฒน์ (SA)" : "ธนดล (BD)"),
+      ...(input.service ? { service: input.service } : {}),
+      ...(input.toPos ? { toPos: input.toPos } : {}),
+      ...(input.toEmp ? { toEmp: input.toEmp } : {}),
       due: input.due,
-      urgency: input.urgency,
-      urgentReason: input.urgentReason,
+      urgency: input.urgency ?? "ปกติ",
+      urgentReason: input.urgentReason ?? "",
       budget: input.budget,
       attachments: input.attachments,
       status: "รอรับงาน",
@@ -736,7 +770,7 @@ export function cancelDeal(no: string, c: DealCancel) {
     );
     return live
       ? next
-      : moveCustomer(next, deal.customerCode, "รอนัดหมาย", `ดีล ${no} ถูกยกเลิก · ${c.why}`);
+      : moveCustomer(next, deal.customerCode, "รอนัดหมาย", `ดีลของ ${next.customers.find((x) => x.code === deal.customerCode)?.name ?? "ลูกค้า"} ถูกยกเลิก · ${c.why}`);
   });
 }
 

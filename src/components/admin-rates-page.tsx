@@ -12,7 +12,7 @@
  * เมื่อต่อ backend ต้องบันทึกอัตรา ณ วันที่ออกเอกสารไว้กับเอกสาร
  */
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPersistedStore } from "@/lib/persisted-store";
 import {
   DEFAULT_SETTINGS,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/system-settings";
 import { logChange } from "@/lib/admin-log";
 import { thaiDate, todayIso } from "@/lib/format";
-import { AdminHead, Input2, SaveBar, inputCls, useSectionDraft } from "./admin-ui";
+import { AdminHead, IconBtn, Input2, SaveBar, inputCls, thCls, trCls, useSectionDraft } from "./admin-ui";
 import { PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
@@ -39,8 +39,8 @@ const TAX: Field[] = [
 const PAY: Field[] = [
   { key: "commission", label: "ค่าคอมมิชชั่นฝ่ายขาย", unit: "% ของมูลค่าดีล", hint: "ใช้ในใบเบิกของพนักงานขาย", min: 0, max: 50, step: 0.5 },
   { key: "otAfterWork", label: "โอทีวันทำงาน", unit: "เท่า", hint: "ของค่าจ้างรายชั่วโมง", min: 1, max: 5, step: 0.5 },
-  { key: "otHoliday", label: "โอทีเสาร์-อาทิตย์", unit: "เท่า", hint: "ของค่าจ้างรายชั่วโมง", min: 1, max: 5, step: 0.5 },
-  { key: "otPublic", label: "โอทีวันหยุดบริษัท", unit: "เท่า", hint: "วันที่อยู่ในรายการวันหยุดบริษัท (/admin/holidays)", min: 1, max: 5, step: 0.5 },
+  { key: "otHoliday", label: "โอทีวันหยุด", unit: "เท่า", hint: "เสาร์-อาทิตย์ และวันหยุดบริษัทที่ไม่ใช่วันแรงงาน", min: 1, max: 5, step: 0.5 },
+  { key: "otPublic", label: "โอทีวันแรงงาน", unit: "เท่า", hint: "วันแรงงาน 1 พ.ค. เท่านั้น (ผู้ใช้สั่ง 13 ต.ค. 2569)", min: 1, max: 5, step: 0.5 },
   /* เจ้าของแจ้ง 25 ก.ย. 2569 — โอทีเสาร์-อาทิตย์ต้องขอตั้งแต่วันศุกร์ */
   { key: "otAheadDays", label: "ยื่นโอทีวันหยุดล่วงหน้า", unit: "วันทำงาน", hint: "เสาร์-อาทิตย์และวันหยุดบริษัทต้องยื่นก่อนถึงวัน · 0 = ยื่นวันไหนก็ได้", min: 0, max: 5, step: 1 },
   { key: "socialSecurity", label: "ประกันสังคม", unit: "% ของเงินเดือน", hint: "ไม่เกินเพดานของปีนั้น", min: 0, max: 10, step: 0.5 },
@@ -70,12 +70,23 @@ function describeSs(a: SsCeiling[], b: SsCeiling[]) {
  */
 type ExtraTax = { id: string; label: string; rate: number; hint: string };
 const extraTaxStore = createPersistedStore<ExtraTax[]>("maz-erp.extra-taxes.v1", [], (v): v is ExtraTax[] => Array.isArray(v));
+/* รายการค่าที่ใช้คำนวณเงินเดือนที่ HR เพิ่มเอง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+const extraPayStore = createPersistedStore<ExtraTax[]>("maz-erp.extra-pay.v1", [], (v): v is ExtraTax[] => Array.isArray(v));
+function useExtraPay() {
+  return useSyncExternalStore(extraPayStore.subscribe, extraPayStore.get, extraPayStore.getServer);
+}
 function useExtraTaxes() {
   return useSyncExternalStore(extraTaxStore.subscribe, extraTaxStore.get, extraTaxStore.getServer);
 }
 
-export function AdminRatesPage({ taxOnly = false }: { taxOnly?: boolean } = {}) {
-  const extras = useExtraTaxes();
+/* คอลัมน์ตาราง # | ชื่อ | ค่า | ปุ่ม — มือถือซ่อน # */
+const RATE_COLS = "grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_40px] sm:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_40px]";
+
+/* top = การ์ดที่ขึ้นบนสุดใต้หัวหน้า (รอบเงินเดือน เริ่มนับโอที การหักมาสาย) (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function AdminRatesPage({ taxOnly = false, top }: { taxOnly?: boolean; top?: ReactNode } = {}) {
+  const extraTax = useExtraTaxes();
+  const extraPay = useExtraPay();
+  const extras = taxOnly ? extraTax : extraPay;
   /** กล่องเพิ่ม/แก้ภาษีรายการอื่น — "new" = เพิ่มใหม่ */
   const [taxEdit, setTaxEdit] = useState<ExtraTax | "new" | null>(null);
   const saved = useSystemSettings();
@@ -124,7 +135,7 @@ export function AdminRatesPage({ taxOnly = false }: { taxOnly?: boolean } = {}) 
         title={taxOnly ? "ภาษี" : "การคำนวณเงินเดือน"}
         desc={taxOnly ? "อัตราภาษีที่ใช้ในใบเสนอราคาและเอกสาร" : "ค่าที่ใช้คำนวณเงินเดือนและค่าจ้างรายวัน"}
       >
-        {taxOnly && (
+        {(
           <button type="button" className="btn solid btn-solid" onClick={() => setTaxEdit("new")}>
             <PlusIcon className="size-4" strokeWidth={2.4} />
             เพิ่มรายการ
@@ -132,95 +143,88 @@ export function AdminRatesPage({ taxOnly = false }: { taxOnly?: boolean } = {}) 
         )}
       </AdminHead>
 
+      {top}
+
+      {/* ตารางแบบเดียวกับตารางตัวเลือกในรายการ: # | ชื่อ | ค่า | ดินสอ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
       <section className="glass overflow-hidden rounded-[18px]">
-        <div className="border-b border-border px-4 py-3.5 sm:px-5">
-          <h2 className="text-[14.5px] font-bold">{taxOnly ? "อัตราภาษี" : "ค่าที่ใช้คำนวณ"}</h2>
-        </div>
-        {fields.map((f) => {
-          const open = openHist.includes(f.key);
-          const next = nextSet && nextSet.rates[f.key] !== rates[f.key] ? nextSet : null;
-          return (
-            <div key={f.key} className="grid gap-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] sm:items-center sm:px-5">
-              <div className="min-w-0">
-                <b className="text-[13.5px] font-semibold">{f.label}</b>
-              </div>
-              <div className="num text-[19px] font-bold">
-                {rates[f.key]}
-                <small className="ml-1 text-[12px] font-medium text-muted-foreground">{f.unit}</small>
-                <em className="mt-0.5 block text-[11.5px] font-medium text-muted-foreground not-italic">
-                  เริ่มใช้ {startedAt(f.key)}
-                </em>
-                {next && (
-                  <em className="block text-[11.5px] font-semibold text-[var(--warning)] not-italic">
-                    ล่วงหน้า: {next.rates[f.key]} {f.unit} ตั้งแต่ {thaiDate(next.at)}
-                  </em>
+        <div className="px-4 pt-3.5 pb-4 sm:px-5">
+          <div className={`grid ${RATE_COLS} ${thCls}`}>
+            <span className="text-center max-sm:hidden">#</span>
+            <span>ชื่อ</span>
+            <span>ค่า</span>
+            <span />
+          </div>
+          {fields.map((f, i) => {
+            const open = openHist.includes(f.key);
+            const next = nextSet && nextSet.rates[f.key] !== rates[f.key] ? nextSet : null;
+            return (
+              <div key={f.key} className={`grid ${RATE_COLS} ${trCls}`}>
+                <span className="num text-center text-[12px] text-muted-foreground max-sm:hidden">{i + 1}</span>
+                <b className="min-w-0 truncate text-[13.5px] font-semibold">{f.label}</b>
+                <span className="num min-w-0 text-[13px]">
+                  {rates[f.key]}
+                  <small className="ml-1 text-[12px] text-muted-foreground">{f.unit}</small>
+                  {next && (
+                    <em className="block text-[11.5px] font-semibold text-[var(--warning)] not-italic">
+                      ล่วงหน้า: {next.rates[f.key]} {f.unit} ตั้งแต่ {thaiDate(next.at)}
+                    </em>
+                  )}
+                </span>
+                <span className="flex justify-end">
+                  {/* ไม่มีปุ่มประวัติ — ดูที่เมนูประวัติการตั้งค่า (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                  <IconBtn label={`แก้ไข ${f.label}`} title="แก้ไข" onClick={() => setEditing(f)}>
+                    <PencilIcon className="size-3.5" strokeWidth={1.9} />
+                  </IconBtn>
+                </span>
+
+                {open && (
+                  <div className="col-span-full rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px]">
+                    {history.length === 0 ? (
+                      <span className="text-muted-foreground">ยังไม่เคยเปลี่ยนค่านี้</span>
+                    ) : (
+                      <ul className="grid gap-1.5">
+                        {history.map((h) => (
+                          <li key={h.at} className="flex flex-wrap items-center gap-2.5">
+                            <span className="min-w-[130px] text-muted-foreground">ตั้งแต่ {thaiDate(h.at)}</span>
+                            <b className="num font-semibold">
+                              {h.rates[f.key]} {f.unit}
+                            </b>
+                            {h.at <= today && h === history.find((x) => x.at <= today) && (
+                              <em className="rounded-full bg-[#E7F5EE] px-2 py-0.5 text-[11px] font-bold text-[#14875A] not-italic">
+                                ใช้อยู่
+                              </em>
+                            )}
+                            {h.at > today && (
+                              <em className="rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--warning)] not-italic">
+                                ล่วงหน้า
+                              </em>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </div>
-              <div className="flex gap-2 sm:justify-end">
-                <button
-                  type="button"
-                  className="btn glass-thin btn-mini"
-                  aria-expanded={open}
-                  onClick={() => setOpenHist((v) => (open ? v.filter((x) => x !== f.key) : [...v, f.key]))}
-                >
-                  ประวัติ
-                </button>
-                <button type="button" className="btn glass-thin btn-mini" onClick={() => setEditing(f)}>
-                  <PencilIcon className="size-4" strokeWidth={2.2} />
-                  แก้ไข
-                </button>
-              </div>
-
-              {open && (
-                <div className="rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px] sm:col-span-3">
-                  {history.length === 0 ? (
-                    <span className="text-muted-foreground">ยังไม่เคยเปลี่ยนค่านี้</span>
-                  ) : (
-                    <ul className="grid gap-1.5">
-                      {history.map((h) => (
-                        <li key={h.at} className="flex flex-wrap items-center gap-2.5">
-                          <span className="min-w-[130px] text-muted-foreground">ตั้งแต่ {thaiDate(h.at)}</span>
-                          <b className="num font-semibold">
-                            {h.rates[f.key]} {f.unit}
-                          </b>
-                          {h.at <= today && h === history.find((x) => x.at <= today) && (
-                            <em className="rounded-full bg-[#E7F5EE] px-2 py-0.5 text-[11px] font-bold text-[#14875A] not-italic">
-                              ใช้อยู่
-                            </em>
-                          )}
-                          {h.at > today && (
-                            <em className="rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--warning)] not-italic">
-                              ล่วงหน้า
-                            </em>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {taxOnly &&
-          extras.map((t) => (
-            <div key={t.id} className="grid gap-2 border-b border-border px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] sm:items-center sm:px-5">
-              <div className="min-w-0">
-                <b className="text-[13.5px] font-semibold">{t.label}</b>
-                {t.hint && <small className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">{t.hint}</small>}
-              </div>
-              <div className="num text-[19px] font-bold">
+            );
+          })}
+          {/* ไม่แสดงคำอธิบายของรายการที่เพิ่มเอง (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+          {extras.map((t, k) => (
+            <div key={t.id} className={`grid ${RATE_COLS} ${trCls}`}>
+              <span className="num text-center text-[12px] text-muted-foreground max-sm:hidden">{fields.length + k + 1}</span>
+              <b className="min-w-0 truncate text-[13.5px] font-semibold">{t.label}</b>
+              <span className="num min-w-0 text-[13px]">
                 {t.rate}
-                <small className="ml-1 text-[12px] font-medium text-muted-foreground">%</small>
-              </div>
-              <div className="flex gap-2 sm:justify-end">
-                <button type="button" className="btn glass-thin btn-mini" onClick={() => setTaxEdit(t)}>
-                  <PencilIcon className="size-4" strokeWidth={2.2} />
-                  แก้ไข
-                </button>
-              </div>
+                <small className="ml-1 text-[12px] text-muted-foreground">{taxOnly ? "%" : ""}</small>
+              </span>
+              <span className="flex justify-end">
+                <IconBtn label={`แก้ไข ${t.label}`} title="แก้ไข" onClick={() => setTaxEdit(t)}>
+                  <PencilIcon className="size-3.5" strokeWidth={1.9} />
+                </IconBtn>
+              </span>
             </div>
           ))}
+        </div>
       </section>
 
       {/* เพดานประกันสังคมเป็นของเงินเดือน ไม่ขึ้นในหน้าภาษี */}
@@ -318,7 +322,7 @@ export function AdminRatesPage({ taxOnly = false }: { taxOnly?: boolean } = {}) 
         </>
       )}
 
-      {taxEdit && <TaxSheet initial={taxEdit === "new" ? undefined : taxEdit} onClose={() => setTaxEdit(null)} />}
+      {taxEdit && <TaxSheet pay={!taxOnly} initial={taxEdit === "new" ? undefined : taxEdit} onClose={() => setTaxEdit(null)} />}
 
       {editing && <RateSheet field={editing} now={rates[editing.key]} onClose={() => setEditing(null)} onSave={saveOne} />}
     </div>
@@ -414,23 +418,23 @@ function RateSheet({
   );
 }
 
-/** เพิ่ม/แก้ภาษีรายการอื่น — ชื่อ อัตรา และคำอธิบาย */
-function TaxSheet({ initial, onClose }: { initial?: ExtraTax; onClose: () => void }) {
+/** เพิ่ม/แก้ภาษีรายการอื่น — ชื่อและอัตรา */
+function TaxSheet({ initial, onClose, pay = false }: { initial?: ExtraTax; onClose: () => void; pay?: boolean }) {
+  const target = pay ? extraPayStore : extraTaxStore;
   const [label, setLabel] = useState(initial?.label ?? "");
   const [rate, setRate] = useState(initial ? String(initial.rate) : "");
-  const [hint, setHint] = useState(initial?.hint ?? "");
   const n = Number(rate);
   const bad = !label.trim() ? "ใส่ชื่อภาษี" : !(rate.trim() && n >= 0 && n <= 100) ? "อัตราต้องอยู่ระหว่าง 0–100%" : "";
   function save() {
     if (bad) return;
-    const row: ExtraTax = { id: initial?.id ?? `tax-${Date.now()}`, label: label.trim(), rate: n, hint: hint.trim() };
-    extraTaxStore.update((list) => (initial ? list.map((x) => (x.id === row.id ? row : x)) : [...list, row]));
-    logChange("อัตราและภาษี", `${initial ? "แก้" : "เพิ่ม"}ภาษี ${row.label} = ${row.rate}%`);
+    const row: ExtraTax = { id: initial?.id ?? `tax-${Date.now()}`, label: label.trim(), rate: n, hint: initial?.hint ?? "" };
+    target.update((list) => (initial ? list.map((x) => (x.id === row.id ? row : x)) : [...list, row]));
+    logChange("อัตราและภาษี", `${initial ? "แก้" : "เพิ่ม"}${pay ? "ค่าที่ใช้คำนวณเงินเดือน" : "ภาษี"} ${row.label} = ${row.rate}${pay ? "" : "%"}`);
     onClose();
   }
   return (
     <Sheet
-      title={initial ? "แก้ไขรายการภาษี" : "เพิ่มรายการภาษี"}
+      title={pay ? (initial ? "แก้ไขรายการ" : "เพิ่มรายการ") : initial ? "แก้ไขรายการภาษี" : "เพิ่มรายการภาษี"}
       onClose={onClose}
       footer={
         <>
@@ -444,18 +448,14 @@ function TaxSheet({ initial, onClose }: { initial?: ExtraTax; onClose: () => voi
       }
     >
       <div className="grid gap-3.5 sm:grid-cols-[minmax(0,1fr)_140px]">
-        <Input2 label="ชื่อภาษี">
-          <input value={label} onChange={(e) => setLabel(e.target.value)} className={inputCls} placeholder="เช่น ภาษีธุรกิจเฉพาะ" />
+        <Input2 label={pay ? "ชื่อรายการ" : "ชื่อภาษี"}>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} className={inputCls} placeholder={pay ? "เช่น ค่าเบี้ยขยัน" : "เช่น ภาษีธุรกิจเฉพาะ"} />
         </Input2>
-        <Input2 label="อัตรา (%)">
-          <input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^d.]/g, ""))} inputMode="decimal" className={`${inputCls} num`} />
-        </Input2>
-      </div>
-      <div className="mt-3.5">
-        <Input2 label="คำอธิบาย">
-          <input value={hint} onChange={(e) => setHint(e.target.value)} className={inputCls} />
+        <Input2 label={pay ? "ค่า" : "อัตรา (%)"}>
+          <input value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" className={`${inputCls} num`} />
         </Input2>
       </div>
+      {/* ไม่มีช่องคำอธิบาย (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
     </Sheet>
   );
 }

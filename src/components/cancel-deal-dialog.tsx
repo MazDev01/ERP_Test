@@ -41,7 +41,7 @@ export function CancelDealDialog({
 
   return (
     <Sheet
-      title={rows ? "ยกเลิกดีล" : `ยกเลิกดีล ${dealNo}`}
+      title="ยกเลิกดีล"
       onClose={onClose}
       footer={
         <>
@@ -102,7 +102,8 @@ export function CancelDealDialog({
       <p className="mt-3 rounded-[11px] border border-[rgba(180,99,11,.25)] bg-[var(--warning-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed text-[var(--warning)]">
         ใบแจ้งหนี้ที่ยังไม่ได้รับชำระของดีลนี้จะถูกยกเลิกไปด้วย
         · โปรเจคของ PM เปลี่ยนเป็นยกเลิก งานหยุดทันที
-        {by === "ฝ่ายบัญชี" && " · ใบเสร็จที่ออกไปแล้วยังอยู่ตามเดิม และระบบไม่คืนเงินให้เอง"}
+        {/* ไม่พูดถึงการคืนเงิน — ระบบไม่มีเรื่องนี้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+        {by === "ฝ่ายบัญชี" && " · ใบเสร็จที่ออกไปแล้วยังอยู่ตามเดิม"}
       </p>
     </Sheet>
   );

@@ -3,7 +3,8 @@
  * ทุกรายการคำนวณจากข้อมูลจริง ไม่ได้เก็บแยก — งานเสร็จเมื่อไร แจ้งเตือนหายเอง
  */
 
-import { dayKey, recordsOfDay, toSessions, type PunchRecord } from "./attendance";
+import type { PunchRecord } from "./attendance";
+import { scheduleFor } from "./work-schedule";
 import {
   EXPIRING_DAYS,
   PRESALES_OPEN,
@@ -13,30 +14,36 @@ import {
   STALE_DAYS,
 } from "./crm-data";
 import type { CrmState } from "./crm-store";
+import type { ContractDoc } from "./contract-data";
 import { claimTotal, isLocked, type ExpenseClaim } from "./expense-data";
 import { baht, daysBetween, thaiDate, thaiMonth, toIsoDate } from "./format";
 import {
-  GROUP_LABEL,
   HR_LEAVE_LABEL,
-  closedIn,
   empOf,
+  hrCycle,
   hrDocs,
+  openIssues,
+  recInRange,
+  type TimeRec,
   inPeriod,
   inRange,
   isDaily,
-  payApproval,
-  payKeyLabel,
-  isDailyRoundKey,
   probEnd,
   rangeLabel,
+  payApproval,
+  probRoundLabel,
+  isDailyRoundKey,
+  dailyRoundRange,
+  GROUP_LABEL,
   type PayGroup,
 } from "./hr-data";
 import type { HrState } from "./hr-store";
-import type { LeaveRecord } from "./leave-data";
-import type { EmpRequest } from "./emp-requests";
+import type { HolidayReq } from "./system-settings";
+import { fmtLeave, fmtLeaveHours, leaveHoursOf, type LeaveRecord } from "./leave-data"; // ลาแสดงเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569)
+import { empReqLeaveText, type EmpRequest } from "./emp-requests";
 import type { NotifyEventKey } from "./notify-settings";
 import type { OtRecord } from "./ot-data";
-import { canBill, invoiceDue, invoiceStatus, type AccState } from "./acc-store";
+import { canBill, dealPaid, invoiceDue, invoiceNotYet, invoiceStatus, type AccState } from "./acc-store";
 import { isRef, lastSub, projectHref, type ProjectTask } from "./pm-data";
 import { memberName, openNudge } from "./pm-store";
 import { eventChangeNotices, eventNotices, type PmEvent } from "./pm-schedule-data";
@@ -45,6 +52,10 @@ import type { ReviewRound } from "./client-review-store";
 import { ROLES, approvesFor, type Role } from "./role";
 import type { LogArea, LogEntry } from "./admin-log";
 import { findLink } from "./deep-link";
+import { clashDays } from "./hr-clash";
+import type { PunchDay } from "./hr-link";
+import { USERS } from "./mock-data";
+import { displayName, nameOf as empNameOf } from "./emp-name";
 import { PS_UNTAKEN_DAYS, psMine, psOwner, psUntakenDays } from "./presales-work";
 
 /** ทดลองงานเหลืออีกกี่วันถึงจะขึ้นเตือนฝ่ายบุคคล — ตรงกับแดชบอร์ด */
@@ -53,8 +64,11 @@ const PROBATION_WARN_DAYS = 30;
 /** เรื่องที่เกิดขึ้นที่ฝ่ายอื่นแจ้งกี่วันย้อนหลัง (ชำระเงิน ส่งมอบงาน) */
 const RECENT_DAYS = 7;
 
-/** งานของทีมงานเหลืออีกกี่วันถึงจะขึ้นเตือน */
-const SOON_TASK_DAYS = 3;
+/** งานของทีมงานเหลืออีกกี่วันถึงจะขึ้นเตือน — ตารางแจ้งเตือน: ครบกำหนดพรุ่งนี้ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+const SOON_TASK_DAYS = 1;
+
+/** กำหนดนำส่งภาษีหัก ณ ที่จ่าย (ภ.ง.ด.3/53) — ภายในวันที่ 7 ของเดือนถัดไป ตรงกับหน้า /acc/wht */
+const WHT_FILE_DAY = 7;
 
 /*
  * กติกากลาง (ผู้ใช้กำหนด 23 ก.ย. 2569)
@@ -87,6 +101,11 @@ const CHANGE_TEXT: Record<TaskChange["what"], { group: string; detail: (t: Proje
   owner: { group: "ผู้รับผิดชอบงานเปลี่ยน", detail: (t) => `ตอนนี้ ${t.whos.map(memberName).join(", ")} เป็นผู้รับผิดชอบ` },
 };
 
+/*
+ * ระดับในกระดิ่งเทียบกับตารางแจ้งเตือน (notify-settings.ts — ผู้ใช้สั่ง 16 ต.ค. 2569)
+ *   🔴 act  → late (เลยกำหนด/ตีกลับ) หรือ soon (ต้องทำ)
+ *   ⚪ info → info
+ */
 /** เรื่องด่วนขึ้นก่อนเสมอ ภายในระดับเดียวกันเรียงตามวันที่ */
 export type Level = "late" | "soon" | "info";
 
@@ -115,6 +134,7 @@ export function buildNotices(input: {
   crm: CrmState;
   leaves: LeaveRecord[];
   ot: OtRecord[];
+  /** ไม่ได้ใช้แล้วหลังเลิกแจ้งลืมเช็คเอาท์ (ผู้ใช้สั่ง 16 ต.ค. 2569) — คงไว้ให้หน้าที่เรียกไม่ต้องแก้ */
   punches: PunchRecord[];
   claims: ExpenseClaim[];
   /** เวลาไทยตอนนี้ (bkkNow()) — เป็นหน้าปัดไทยแล้ว ห้ามส่ง new Date() ของเครื่อง */
@@ -139,8 +159,18 @@ export function buildNotices(input: {
   events?: PmEvent[];
   /** รอบที่ลูกค้าตรวจผ่านลิงก์ (client-review-store) — PM ต้องรู้เมื่อลูกค้าส่งความเห็นกลับมา */
   reviews?: ReviewRound[];
+  /** คำขอแก้วันหยุดบริษัทที่ส่ง CEO (system-settings) — ผู้ใช้สั่ง 13 ต.ค. 2569 */
+  holidayReq?: HolidayReq | null;
+  /** ใบสัญญาที่ออกแล้วทุกฉบับ (contract-store) — แจ้งพนักงานขายเจ้าของดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  contracts?: ContractDoc[];
+  /** ชื่อพนักงานขายที่ล็อกอินอยู่ — ชื่อเดียวกับที่เก็บใน Customer.owner / Deal.seller */
+  meName?: string;
+  /** เวลาทำงานของทุกคน (useHrTime) — ฝ่ายบุคคลใช้หารายการที่ต้องตรวจ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  hrTime?: Record<string, TimeRec>;
+  /** เวลาตอกบัตรจริง (usePunchTimes) — ใช้หาวันที่ลาแล้วแต่มีเช็คอิน */
+  punchTimes?: Record<string, Record<string, PunchDay>>;
 }): Notice[] {
-  const { crm, pm, acc, leaves, ot, punches, claims, now, role } = input;
+  const { crm, pm, acc, leaves, ot, claims, now, role } = input;
   const today = toIsoDate(now);
   const out: Notice[] = [];
   const nameOf = new Map(crm.customers.map((c) => [c.code, c.name]));
@@ -156,8 +186,13 @@ export function buildNotices(input: {
       id: "approvals-pending",
       level: "soon",
       group: "รออนุมัติ",
+      event: role === "ceo" ? "ceoapprove" : "gmapprove",
       title: `มีคำขอรอคุณอนุมัติ ${input.approvals} รายการ`,
-      detail: "ใบลา โอที และใบเบิกของทีมที่คุณดูแล",
+      /* ชุดของ CEO ตามตารางแจ้งเตือน (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+      detail:
+        role === "ceo"
+          ? "ลาของ GM และบัญชีและบุคคล · โอทีของ SA/Dev — อนุมัติหรือไม่อนุมัติ"
+          : "ใบลา โอที และใบเบิกของทีมที่คุณดูแล — อนุมัติหรือไม่อนุมัติ",
       /* ผู้บริหารตัดสินที่หน้าคำขออนุมัติของตัวเอง ไม่มีเมนู /approvals กลาง */
       href: role === "ceo" ? "/ceo/approvals" : "/approvals",
       date: today,
@@ -165,21 +200,78 @@ export function buildNotices(input: {
   }
 
   // ═══ เรื่องของผู้บริหาร ══════════════════════════════════════════
-  /* ยอดเงินเดือนที่ฝ่ายบุคคลส่งมารออนุมัติ — ฝ่ายบุคคลปิดรอบไม่ได้จนกว่า CEO จะตัดสิน */
-  if (role === "ceo" && input.hr) {
-    for (const [key, a] of Object.entries(input.hr.payApprove)) {
-      if (a.status !== "waiting") continue;
-      const [month, group] = key.split("|") as [string, PayGroup];
+  /* ยอดเงินเดือนรออนุมัติ — CEO อนุมัติก่อนฝ่ายบุคคลปิดรอบ กลับมาใช้ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  if (role === "ceo" && input.hr)
+    for (const [key, ap] of Object.entries(input.hr.payApprove)) {
+      if (ap.status !== "waiting") continue;
+      const [run, g] = key.split("|") as [string, PayGroup];
+      const day = isDailyRoundKey(run);
+      const runName = day ? probRoundLabel(dailyRoundRange(run)) : thaiMonth(run);
+      /* HR แก้ยอดหลังส่ง ระบบส่งใหม่ให้เอง — บอกว่าเป็นยอดแก้ไขและแก้ไปกี่คน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+      const ver = ap.ver ?? 0;
+      const moved = new Set((ap.changes ?? []).map((c) => c.emp)).size;
+      const amount = ap.net !== undefined ? `${ap.people ?? 0} คน · ยอดจ่ายสุทธิ ${baht(ap.net)} บาท` : "";
       out.push({
-        id: `ceopay-${key}-${a.sentAt ?? ""}`,
+        id: `ceopaywait-${key}-${ver}-${ap.sentAt ?? ""}`,
         level: "soon",
-        group: "ยอดเงินเดือนรออนุมัติ",
-        title: `รอบ ${payKeyLabel(month, thaiMonth)} · ${GROUP_LABEL[group]}`,
-        detail: `${a.people ?? 0} คน · ยอดจ่ายสุทธิ ${baht(a.net ?? 0)} บาท`,
-        href: "/ceo/approvals?k=pay",
-        date: (a.sentAt ?? today).slice(0, 10),
+        group: ver > 0 ? "ยอดเงินเดือนแก้ไขแล้ว รออนุมัติใหม่" : "ยอดเงินเดือนรออนุมัติ",
+        event: "ceopaywait",
+        title:
+          ver > 0
+            ? `ยอดเงินเดือน ${runName} แก้ไขแล้ว รออนุมัติใหม่`
+            : `รอบ ${runName} · ${GROUP_LABEL[g]}`,
+        detail:
+          ver > 0
+            ? `${GROUP_LABEL[g]} · ส่งใหม่ครั้งที่ ${ver}${moved > 0 ? ` · เปลี่ยน ${moved} คน` : ""}${amount ? ` · ${amount}` : ""} — ดูสิ่งที่เปลี่ยนแล้วอนุมัติ`
+            : amount ? `${amount} — อนุมัติหรือไม่อนุมัติ` : "อนุมัติหรือไม่อนุมัติ",
+        href: "/ceo/approvals",
+        date: (ap.sentAt || today).slice(0, 10),
       });
     }
+  /* ฝ่ายบุคคลปิดรอบเงินเดือนแล้ว — CEO เปิดดูยอดเพื่อโอนเงินเดือน (ดูอย่างเดียว ไม่มีอนุมัติ)
+     เดิมเป็นเรื่องแจ้งให้ทราบ (14 ต.ค.) ตารางแจ้งเตือนให้เป็นเรื่องต้องทำ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  if (role === "ceo" && input.hr)
+    for (const p of input.hr.payruns)
+      if (p.closed && p.closedAt && daysBetween(p.closedAt.slice(0, 10), today) <= RECENT_DAYS)
+        out.push({
+          id: `ceopay-${p.month}`,
+          level: "soon",
+          group: "ยอดเงินเดือน",
+          event: "ceopayroll",
+          title: `ปิดรอบเงินเดือน ${thaiMonth(p.month)} แล้ว — เปิดดูยอดเพื่อโอนเงินเดือน`,
+          detail: p.sum ? `${p.sum.n} คน · ยอดจ่ายสุทธิ ${baht(p.sum.net)} บาท` : "ดูยอดของรอบนี้ได้ที่หน้ายอดเงินเดือน",
+          href: `/ceo/hr/payroll?m=${p.month}`,
+          date: p.closedAt.slice(0, 10),
+        });
+
+  /* วันหยุดบริษัทที่ฝ่ายบุคคลส่งมารออนุมัติ — ทั้งระบบยังใช้ชุดเดิมจนกว่า CEO จะตัดสิน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const hq = input.holidayReq;
+  if (role === "ceo" && hq?.status === "pending") {
+    out.push({
+      id: `ceohol-${hq.sentAt}`,
+      level: "soon",
+      group: "วันหยุดรออนุมัติ",
+      event: "ceoholiday",
+      title: "ฝ่ายบุคคลส่งวันหยุดบริษัทมาให้อนุมัติ",
+      detail: `ส่งโดย ${hq.sentBy} · ยังไม่มีผลจนกว่าจะอนุมัติ`,
+      href: "/ceo/approvals",
+      date: hq.sentAt.slice(0, 10),
+    });
+  }
+  /* ผลการตัดสินถึงฝ่ายบุคคล — ตีกลับค้างจนกว่าจะแก้ส่งใหม่หรือทิ้งคำขอ · อนุมัติแจ้งย้อนหลัง DECIDED_DAYS วัน */
+  if (role === "hr" && hq?.at && hq.status !== "pending") {
+    const rej = hq.status === "rejected";
+    if (rej || daysBetween(hq.at.slice(0, 10), today) <= DECIDED_DAYS)
+      out.push({
+        id: `hrhol-${hq.status}-${hq.at}`,
+        level: rej ? "late" : "info",
+        group: rej ? "CEO ตีกลับวันหยุด" : "CEO อนุมัติวันหยุดแล้ว",
+        event: rej ? "holidayback" : "holidayok",
+        title: "วันหยุดบริษัท",
+        detail: rej ? `เหตุผล: ${hq.reason || "—"} · แก้แล้วส่งใหม่` : "วันหยุดชุดใหม่มีผลกับทุกหน้าแล้ว",
+        href: "/admin/settings?s=staff&t=holidays",
+        date: hq.at.slice(0, 10),
+      });
   }
 
   // ═══ เรื่องของฝั่งขาย ═══════════════════════════════════════════
@@ -192,7 +284,8 @@ export function buildNotices(input: {
       id: `follow-${a.id}`,
       level: late > 0 ? "late" : "soon",
       group: "นัดติดตาม",
-      title: nameOf.get(a.customerCode) ?? a.customerCode,
+      event: "followup",
+      title: nameOf.get(a.customerCode) ?? "—",
       detail:
         (a.nextAction || a.summary) +
         (late > 0 ? ` · เลยกำหนด ${late} วัน` : " · ถึงกำหนดวันนี้"),
@@ -233,7 +326,7 @@ export function buildNotices(input: {
       level: left <= 2 ? "late" : "soon",
       group: "ใบเสนอราคาใกล้หมดอายุ",
       event: "quotexp",
-      title: `${q.no} · ${nameOf.get(q.customerCode) ?? q.customerCode}`,
+      title: `${q.no} · ${nameOf.get(q.customerCode) ?? "—"}`,
       detail: `${baht(quotationTotals(q).grand)} บาท · ${left === 0 ? "หมดอายุวันนี้" : `เหลืออีก ${left} วัน`}`,
       href: `/quotations/${encodeURIComponent(q.no)}`,
       date: quotationValidUntil(q),
@@ -250,7 +343,7 @@ export function buildNotices(input: {
       level: late > 0 ? "late" : "soon",
       group: "คำขอก่อนการขาย",
       event: "presales",
-      title: `${p.no} · ${nameOf.get(p.customerCode) ?? p.customerCode}`,
+      title: nameOf.get(p.customerCode) ?? "—",
       detail: `${p.assignee} · ${late > 0 ? `เลยกำหนดส่ง ${late} วัน` : "ครบกำหนดส่งวันนี้"}`,
       href: findLink("/presales", p.no),
       date: p.due,
@@ -265,7 +358,7 @@ export function buildNotices(input: {
       level: "soon",
       group: "ทีมขอข้อมูลเพิ่ม",
       event: "presales",
-      title: `${p.no} · ${nameOf.get(p.customerCode) ?? p.customerCode}`,
+      title: nameOf.get(p.customerCode) ?? "—",
       detail: p.ask,
       href: findLink("/presales", p.no),
       date: today,
@@ -279,10 +372,12 @@ export function buildNotices(input: {
     if (hasQuote) continue;
     out.push({
       id: `ready-${p.id}`,
-      level: "info",
+      /* BD/SA ส่ง proposal กลับมา → ทำใบเสนอราคา เป็นเรื่องต้องทำ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+      level: "soon",
       group: "พร้อมออกใบเสนอราคา",
-      title: `${p.no} · ${nameOf.get(p.customerCode) ?? p.customerCode}`,
-      detail: "ทีมส่งข้อเสนอกลับมาแล้ว ยังไม่ได้ออกใบเสนอราคา",
+      event: "presales",
+      title: nameOf.get(p.customerCode) ?? "—",
+      detail: "ทีมส่ง proposal กลับมาแล้ว — ทำใบเสนอราคา",
       href: `/quotations/new?ps=${encodeURIComponent(p.no)}`,
       date: p.due,
     });
@@ -291,18 +386,37 @@ export function buildNotices(input: {
   /* ── งานที่ปิดการขายไว้เดินต่อที่ฝ่ายอื่น — ลูกค้าจ่ายงวดแรก (งานเข้า PM) และ PM ส่งมอบครบ
      แสดงเฉพาะเรื่องที่เพิ่งเกิดในไม่กี่วัน ไม่ต้องให้ฝ่ายขายไปถามเอง ── */
   for (const d of crm.deals) {
-    if (d.status !== "ปิดการขาย") continue;
-    const cus = nameOf.get(d.customerCode) ?? d.customerCode;
-    const first = acc.receipts.find((r) => r.deal === d.no && r.seq === 1);
-    if (first && daysBetween(first.date, today) <= RECENT_DAYS) {
+    /* บัญชียกเลิกดีลที่ลูกค้าจ่ายไปแล้ว — แจ้งให้ทราบ (ผู้ใช้สั่ง 16 ต.ค. 2569)
+       ยกเลิกหลังรับเงินทำได้เฉพาะฝ่ายบัญชี (dealPaid) */
+    if (d.cancelled && dealPaid(acc, d.no) && daysBetween(d.cancelled.at.slice(0, 10), today) <= DECIDED_DAYS) {
       out.push({
-        id: `dealpaid-${d.no}`,
+        id: `dealcancel-${d.no}`,
         level: "info",
-        group: "ลูกค้าชำระงวดแรกแล้ว",
-        title: `${d.no} · ${cus}`,
-        detail: `ชำระ ${baht(first.total)} บาท · ส่งงานให้ PM เริ่มโปรเจคแล้ว`,
+        group: "บัญชียกเลิกดีล",
+        event: "dealcancelacc",
+        title: nameOf.get(d.customerCode) ?? "—",
+        detail: `ยกเลิกโดย ${empNameOf(d.cancelled.by)} · ${d.cancelled.why}`,
         href: `/deals?find=${encodeURIComponent(d.no)}`,
-        date: first.date,
+        date: d.cancelled.at.slice(0, 10),
+      });
+    }
+    if (d.status !== "ปิดการขาย") continue;
+    const cus = nameOf.get(d.customerCode) ?? "—";
+    /* ลูกค้าชำระงวดแล้ว — ทุกงวด ไม่ใช่เฉพาะงวดแรก (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    for (const r of acc.receipts) {
+      if (r.deal !== d.no || daysBetween(r.date, today) > RECENT_DAYS) continue;
+      out.push({
+        id: r.seq === 1 ? `dealpaid-${d.no}` : `dealpaid-${d.no}-${r.seq}`,
+        level: "info",
+        group: r.seq === 1 ? "ลูกค้าชำระงวดแรกแล้ว" : "ลูกค้าชำระงวดแล้ว",
+        event: "dealpaid",
+        title: cus,
+        detail:
+          r.seq === 1
+            ? `ชำระ ${baht(r.total)} บาท · ส่งงานให้ PM เริ่มโปรเจคแล้ว`
+            : `งวดที่ ${r.seq} · ชำระ ${baht(r.total)} บาท`,
+        href: `/deals?find=${encodeURIComponent(d.no)}`,
+        date: r.date,
       });
     }
     const proj = pm.projects.find((p) => p.deal === d.no && p.status === "done");
@@ -311,12 +425,33 @@ export function buildNotices(input: {
         id: `dealdone-${d.no}`,
         level: "info",
         group: "ส่งมอบงานครบแล้ว",
-        title: `${d.no} · ${cus}`,
+        title: cus,
         detail: "PM ตรวจงานสุดท้ายผ่านแล้ว ใบงานขึ้น \"ส่งมอบ\"",
         href: `/deals?find=${encodeURIComponent(d.no)}`,
         date: proj.updated,
       });
     }
+  }
+
+  /* ── ออกใบสัญญาฉบับใหม่ — แจ้งพนักงานขายที่ดูแลดีลนั้น (ผู้ใช้สั่ง 15 ต.ค. 2569)
+     ผู้ดูแลดีล = ผู้ขายที่ปิดดีล (Deal.seller) · ดีลเก่าไม่มี ใช้ผู้ดูแลลูกค้า (Customer.owner) ── */
+  for (const c of input.contracts ?? []) {
+    const day = (c.at || c.date).slice(0, 10);
+    if (daysBetween(day, today) > RECENT_DAYS) continue;
+    const d = crm.deals.find((x) => x.no === c.dealNo);
+    if (!d) continue;
+    const seller = d.seller || crm.customers.find((x) => x.code === d.customerCode)?.owner || "";
+    if (!seller || seller !== input.meName) continue;
+    out.push({
+      id: `contract-${c.id}`,
+      level: "info",
+      group: "ออกใบสัญญาแล้ว",
+      event: "contract",
+      title: `ออกใบสัญญา ${c.no} ฉบับที่ ${c.version} · ${nameOf.get(d.customerCode) ?? "—"}`,
+      detail: `บันทึกโดย ${empNameOf(c.by) || "—"}`,
+      href: `/deals/${encodeURIComponent(d.no)}/contract`,
+      date: day,
+    });
   }
 
   }
@@ -326,14 +461,15 @@ export function buildNotices(input: {
     for (const p of crm.presales) {
       /* กล่องเดียวรับทั้ง SA และ BD — คำขอต้องมีคนเห็นเสมอ (ดู psMine) */
       if (!psMine(p)) continue;
-      const cus = nameOf.get(p.customerCode) ?? p.customerCode;
+      const cus = nameOf.get(p.customerCode) ?? "—";
       /* คำขอใหม่ที่ยังไม่มีใครรับ */
       if (p.status === "รอรับงาน") {
         out.push({
           id: `psnew-${p.id}`,
           level: daysBetween(p.due, today) > 0 ? "late" : "soon",
           group: "มีคำขอใหม่รอรับงาน",
-          title: `${p.no} · ${cus}`,
+          event: "psreq",
+          title: cus,
           detail: `ต้องการวันที่ ${thaiDate(p.due)}`,
           href: findLink("/presales-work", p.no),
           date: p.createdAt,
@@ -345,7 +481,46 @@ export function buildNotices(input: {
           id: `psreply-${p.id}-${p.reply.length}`,
           level: "info",
           group: "ฝ่ายขายส่งข้อมูลเพิ่มแล้ว",
-          title: `${p.no} · ${cus}`,
+          event: "psmore",
+          title: cus,
+          detail: p.reply,
+          href: findLink("/presales-work", p.no),
+          date: today,
+        });
+      }
+    }
+  }
+
+  /*
+   * คำขอทำข้อเสนอที่ส่งถึงตัวคนนอกทีมก่อนการขาย (toEmp) — คนนั้นต้องรู้ที่กระดิ่ง (ผู้ใช้สั่ง 15 ต.ค. 2569)
+   * เรื่องเดียวกับที่ทีมก่อนการขายได้: คำขอใหม่ และฝ่ายขายส่งข้อมูลเพิ่มแล้ว · ไม่เปลี่ยนว่าใครอื่นได้แจ้งเตือน
+   * id ขึ้นต้น "psto-" — กระดิ่งปล่อยผ่านตัวกรองเมนูให้เฉพาะเจ้าของคำขอ (notification-menu)
+   */
+  const meEmp = input.meId;
+  if (role !== "ps" && meEmp && !myRoles.includes("ps")) {
+    for (const p of crm.presales) {
+      if (p.toEmp !== meEmp) continue;
+      const cus = nameOf.get(p.customerCode) ?? "—";
+      const seller = empNameOf(crm.customers.find((c) => c.code === p.customerCode)?.owner) || "ฝ่ายขาย";
+      if (p.status === "รอรับงาน") {
+        out.push({
+          id: `psto-new-${p.id}`,
+          level: daysBetween(p.due, today) > 0 ? "late" : "soon",
+          group: "คำขอทำข้อเสนอใหม่",
+          event: "psreq",
+          title: `คำขอทำข้อเสนอใหม่จาก ${seller} · ${cus}`,
+          detail: `ต้องการวันที่ ${thaiDate(p.due)}`,
+          href: findLink("/presales-work", p.no),
+          date: p.createdAt,
+        });
+      }
+      if (p.status === "กำลังทำ" && p.reply) {
+        out.push({
+          id: `psto-reply-${p.id}-${p.reply.length}`,
+          level: "info",
+          group: "ฝ่ายขายส่งข้อมูลเพิ่มแล้ว",
+          event: "psmore",
+          title: `${seller} · ${cus}`,
           detail: p.reply,
           href: findLink("/presales-work", p.no),
           date: today,
@@ -363,12 +538,12 @@ export function buildNotices(input: {
     for (const p of crm.presales) {
       const days = psUntakenDays(p, today);
       if (days <= PS_UNTAKEN_DAYS) continue;
-      const cus = nameOf.get(p.customerCode) ?? p.customerCode;
+      const cus = nameOf.get(p.customerCode) ?? "—";
       out.push({
         id: `gmps-${p.id}`,
         level: "late",
         group: "คำขอก่อนการขายยังไม่มีใครรับ",
-        title: `${p.no} · ${cus}`,
+        title: cus,
         detail: `ประเภท ${p.kind} · ${psOwner(p)} · ค้างมา ${days} วัน · ต้องส่งงาน ${thaiDate(p.due)}`,
         href: `/presales-work?find=${encodeURIComponent(p.no)}`,
         date: p.createdAt,
@@ -377,7 +552,47 @@ export function buildNotices(input: {
   }
 
   // ═══ เรื่องของฝั่ง PM ══════════════════════════════════════════
-  if (role === "pm") {
+  /* GM ได้ชุดของ PM ทั้งหมดด้วย (ผู้ใช้สั่ง 16 ต.ค. 2569) — หน้าที่ GM เปิดไม่ได้ (/pm/reviews /pm/plan) พาไปหน้าโปรเจค/งานเข้าใหม่แทน */
+  if (role === "pm" || role === "gm") {
+    const gm = role === "gm";
+    /* ชื่อของ PM/GM ที่ล็อกอินอยู่ — ชื่อเดียวกับที่เก็บใน Project.pm */
+    const myName = USERS[role].name;
+    /* PM อีกคนโอนโปรเจคมาให้ → รับโปรเจค (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    for (const p of pm.projects) {
+      const t = p.transfers?.[p.transfers.length - 1];
+      if (!t || t.to !== myName || p.pm !== myName || p.status === "cancelled") continue;
+      const day = t.at.slice(0, 10);
+      if (daysBetween(day, today) > RECENT_DAYS) continue;
+      out.push({
+        id: `pmxfer-${p.pj}-${t.at}`,
+        level: "soon",
+        group: "มีโปรเจคโอนมาให้คุณ",
+        event: "pmtransfer",
+        title: `${p.cus} · ${p.name || p.scope}`,
+        detail: `${t.from} โอนให้ · ${t.why} — รับโปรเจค`,
+        href: projectHref(p.pj),
+        date: day,
+      });
+    }
+    /* ใกล้ถึงเวลานัดหมายของตัวเอง (นัดที่ตัวเองสร้าง วันนี้หรือพรุ่งนี้) → เข้าร่วม (ผู้ใช้สั่ง 16 ต.ค. 2569)
+       นัดที่มีชื่อเราเป็นผู้เข้าร่วมขึ้นเป็น "นัดหมายที่คุณต้องเข้าร่วม" อยู่แล้ว ไม่ซ้ำ */
+    for (const e of input.events ?? []) {
+      if (e.cancel || e.ps || (e.by ?? "pm") !== role) continue;
+      if (input.meId && e.who.includes(input.meId)) continue;
+      const until = daysBetween(today, e.date);
+      if (until < 0 || until > 1) continue;
+      out.push({
+        id: `pmev-${e.id}`,
+        level: "soon",
+        group: "นัดหมายใกล้ถึงเวลา",
+        event: "pmevent",
+        title: e.title,
+        detail: `${until === 0 ? "วันนี้" : "พรุ่งนี้"} · ${e.from ? `${e.from} – ${e.to} น.` : "ทั้งวัน"}${e.place ? ` · ${e.place}` : ""}`,
+        href: gm ? "/gm/calendar" : "/pm/schedule",
+        date: e.date,
+      });
+    }
+
     /* ลูกค้าชำระงวดถัดไปของโปรเจคที่กำลังทำ — PM ต้องรู้ว่างานงวดไหนได้เงินแล้ว (งวดแรกขึ้นเป็นงานเข้าใหม่อยู่แล้ว) */
     for (const r of acc.receipts) {
       if (r.seq <= 1 || daysBetween(r.date, today) > RECENT_DAYS) continue;
@@ -404,13 +619,14 @@ export function buildNotices(input: {
         id: `pmin-${j.pj}`,
         level: j.stage === "new" ? (waiting > 2 ? "late" : "soon") : "info",
         group: j.stage === "new" ? "งานเข้าใหม่รอตรวจ" : "งานรอวางแผน",
+        event: j.stage === "new" ? "pmjob" : undefined,
         title: j.cus,
         detail:
           j.scope +
           (j.stage === "new"
             ? ` · เข้ามา ${waiting > 0 ? `${waiting} วันแล้ว` : "วันนี้"}`
             : " · ตรวจเอกสารแล้ว รอจัดแผนงาน"),
-        href: j.stage === "new" ? "/pm/inbox" : "/pm/plan",
+        href: j.stage === "new" || gm ? "/pm/inbox" : "/pm/plan",
         date: j.sentAt,
       });
     }
@@ -426,10 +642,12 @@ export function buildNotices(input: {
       if (daysBetween(day, today) > DECIDED_DAYS) continue;
       out.push({
         id: `pmcancel-${p.pj}`,
-        level: "late",
+        /* ตารางแจ้งเตือนให้เป็นเรื่องแจ้งให้ทราบ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+        level: "info",
         group: "ดีลถูกยกเลิก งานหยุด",
+        event: "pmcancel",
         title: `${p.cus} · ${p.name || p.scope}`,
-        detail: `${p.cancelled.by}ยกเลิกเมื่อ ${thaiDate(day)} · ${p.cancelled.why} — แผนที่วางไว้ยังเปิดดูได้`,
+        detail: `${empNameOf(p.cancelled.by)}ยกเลิกเมื่อ ${thaiDate(day)} · ${p.cancelled.why} — แผนที่วางไว้ยังเปิดดูได้`,
         href: projectHref(p.pj),
         date: day,
       });
@@ -448,11 +666,12 @@ export function buildNotices(input: {
           id: `pmrev-${p.pj}-${i}`,
           level: waited >= 3 ? "late" : "soon",
           group: "งานรอตรวจ",
+          event: "pmreview",
           title: `${p.cus} · ${t.name}`,
           detail: `${memberName(sub?.by ?? t.whos[0] ?? "")} ส่งมา${
             waited > 0 ? `เมื่อ ${waited} วันก่อน` : "วันนี้"
           }`,
-          href: "/pm/reviews",
+          href: gm ? projectHref(p.pj) : "/pm/reviews",
           date: sub?.at.split(" ")[0] ?? t.due,
         });
       }
@@ -493,6 +712,7 @@ export function buildNotices(input: {
           id: `pmtask-${p.pj}-${i}`,
           level: "late",
           group: "งานย่อยเลยกำหนด",
+          event: "pmlate",
           title: `${p.cus} · ${t.name}`,
           detail:
             `${t.whos.map(memberName).join(", ") || "ยังไม่มีผู้รับผิดชอบ"} · เลยกำหนด ${over} วัน` +
@@ -525,7 +745,7 @@ export function buildNotices(input: {
           level: "late",
           group: "งานถูกยกเลิก",
           title: `${p.cus} · ${p.name || p.scope}`,
-          detail: `ดีลถูกยกเลิกโดย${p.cancelled.by} · ${p.cancelled.why} — หยุดงานของโปรเจคนี้ได้เลย`,
+          detail: `ดีลถูกยกเลิกโดย${empNameOf(p.cancelled.by)} · ${p.cancelled.why} — หยุดงานของโปรเจคนี้ได้เลย`,
           href: "/my-tasks",
           date: day,
         });
@@ -542,8 +762,10 @@ export function buildNotices(input: {
           const text = CHANGE_TEXT[ch.what] ?? CHANGE_TEXT.assign;
           out.push({
             id: `mytask-${ch.what}-${p.pj}-${i}-${ch.at}`,
-            level: "info",
+            /* งานใหม่ที่ PM มอบหมาย → เริ่มทำ เป็นเรื่องต้องทำ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+            level: ch.what === "assign" && t.status === "todo" ? "soon" : "info",
             group: text.group,
+            event: ch.what === "assign" ? "tasknew" : undefined,
             title: `${p.cus} · ${t.name}`,
             detail: text.detail(t),
             href: `${findLink("/my-tasks", t.name)}&stage=recv`,
@@ -559,6 +781,7 @@ export function buildNotices(input: {
             id: `mytask-ok-${p.pj}-${i}`,
             level: "info",
             group: "งานตรวจผ่านแล้ว",
+            event: "taskok",
             title: `${p.cus} · ${t.name}`,
             detail: `PM ตรวจผ่านเมื่อ ${thaiDate(t.doneAt.slice(0, 10))} · เริ่มงานชิ้นถัดไปได้เลย`,
             /* งานที่ผ่านแล้วอยู่แท็บ "ผ่านแล้ว" ต้องบอกหน้าให้สลับให้ ไม่งั้นกดไปแล้วไม่เจอใบนั้น */
@@ -589,6 +812,7 @@ export function buildNotices(input: {
             id: `mytask-back-${p.pj}-${i}`,
             level: "late",
             group: "งานที่ต้องแก้ไข",
+            event: "taskback",
             title: `${p.cus} · ${t.name}`,
             detail: t.back.why,
             /* งานที่ถูกตีกลับอยู่แท็บ "ต้องแก้ไข" ไม่ใช่แท็บแรก ต้องบอกหน้าให้สลับให้ */
@@ -604,12 +828,13 @@ export function buildNotices(input: {
           out.push({
             id: `mytask-due-${p.pj}-${i}`,
             level: over > 0 ? "late" : "soon",
-            group: over > 0 ? "งานเลยกำหนดส่ง" : "งานใกล้ถึงกำหนด",
+            group: over > 0 ? "งานเลยกำหนดส่ง" : over === 0 ? "งานครบกำหนดวันนี้" : "งานครบกำหนดพรุ่งนี้",
+            event: over > 0 ? "taskoverdue" : "taskduesoon",
             title: `${p.cus} · ${t.name}`,
             detail:
               over > 0
                 ? `เลยกำหนด ${over} วัน ยังไม่ได้ส่งให้ PM ตรวจ`
-                : `เหลืออีก ${-over} วัน · กำหนดส่ง ${thaiDate(t.due)}`,
+                : `ยังไม่ได้ส่ง · กำหนดส่ง ${thaiDate(t.due)}`,
             href: `${findLink("/my-tasks", t.name)}&stage=recv`,
             date: t.due,
           });
@@ -636,7 +861,7 @@ export function buildNotices(input: {
         id: `hrdoc-${e.id}`,
         level: "info",
         group: "เอกสารพนักงานยังไม่ครบ",
-        title: e.name,
+        title: displayName(e),
         detail: `ขาด ${missing.length} รายการ · ${missing.map((d) => d.label).join(" · ")}`,
         href: `/hr/employees?find=${encodeURIComponent(e.name)}`,
         date: e.startedAt,
@@ -653,11 +878,12 @@ export function buildNotices(input: {
         id: `hrprob-${e.id}`,
         level: left < 0 ? "late" : "soon",
         group: "ครบกำหนดทดลองงาน",
-        title: e.name,
+        event: "probation",
+        title: displayName(e),
         detail:
           left < 0
             ? `เลยกำหนดมา ${Math.abs(left)} วัน ยังไม่ได้ตัดสิน`
-            : `อีก ${left} วันครบกำหนด · ${thaiDate(end)}`,
+            : `อีก ${left} วันครบกำหนด · ${thaiDate(end)} — ประเมิน แล้วเปลี่ยนเป็นพนักงานประจำ`,
         href: `/hr/employees?find=${encodeURIComponent(e.name)}`,
         date: end,
       });
@@ -670,92 +896,172 @@ export function buildNotices(input: {
         id: `hrintern-${r.id}`,
         level: "soon",
         group: "ใบลานักศึกษาฝึกงานรออนุมัติ",
-        title: `${empOf(hr.emp, r.emp)?.name ?? r.emp} · ${HR_LEAVE_LABEL[r.lt]}`,
-        detail: `${thaiDate(r.from)}${r.from !== r.to ? ` – ${thaiDate(r.to)}` : ""} · ${r.days} วัน`,
+        event: "internleave",
+        title: `${empOf(hr.emp, r.emp) ? displayName(empOf(hr.emp, r.emp)) : r.emp} · ${HR_LEAVE_LABEL[r.lt]}`,
+        detail: `${thaiDate(r.from)}${r.from !== r.to ? ` – ${thaiDate(r.to)}` : ""} · ${fmtLeave(r.days)}`, /* แสดงเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
         href: "/hr/dashboard",
         date: r.at.slice(0, 10),
       });
     }
 
     /*
-     * CEO ตีกลับยอดเงินเดือน — ดูทุกรอบและทุกกลุ่ม ไม่ใช่เฉพาะรอบล่าสุด
-     * (เดิมสายเงินเดือนข้างล่างอ่านแค่ hr.periods ตัวท้าย รอบก่อนหน้าหรือกลุ่มรายวันที่ถูกตีกลับจึงเงียบสนิท)
-     * ยอดที่ถูกตีกลับต้องมีคนแก้เสมอ จึงเป็นระดับ late และหายเองเมื่อส่งใหม่หรือรอบนั้นปิดแล้ว
+     * ผลการอนุมัติยอดเงินเดือนของ CEO (กลับมาใช้ ผู้ใช้สั่ง 19 ต.ค. 2569) — ดูทุกรอบและทุกกลุ่ม
+     *   ไม่อนุมัติ → แก้ไขแล้วส่งใหม่ (late) · อนุมัติแล้ว → ปิดรอบ แล้วสร้างและเผยแพร่สลิป
+     * หายเองเมื่อส่งใหม่ หรือรอบนั้นปิดเงินเดือนแล้ว (ต่อด้วยเรื่อง "ปิดรอบเงินเดือนแล้ว — สร้างและเผยแพร่สลิป")
      */
     for (const [key, ap] of Object.entries(hr.payApprove)) {
-      if (ap.status !== "rejected") continue;
-      const [m, g] = key.split("|") as [string, PayGroup];
-      if (closedIn(hr.payruns.find((p) => p.month === m), g)) continue;
+      if (ap.status !== "rejected" && ap.status !== "approved") continue;
+      const [run, g] = key.split("|") as [string, PayGroup];
+      const day = isDailyRoundKey(run);
+      const closed = day
+        ? Boolean(hr.dailyRounds.find((r) => r.id === run)?.payClosedAt)
+        : hr.payruns.some((p) => p.month === run && (g === "day" ? p.dayClosed : p.closed));
+      if (closed) continue;
+      /* รอบเดือนกลุ่มรายวันแบบเก่าไม่ใช้แล้ว */
+      if (!day && g === "day") continue;
+      const label = `รอบ ${day ? probRoundLabel(dailyRoundRange(run)) : thaiMonth(run)} · ${GROUP_LABEL[g]}`;
+      const href = day ? `/hr/payroll?g=daily&r=${run}` : `/hr/payroll?g=month&m=${run}`;
+      const rej = ap.status === "rejected";
       out.push({
-        id: `hrpayrej-${key}-${ap.at ?? ""}`,
-        level: "late",
-        group: "CEO ตีกลับยอดเงินเดือน",
-        title: `รอบ ${payKeyLabel(m, thaiMonth)} · ${GROUP_LABEL[g]}`,
-        detail: `เหตุผล: ${ap.reason || "—"} · แก้แล้วส่งใหม่`,
-        /* เปิดตรงเมนูย่อยของกลุ่มที่ถูกตีกลับ พร้อมรอบนั้น (ผู้ใช้สั่ง 5 ต.ค. 2569) */
-        href: isDailyRoundKey(m) ? `/hr/payroll?g=daily&r=${m}` : `/hr/payroll?g=${g === "day" ? "daily" : "month"}&m=${m}`,
-        date: (ap.at ?? today).slice(0, 10),
+        id: `hrpay${rej ? "rej" : "ok"}-${key}-${ap.at ?? ""}`,
+        level: rej ? "late" : "soon",
+        group: rej ? "CEO ไม่อนุมัติเงินเดือน" : "CEO อนุมัติเงินเดือนแล้ว",
+        event: rej ? "payback" : "payok",
+        title: label,
+        detail: rej
+          ? `${ap.reason || "ไม่ระบุเหตุผล"} — แก้ไขแล้วส่งใหม่`
+          : "ปิดรอบเงินเดือน แล้วสร้างและเผยแพร่สลิป",
+        href,
+        date: (ap.at || today).slice(0, 10),
       });
     }
 
-    /* สายเงินเดือนเดินเป็นขั้น — ขึ้นทีละเรื่องตามขั้นที่ค้างอยู่จริง ไม่ขึ้นพร้อมกันทุกขั้น */
-    const month = hr.periods[hr.periods.length - 1]?.month;
-    if (month) {
-      const timeClosed = hr.periods.some((p) => p.month === month && p.closed);
+    /*
+     * ขั้นของรอบเงินเดือนตามตารางแจ้งเตือน (ผู้ใช้สั่ง 16 ต.ค. 2569)
+     *   ถึงวันตัดรอบแล้ว รอบเวลายังเปิด → ปิดรอบเวลาทำงาน แล้วคำนวณเงินเดือน
+     *   ปิดรอบเวลาแล้ว รอบเงินเดือนยังไม่ปิด → คำนวณและปิดรอบเงินเดือน
+     *   ปิดรอบเงินเดือนแล้ว สลิปยังไม่สร้าง/ไม่เผยแพร่ → สร้างและเผยแพร่สลิป
+     * รอบที่ยังไม่ถึงวันตัดรอบเป็นรอบที่กำลังเดินอยู่ ไม่ต้องเตือน
+     */
+    for (const per of hr.periods) {
+      const month = per.month;
+      const cut = hrCycle(month).to;
       const payClosed = hr.payruns.some((p) => p.month === month && p.closed);
       const slip = hr.slips.find((sp) => sp.month === month);
-
-      if (!timeClosed)
+      const label = `รอบ ${thaiMonth(month)}`;
+      if (!per.closed) {
+        if (today < cut) continue;
         out.push({
-          id: `hrtime-${month}`,
-          level: "soon",
-          group: "รอบเวลาทำงานยังไม่ปิด",
-          title: `รอบ ${thaiMonth(month)}`,
-          detail: "ปิดรอบก่อน จึงจะคำนวณเงินเดือนได้",
-          href: "/hr/timesheet?g=month",
-          date: today,
+          id: `hrcut-${month}`,
+          level: today > cut ? "late" : "soon",
+          group: "ถึงวันตัดรอบ",
+          event: "cutoff",
+          title: label,
+          detail: `ตัดรอบ ${thaiDate(cut)} — ปิดรอบเวลาทำงาน แล้วคำนวณเงินเดือน`,
+          href: `/hr/timesheet?g=month&m=${month}`,
+          date: cut,
         });
-      else if (!payClosed) {
-        /* ขั้นนี้ขึ้นกับ CEO — บอกตามสถานะการอนุมัติจริง ไม่ใช่บอกให้ปิดรอบทั้งที่ยังปิดไม่ได้
-           ยอดที่ถูกตีกลับขึ้นครบทุกรอบไปแล้วด้านบน ตรงนี้จึงข้าม ไม่ให้เรื่องเดียวขึ้นสองใบ */
-        const ap = payApproval(hr.payApprove, month, "month");
-        const step =
-          ap.status === "waiting"
-            ? { level: "info" as const, group: "รอ CEO อนุมัติยอดเงินเดือน", detail: "ส่งยอดแล้ว รอผู้บริหารตัดสิน" }
-            : ap.status === "approved"
-              ? { level: "soon" as const, group: "CEO อนุมัติยอดเงินเดือนแล้ว", detail: "ปิดรอบเงินเดือนได้เลย" }
-              : { level: "soon" as const, group: "รอบเงินเดือนยังไม่ปิด", detail: "ส่งยอดให้ CEO อนุมัติก่อน จึงจะปิดรอบได้" };
-        if (ap.status !== "rejected")
-          out.push({
-            id: `hrpay-${month}-${ap.status}-${ap.at ?? ap.sentAt ?? ""}`,
-            level: step.level,
-            group: step.group,
-            title: `รอบ ${thaiMonth(month)}`,
-            detail: step.detail,
-            href: "/hr/payroll?g=month",
-            date: today,
-          });
-      }
-      else if (!slip?.madeAt)
+      } else if (!payClosed) {
+        /* ต้องส่งยอดให้ CEO อนุมัติก่อนปิดรอบ (ผู้ใช้สั่ง 19 ต.ค. 2569) — รอ/อนุมัติ/ไม่อนุมัติ ขึ้นเป็นเรื่องของตัวเองด้านบน */
+        const st = payApproval(hr.payApprove, month, "month").status;
+        if (st === "approved" || st === "rejected") continue;
+        out.push({
+          id: `hrpay-${month}`,
+          level: "soon",
+          group: "รอบเงินเดือนยังไม่ปิด",
+          title: label,
+          detail:
+            st === "waiting"
+              ? (payApproval(hr.payApprove, month, "month").ver ?? 0) > 0
+                ? "แก้ไขแล้ว ส่งให้ CEO อนุมัติใหม่ให้เอง — รอ CEO อนุมัติ"
+                : "ส่งยอดให้ CEO แล้ว — รอ CEO อนุมัติ"
+              : "ปิดรอบเวลาทำงานแล้ว — คำนวณเงินเดือน แล้วส่งให้ CEO อนุมัติ",
+          href: `/hr/payroll?g=month&m=${month}`,
+          date: per.closedAt || today,
+        });
+      } else if (!slip?.madeAt || !slip.published) {
+        const closedAt = hr.payruns.find((p) => p.month === month)?.closedAt ?? "";
         out.push({
           id: `hrslip-${month}`,
           level: "soon",
-          group: "ยังไม่ได้สร้างสลิป",
-          title: `รอบ ${thaiMonth(month)}`,
-          detail: "รอบเงินเดือนปิดแล้ว สร้างสลิปได้เลย",
-          href: "/hr/payslip?g=month",
+          group: "ปิดรอบเงินเดือนแล้ว",
+          event: "slipmake",
+          title: label,
+          detail: slip?.madeAt
+            ? "สร้างสลิปแล้วแต่พนักงานยังเปิดดูไม่ได้ — เผยแพร่สลิป"
+            : "สร้างและเผยแพร่สลิป",
+          href: `/hr/payslip?g=month&m=${month}`,
+          date: (closedAt || today).slice(0, 10),
+        });
+      }
+    }
+    /* รอบจ่ายรายวันของพนักงานทดลองงาน — ปิดรอบเงินเดือนแล้วแต่สลิปยังไม่เผยแพร่ */
+    /* รอบรายสัปดาห์ของทดลองงานที่ปิดรอบเวลาแล้ว ยังไม่ปิดเงินเดือน — ส่ง CEO / รอ CEO (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+    for (const r of hr.dailyRounds) {
+      if (!r.closedAt || r.payClosedAt) continue;
+      const st = payApproval(hr.payApprove, r.id, "day").status;
+      if (st === "approved" || st === "rejected") continue;
+      out.push({
+        id: `hrpayday-${r.id}`,
+        level: "soon",
+        group: "รอบเงินเดือนยังไม่ปิด",
+        title: `รอบจ่าย ${probRoundLabel(r)}`,
+        detail:
+          st === "waiting"
+            ? (payApproval(hr.payApprove, r.id, "day").ver ?? 0) > 0
+              ? "แก้ไขแล้ว ส่งให้ CEO อนุมัติใหม่ให้เอง — รอ CEO อนุมัติ"
+              : "ส่งยอดให้ CEO แล้ว — รอ CEO อนุมัติ"
+            : "คำนวณเงินเดือน แล้วส่งให้ CEO อนุมัติ",
+        href: `/hr/payroll?g=daily&r=${r.id}`,
+        date: r.closedAt.slice(0, 10),
+      });
+    }
+    for (const r of hr.dailyRounds) {
+      if (!r.payClosedAt || r.published) continue;
+      out.push({
+        id: `hrslipday-${r.id}`,
+        level: "soon",
+        group: "ปิดรอบเงินเดือนแล้ว",
+        event: "slipmake",
+        title: `รอบจ่าย ${probRoundLabel(r)}`,
+        detail: r.slipsMadeAt ? "สร้างสลิปแล้วแต่พนักงานยังเปิดดูไม่ได้ — เผยแพร่สลิป" : "สร้างและเผยแพร่สลิป",
+        href: `/hr/payslip?g=daily&r=${r.from}~${r.to}`,
+        date: r.payClosedAt.slice(0, 10),
+      });
+    }
+
+    /*
+     * ระบบพบรายการที่ต้องตรวจ (ไม่มีบันทึกเวลา / ไม่ได้เช็คเอาท์ / ลาแล้วแต่มีเช็คอิน) → ตรวจ แล้วบันทึกผล
+     * นับแบบเดียวกับหน้าสรุปเวลาทำงาน (openIssues + clashDays) ของรอบเดือนที่ยังไม่ปิด (ผู้ใช้สั่ง 16 ต.ค. 2569)
+     */
+    if (input.hrTime) {
+      for (const per of hr.periods) {
+        if (per.closed) continue;
+        const cycle = hrCycle(per.month);
+        let issues = 0;
+        let clashes = 0;
+        for (const e of hr.emp) {
+          if (e.startedAt > cycle.to || (e.leftAt && e.leftAt < cycle.from)) continue;
+          const rec = recInRange(input.hrTime, e.id, cycle);
+          issues += openIssues(rec).length;
+          clashes += clashDays(e.id, rec, hr.time[e.id]?.fix ?? [], input.punchTimes?.[e.id], today, hr.clashOk, scheduleFor(e)).length;
+        }
+        if (issues + clashes === 0) continue;
+        const parts = [
+          issues ? `ไม่มีบันทึกเวลา/ไม่ได้เช็คเอาท์ ${issues} รายการ` : "",
+          clashes ? `ลาแล้วแต่มีเช็คอิน ${clashes} วัน` : "",
+        ].filter(Boolean);
+        out.push({
+          id: `hrreview-${per.month}-${issues}-${clashes}`,
+          level: "soon",
+          group: "รายการที่ต้องตรวจ",
+          event: "timereview",
+          title: `รอบ ${thaiMonth(per.month)}`,
+          detail: `${parts.join(" · ")} — ตรวจ แล้วบันทึกผล`,
+          href: `/hr/timesheet?g=month&m=${per.month}`,
           date: today,
         });
-      else if (!slip.published)
-        out.push({
-          id: `hrpub-${month}`,
-          level: "soon",
-          group: "สลิปยังไม่เผยแพร่",
-          title: `รอบ ${thaiMonth(month)}`,
-          detail: "สร้างสลิปแล้วแต่พนักงานยังเปิดดูไม่ได้",
-          href: "/hr/payslip?g=month",
-          date: slip.madeAt,
-        });
+      }
     }
   }
 
@@ -764,17 +1070,24 @@ export function buildNotices(input: {
     for (const v of acc.invoices) {
       /* เงื่อนไขเดียวกับ awaitingReceipt ในสโตร์ — กระดิ่งกับหน้าวางบิลจึงนับใบชุดเดียวกัน */
       if (invoiceStatus(acc, v) === "cancelled" || invoiceDue(v) <= 0) continue;
+      /* ใบลงวันที่ล่วงหน้า — ยังไม่ถึงวันออก ลูกค้ายังไม่ได้รับ ไม่เตือน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+      if (invoiceNotYet(v, today)) continue;
       const over = daysBetween(v.due, today);
       /* ใกล้ครบกำหนดก็ต้องรู้ ไม่ใช่รอให้เลยแล้วค่อยตามเก็บ */
       if (over < -EXPIRING_DAYS) continue;
       out.push({
         id: `inv-${v.no}`,
         level: over > 0 ? "late" : "soon",
-        group: over > 0 ? "ใบแจ้งหนี้เกินกำหนด" : "ใบแจ้งหนี้ใกล้ครบกำหนด",
+        group: over > 0 ? "ใบแจ้งหนี้เกินกำหนด" : over === 0 ? "ใบแจ้งหนี้ถึงวันครบกำหนด" : "ใบแจ้งหนี้ใกล้ครบกำหนด",
+        event: over > 0 ? "invlate" : over === 0 ? "invdue" : undefined,
         title: `${v.cus} · ${v.no}`,
         detail:
           `${baht(invoiceDue(v))} บาท · ` +
-          (over > 0 ? `เกินกำหนด ${over} วัน` : over === 0 ? "ครบกำหนดวันนี้" : `เหลืออีก ${-over} วัน`),
+          (over > 0
+            ? `เกินกำหนด ${over} วัน ยังไม่ออกใบเสร็จ — ทวงลูกค้า`
+            : over === 0
+              ? "ครบกำหนดวันนี้ — เช็คยอดเงินเข้า แล้วออกใบเสร็จ"
+              : `เหลืออีก ${-over} วัน`),
         href: findLink("/acc/billing", v.no),
         date: v.due,
       });
@@ -787,8 +1100,9 @@ export function buildNotices(input: {
           id: `plan-${d.no}`,
           level: "soon",
           group: "ดีลรอแบ่งงวด",
+          event: "billnew",
           title: d.cus,
-          detail: `${d.no} · ${baht(d.net)} บาท · ยังไม่ได้แบ่งงวดชำระ`,
+          detail: `${baht(d.net)} บาท · Sales ปิดดีลส่งมาวางบิล — แบ่งงวด แล้วออกใบแจ้งหนี้งวด 1`,
           href: findLink("/acc/billing", d.no),
           date: d.quoDate,
         });
@@ -797,10 +1111,12 @@ export function buildNotices(input: {
       for (const p of ready) {
         out.push({
           id: `bill-${d.no}-${p.seq}`,
-          level: "info",
+          /* งวดถัดไปพร้อม → ออกใบแจ้งหนี้งวดถัดไป เป็นเรื่องต้องทำ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+          level: "soon",
           group: "งวดรอวางบิล",
+          event: p.seq === 1 ? "billnew" : "billnext",
           title: d.cus,
-          detail: `${d.no} · งวดที่ ${p.seq} · ${baht(p.amount)} บาท`,
+          detail: `งวดที่ ${p.seq} · ${baht(p.amount)} บาท — ออกใบแจ้งหนี้`,
           href: findLink("/acc/billing", d.no),
           date: p.due || d.quoDate,
         });
@@ -808,6 +1124,44 @@ export function buildNotices(input: {
     }
     /* ไม่มีเรื่อง "รับเงินแล้วรอออกใบเสร็จ" อีก — ออกใบเสร็จคือการบันทึกรับชำระ (AC-BR-05)
        ใบที่ยังไม่ชำระขึ้นเป็นใบแจ้งหนี้ใกล้/เกินกำหนดด้านบนแล้ว */
+    /*
+     * ใกล้กำหนดนำส่งภาษีที่เราหักจากผู้ขาย (ภ.ง.ด.3/53 ภายในวันที่ 7 ของเดือนถัดไป)
+     * → สรุปข้อมูลส่งสำนักงานบัญชี (ผู้ใช้สั่ง 16 ต.ค. 2569) — ขึ้นวันที่ 1–7 เมื่อเดือนก่อนมีรายการหัก
+     */
+    if (now.getDate() <= WHT_FILE_DAY) {
+      const prev = toIsoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+      const rows = acc.wht.filter((w) => w.date.startsWith(prev));
+      if (rows.length) {
+        const due = `${today.slice(0, 7)}-0${WHT_FILE_DAY}`;
+        const left = daysBetween(today, due);
+        out.push({
+          id: `whtdue-${prev}`,
+          level: left <= 2 ? "late" : "soon",
+          group: "ใกล้กำหนดนำส่งภาษีหัก ณ ที่จ่าย",
+          event: "whtdue",
+          title: `รอบ ${thaiMonth(prev)} · ${rows.length} รายการ`,
+          detail: `นำส่งภายใน ${thaiDate(due)}${left === 0 ? " (วันนี้)" : ` (อีก ${left} วัน)`} — สรุปข้อมูลส่งสำนักงานบัญชี`,
+          href: "/acc/wht",
+          date: due,
+        });
+      }
+    }
+    /* Sales ยกเลิกดีลที่ลูกค้ายังไม่จ่าย — แจ้งให้ทราบ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    for (const d of crm.deals) {
+      if (!d.cancelled || dealPaid(acc, d.no)) continue;
+      const day = d.cancelled.at.slice(0, 10);
+      if (daysBetween(day, today) > DECIDED_DAYS) continue;
+      out.push({
+        id: `acccancel-${d.no}`,
+        level: "info",
+        group: "Sales ยกเลิกดีล",
+        event: "dealcancelsales",
+        title: nameOf.get(d.customerCode) ?? "—",
+        detail: `ยกเลิกโดย ${empNameOf(d.cancelled.by)} · ${d.cancelled.why}`,
+        href: findLink("/acc/billing", d.no),
+        date: day,
+      });
+    }
     for (const w of acc.wht) {
       if (w.no) continue;
       out.push({
@@ -822,26 +1176,32 @@ export function buildNotices(input: {
     }
   }
 
+  /* CEO ไม่อยู่ในชุด "พนักงานทุกคนที่ลงเวลา" — ไม่มีเรื่องใบลา/โอที/ใบเบิกของตัวเอง เช็คอิน/เช็คเอาท์ หรือสลิป (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const self = role !== "ceo";
+  const myLeaves = self ? leaves : [];
+  const myOt = self ? ot : [];
+  const myClaims = self ? claims : [];
+
   // ── ใบลาและโอทีของเราที่ยังรอหัวหน้าอนุมัติ ──
-  for (const l of leaves) {
+  for (const l of myLeaves) {
     if (l.status !== "รอการอนุมัติ") continue;
     out.push({
       id: `leave-${l.id}`,
       level: "info",
       group: "รออนุมัติ",
       title: `ใบลา${l.type}`,
-      detail: `${thaiDate(l.date)} · ${l.days} วัน · รอหัวหน้าอนุมัติ`,
+      detail: `${thaiDate(l.date)} · ${fmtLeaveHours(leaveHoursOf(l))} · รอหัวหน้าอนุมัติ`,
       href: "/leave",
       date: l.date,
     });
   }
-  for (const o of ot) {
+  for (const o of myOt) {
     if (o.status !== "รออนุมัติ") continue;
     out.push({
       id: `ot-${o.id}`,
       level: "info",
       group: "รออนุมัติ",
-      title: `คำขอโอที ${o.id}`,
+      title: "คำขอโอที",
       detail: `${thaiDate(o.date)} · ${o.hours.toFixed(2)} ชม. · รอหัวหน้าอนุมัติ`,
       href: "/ot",
       date: o.date,
@@ -851,7 +1211,7 @@ export function buildNotices(input: {
   /* ── ผลการตัดสินใบลาและใบโอทีของเรา (กติกากลาง) ──
      ตีกลับต้องรู้ทันทีเพราะต้องแก้แล้วยื่นใหม่ · อนุมัติแล้วก็ต้องรู้ จะได้วางแผนงานถูก
      นับจากเวลาที่ผู้อนุมัติตัดสิน (decidedAt) ใบเก่าก่อนมีช่องนี้จึงไม่เด้งย้อนหลังทั้งปี */
-  for (const l of leaves) {
+  for (const l of myLeaves) {
     if (!l.decidedAt || daysBetween(l.decidedAt.slice(0, 10), today) > DECIDED_DAYS) continue;
     const range = l.date === l.toDate ? thaiDate(l.date) : `${thaiDate(l.date)} – ${thaiDate(l.toDate)}`;
     if (l.status === "ไม่อนุมัติ")
@@ -859,7 +1219,8 @@ export function buildNotices(input: {
         id: `leave-rej-${l.id}`,
         level: "late",
         group: "ใบลาไม่ผ่าน",
-        title: `ใบลา${l.type} ${l.id}`,
+        event: "leave",
+        title: `ใบลา${l.type}`,
         detail: `${range} · ${l.comment || "ผู้อนุมัติตีกลับ — ยื่นใหม่ได้"}`,
         href: "/leave",
         date: l.decidedAt.slice(0, 10),
@@ -869,20 +1230,22 @@ export function buildNotices(input: {
         id: `leave-ok-${l.id}`,
         level: "info",
         group: "ใบลาอนุมัติแล้ว",
-        title: `ใบลา${l.type} ${l.id}`,
-        detail: `${range} · ${l.days} วัน · หัวหน้าอนุมัติแล้ว`,
+        event: "leaveok",
+        title: `ใบลา${l.type}`,
+        detail: `${range} · ${fmtLeaveHours(leaveHoursOf(l))} · หัวหน้าอนุมัติแล้ว`,
         href: "/leave",
         date: l.decidedAt.slice(0, 10),
       });
   }
-  for (const o of ot) {
+  for (const o of myOt) {
     if (!o.decidedAt || daysBetween(o.decidedAt.slice(0, 10), today) > DECIDED_DAYS) continue;
     if (o.status === "ไม่อนุมัติ")
       out.push({
         id: `ot-rej-${o.id}`,
         level: "late",
         group: "คำขอโอทีไม่ผ่าน",
-        title: `คำขอโอที ${o.id}`,
+        event: "leave",
+        title: "คำขอโอที",
         detail: `${thaiDate(o.date)} · ${o.comment || "ผู้อนุมัติตีกลับ — ยื่นใหม่ได้"}`,
         href: "/ot",
         date: o.decidedAt.slice(0, 10),
@@ -894,7 +1257,8 @@ export function buildNotices(input: {
         id: `ot-ok-${o.id}`,
         level: "info",
         group: "คำขอโอทีอนุมัติแล้ว",
-        title: `คำขอโอที ${o.id}`,
+        event: "leaveok",
+        title: "คำขอโอที",
         detail:
           `${thaiDate(o.date)} · อนุมัติ ${paid.toFixed(2)} ชม.` +
           (paid !== o.hours ? ` (ขอ ${o.hours.toFixed(2)} ชม.)` : ""),
@@ -925,6 +1289,7 @@ export function buildNotices(input: {
               id: `ev-cancel-${e.id}`,
               level: "late",
               group: "นัดหมายถูกยกเลิก",
+              event: "eventchange",
               title: e.title,
               detail: `${when} · ${e.cancel?.why || "ไม่ได้ระบุเหตุผล"}`,
               href: backTo,
@@ -932,8 +1297,10 @@ export function buildNotices(input: {
             }
           : {
               id: `ev-invite-${e.id}`,
-              level: "info",
+              /* PM เพิ่มเข้านัดหมาย → เข้าร่วม เป็นเรื่องต้องทำ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+              level: "soon",
               group: "นัดหมายที่คุณต้องเข้าร่วม",
+              event: "eventinvite",
               title: e.title,
               detail: `${when} · ${time}${e.place ? ` · ${e.place}` : ""}`,
               href: backTo,
@@ -954,8 +1321,9 @@ export function buildNotices(input: {
           id: `ev-drop-${e.id}`,
           level: "late",
           group: "คุณถูกถอดออกจากนัดหมาย",
+          event: "eventchange",
           title: e.title,
-          detail: `${when} · ${e.from} – ${e.to} น. · ไม่ต้องเข้าร่วมแล้ว · ${c.by} เป็นผู้แก้`,
+          detail: `${when} · ${e.from} – ${e.to} น. · ไม่ต้องเข้าร่วมแล้ว · ${empNameOf(c.by)} เป็นผู้แก้`,
           href: backTo,
           date: c.at.slice(0, 10),
         });
@@ -970,8 +1338,9 @@ export function buildNotices(input: {
         id: `ev-change-${e.id}`,
         level: "info",
         group: "นัดหมายถูกเปลี่ยนแปลง",
+        event: "eventchange",
         title: e.title,
-        detail: `${parts.join(" · ")} · ${c.by} เป็นผู้แก้`,
+        detail: `${parts.join(" · ")} · ${empNameOf(c.by)} เป็นผู้แก้`,
         href: backTo,
         date: c.at.slice(0, 10),
       });
@@ -980,7 +1349,7 @@ export function buildNotices(input: {
   }
 
   // ── ใบเบิกค่าใช้จ่ายที่ยังค้าง ──
-  for (const c of claims) {
+  for (const c of myClaims) {
     const total = claimTotal(c);
     if (c.status === "รออนุมัติ") {
       out.push({
@@ -997,6 +1366,7 @@ export function buildNotices(input: {
         id: `claim-rej-${c.month}`,
         level: "late",
         group: "ใบเบิกไม่ผ่าน",
+        event: "leave",
         title: `ใบเบิกค่าใช้จ่าย ${thaiMonth(c.month)}`,
         detail: c.comment || "ผู้อนุมัติตีกลับ — แก้ไขแล้วยื่นใหม่ได้",
         href: "/expense",
@@ -1013,6 +1383,7 @@ export function buildNotices(input: {
         id: `claim-ok-${c.month}`,
         level: "info",
         group: "ใบเบิกอนุมัติแล้ว",
+        event: "leaveok",
         title: `ใบเบิกค่าใช้จ่าย ${thaiMonth(c.month)}`,
         detail: `${baht(total)} บาท · ${c.comment || "หัวหน้าอนุมัติแล้ว รอจ่ายพร้อมรอบเงินเดือน"}`,
         href: "/expense",
@@ -1036,7 +1407,7 @@ export function buildNotices(input: {
      แต่เจ้าของใบหลายคนล็อกอินได้จริง (E01 = ทีมก่อนการขาย · E05 = ทีมงาน)
      ถ้าไม่อ่านชุดนี้ด้วย คนเดียวกันจะรู้ผลเฉพาะใบที่ยื่นจากหน้าตัวเอง — ผิดกติกากลาง
      คนละใบกับสองสโตร์ข้างบน (คนละเลขที่) จึงไม่มีทางขึ้นซ้ำกัน */
-  for (const r of input.empReqs ?? []) {
+  for (const r of self ? (input.empReqs ?? []) : []) {
     if (!input.meId || r.emp !== input.meId || !r.decidedAt) continue;
     if (daysBetween(r.decidedAt.slice(0, 10), today) > DECIDED_DAYS) continue;
     const ok = r.status === "approved";
@@ -1046,16 +1417,16 @@ export function buildNotices(input: {
         ? {
             page: "/leave",
             group: ok ? "ใบลาอนุมัติแล้ว" : "ใบลาไม่ผ่าน",
-            title: `ใบลา${r.leaveType ?? ""} ${r.id}`,
+            title: `ใบลา${r.leaveType ?? ""}`,
             detail:
               (r.from === r.toDate ? thaiDate(r.from ?? "") : `${thaiDate(r.from ?? "")} – ${thaiDate(r.toDate ?? "")}`) +
-              ` · ${r.days ?? 0} วัน`,
+              ` · ${empReqLeaveText(r)}`,
           }
         : r.kind === "ot"
           ? {
               page: "/ot",
               group: ok ? "คำขอโอทีอนุมัติแล้ว" : "คำขอโอทีไม่ผ่าน",
-              title: `คำขอโอที ${r.id}`,
+              title: "คำขอโอที",
               /* อนุมัติไม่เท่าที่ขอต้องบอกด้วย ไม่งั้นเจ้าของใบคิดเงินโอทีผิด */
               detail:
                 `${thaiDate(r.date ?? "")} · ${ok ? `อนุมัติ ${(r.approvedHours ?? r.hours ?? 0).toFixed(2)} ชม.` : `ขอไว้ ${(r.hours ?? 0).toFixed(2)} ชม.`}` +
@@ -1066,13 +1437,14 @@ export function buildNotices(input: {
           : {
               page: "/expense",
               group: ok ? "ใบเบิกอนุมัติแล้ว" : "ใบเบิกไม่ผ่าน",
-              title: `ใบเบิกค่าใช้จ่าย ${r.month ? thaiMonth(r.month) : r.id}`,
+              title: `ใบเบิกค่าใช้จ่าย${r.month ? ` ${thaiMonth(r.month)}` : ""}`,
               detail: `${(r.fuel ?? []).length} รายการ · ${r.plate ?? ""}`.trim(),
             };
     out.push({
       id: `empreq-${r.id}`,
       level: ok ? "info" : "late",
       group: what.group,
+      event: ok ? "leaveok" : "leave",
       title: what.title,
       detail: `${what.detail} · ${ok ? r.reason || "หัวหน้าอนุมัติแล้ว" : r.reason || "ผู้อนุมัติตีกลับ — ยื่นใหม่ได้"}`,
       href: what.page,
@@ -1080,41 +1452,26 @@ export function buildNotices(input: {
     });
   }
 
-  // ── วันที่ตอกเข้าแล้วลืมตอกออก (ไม่นับวันนี้ที่ยังทำงานอยู่) ──
-  const punchDays = new Set(punches.map((r) => dayKey(new Date(r.at))));
-  for (const day of punchDays) {
-    if (day >= today) continue;
-    const sessions = toSessions(recordsOfDay(punches, day));
-    if (!sessions.some((s) => !s.out)) continue;
-    out.push({
-      id: `punch-${day}`,
-      level: "late",
-      group: "ลืมตอกบัตรออก",
-      event: "forgot",
-      title: thaiDate(day),
-      detail: "มีเวลาเข้างานแต่ไม่มีเวลาออกงาน — ติดต่อฝ่ายบุคคลเพื่อแก้ไข",
-      href: "/records",
-      date: day,
-    });
-  }
+  /* เลิกแจ้ง "ลืมเช็คเอาท์" แล้ว (ผู้ใช้สั่ง 16 ต.ค. 2569) — อย่าเพิ่มกลับ */
 
   /* ═══ สลิปเงินเดือนของเรา (กติกากลาง) ═══════════════════════════
      เดิมเงียบทั้งสองทาง — ฝ่ายบุคคลเผยแพร่ก็ไม่รู้ ยกเลิกการเผยแพร่ก็ไม่รู้
      คนที่เปิดสลิปไว้แล้วจึงเจอว่าหายไปเฉย ๆ โดยไม่มีใครบอกว่าทำไม
      อ่านกลุ่มจ่ายของตัวเอง (รายเดือน/รายวัน) เหมือนหน้าสลิปของฉัน ไม่งั้นเด้งผิดกลุ่ม */
-  if (input.hr && input.meId) {
+  if (self && input.hr && input.meId) {
     const me = input.hr.emp.find((e) => e.id === input.meId);
     if (me && me.type !== "intern") {
-      const day = isDaily(me);
-      /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-      for (const r of day ? input.hr.dailyRounds : []) {
-        if (!inRange(me, r)) continue;
-        const title = `รอบ ${rangeLabel(r)}`;
+      /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569)
+         ผ่านทดลองงานกลางรอบได้ทั้งสลิปรายวัน (ถึงวันตัดรอบ) และรายเดือน (รอบถัดไป) (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+      for (const r of me.type === "probat" || me.probPass ? input.hr.dailyRounds : []) {
+        if (!inRange(me, r) || !isDaily(me, r)) continue;
+        const title = `รอบ ${probRoundLabel(r)}`;
         if (r.published && r.publishedAt && daysBetween(r.publishedAt.slice(0, 10), today) <= RECENT_DAYS) {
           out.push({
             id: `slip-${r.id}-day`,
             level: "info",
             group: "สลิปเงินเดือนออกแล้ว",
+            event: "payslip",
             title,
             detail: "ฝ่ายบุคคลเผยแพร่สลิปแล้ว เปิดดูและดาวน์โหลดได้",
             href: "/payslip",
@@ -1134,8 +1491,9 @@ export function buildNotices(input: {
             date: back.at.slice(0, 10),
           });
       }
-      for (const sp of day ? [] : input.hr.slips) {
-        if (!inPeriod(me, sp.month)) continue;
+      const day = false;
+      for (const sp of me.type === "probat" ? [] : input.hr.slips) {
+        if (!inPeriod(me, sp.month) || isDaily(me, hrCycle(sp.month))) continue;
         const published = day ? sp.dayPublished : sp.published;
         const at = day ? sp.dayPublishedAt : sp.publishedAt;
         /* เผยแพร่แล้วกับถูกถอนกลับเป็นคนละขั้ว ขึ้นได้ทีละอย่างเท่านั้น ไม่มีทางซ้อนกัน */
@@ -1144,6 +1502,7 @@ export function buildNotices(input: {
             id: `slip-${sp.month}-${day ? "day" : "month"}`,
             level: "info",
             group: "สลิปเงินเดือนออกแล้ว",
+            event: "payslip",
             title: `รอบ ${thaiMonth(sp.month)}`,
             detail: "ฝ่ายบุคคลเผยแพร่สลิปแล้ว เปิดดูและดาวน์โหลดได้",
             href: "/payslip",
@@ -1194,6 +1553,10 @@ const ADMIN_AUDIENCE: Record<LogArea, ((role: Role) => string | null) | null> = 
   บทบาทและสิทธิ์: () => "/",
   /* เปลี่ยนผู้อนุมัติรายตำแหน่ง มีผลกับใบที่ทุกคนยื่น จึงพาไปหน้าการลา */
   ตำแหน่งและสายอนุมัติ: () => "/leave",
+  /* เปลี่ยนตำแหน่งที่รับคำขอ — ฝ่ายขายกับทีมก่อนการขายควรรู้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  ประเภทงานคำขอก่อนการขาย: (r) => (r === "sales" ? "/presales/new" : r === "ps" ? "/presales-work" : null),
+  /* แม่แบบ Proposal เปลี่ยน — ฝ่ายขายควรรู้ ดาวน์โหลดได้ในหน้าผู้สนใจ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  "แม่แบบ Proposal": (r) => (r === "sales" ? "/leads" : null),
   เวลาทำงาน: () => "/records",
   วันหยุดบริษัท: () => "/leave",
   การลา: () => "/leave",
@@ -1212,6 +1575,8 @@ function adminNotices(role: Role, log: LogEntry[], today: string): Notice[] {
   for (const e of log) {
     const day = e.at.slice(0, 10);
     if (daysBetween(day, today) > ADMIN_NOTICE_DAYS) continue;
+    /* ส่ง/ดึงกลับ/ตีกลับวันหยุดยังไม่มีผล — แจ้งทุกคนเฉพาะตอน CEO อนุมัติ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    if (e.area === "วันหยุดบริษัท" && /^(ส่งให้ CEO|ดึงคำขอ|CEO ตีกลับ)/.test(e.detail)) continue;
     const hrefOf = ADMIN_AUDIENCE[e.area];
     const href = hrefOf?.(role);
     if (!href) continue;

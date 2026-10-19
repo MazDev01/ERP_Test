@@ -3,7 +3,7 @@
 /*
  * ตำแหน่งและสายอนุมัติ (Full Proposal · M5) — หน้าตาตามต้นแบบ "ตั้งค่าระบบ — ERP MAZ.html" (HR-11)
  *
- *   การ์ดพับได้รายแผนก ข้างในเป็นตารางตำแหน่ง: ชื่อ · ผู้อนุมัติ ลา/โอที/เบิก · สวิตช์เปิดใช้ · แก้/ลบ
+ *   ตารางเดียวแบบแท็บแผนก เรียงตามแผนก: ชื่อ · แผนก · ผู้อนุมัติ ลา/โอที/เบิก · สวิตช์เปิดใช้ · แก้/ลบ (ผู้ใช้สั่ง 12 ต.ค. 2569)
  *   ตำแหน่งสังกัดแผนก — เพิ่ม แก้ชื่อ ย้ายแผนก · ตำแหน่งที่มีพนักงานอยู่ลบไม่ได้ (ปิดใช้งานแทน)
  *   เลือกผู้อนุมัติ ลา โอที เบิกค่าใช้จ่าย ต่อตำแหน่งในกล่องแก้ไข — ไม่ตั้ง = ใช้สายตั้งต้นของบทบาท (แท็บสายอนุมัติเอาออกแล้ว ผู้ใช้สั่ง 6 ต.ค. 2569)
  *   ผู้อนุมัติอนุมัติคำขอของตนเองไม่ได้ — ตำแหน่งของผู้อนุมัติเองจึงเลือกตัวเองไม่ได้
@@ -12,6 +12,7 @@
  * บันทึกทีเดียวทั้งสองหมวด เพราะผู้ใช้มองว่าเป็นหน้าเดียว
  */
 
+import { nameOf } from "@/lib/emp-name";
 import { AdminOptionsPage } from "./admin-options-page";
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -31,8 +32,8 @@ import {
   type RequestKind,
   type Role,
 } from "@/lib/role";
-import { Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
-import { ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon } from "./icons";
+import { AdminHead, IconBtn, Input2, SaveBar, Switch, inputCls, thCls, trCls, useSectionDraft } from "./admin-ui";
+import { PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 
 const KINDS: { key: RequestKind; label: string }[] = [
@@ -156,6 +157,11 @@ const POS_TABS = [
 ] as const;
 type PosTab = (typeof POS_TABS)[number]["key"];
 
+/** ตารางตำแหน่งอย่างเดียว ไม่มีแถบแท็บของตัวเอง — แท็บของตั้งค่าระบบแยกแผนกกับตำแหน่งแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function AdminPositionsPane() {
+  return <PositionsPane tabs={null} />;
+}
+
 export function AdminPositionsPage() {
   const q = useSearchParams();
   const here = usePathname();
@@ -201,8 +207,6 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
   /* กล่องเพิ่ม/แก้ตำแหน่ง — null = ปิด · "" = เพิ่มใหม่ · รหัสตำแหน่ง = แก้ */
   const [editing, setEditing] = useState<string | null>(null);
   const [deptEditing, setDeptEditing] = useState<{ v: string; label: string } | null>(null);
-  /* แผนกที่พับไว้ — ต้นแบบกางทุกแผนกเป็นค่าตั้งต้น */
-  const [shut, setShut] = useState<string[]>([]);
 
   /* ตำแหน่งและแผนกต้องมาจากร่าง ไม่ใช่ค่าที่บันทึกแล้ว — ไม่งั้นที่เพิ่ม/ลบไว้จะยังไม่ขึ้นก่อนกดบันทึก */
   const list = merged(cat.draft.positions, BUILTIN_HR_POSITION, (p) => p.v);
@@ -257,136 +261,93 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
 
   const cur = editing ? list.find((p) => p.v === editing) : undefined;
 
+  /* ตารางเดียว เรียงตามลำดับแผนกก่อน แล้วตามลำดับตำแหน่งในแผนก — แผนกที่หาไม่เจอไว้ท้าย (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  const deptIdx = (v: string) => {
+    const i = depts.findIndex((d) => d.v === v);
+    return i < 0 ? depts.length : i;
+  };
+  const rows = list
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => deptIdx(a.p.dept) - deptIdx(b.p.dept) || a.i - b.i)
+    .map((x) => x.p);
+
   return (
     <div className="space-y-4">
-      <h1 className="sr-only">ตำแหน่งและสายอนุมัติ</h1>
-      {/* แถบแท็บ + ปุ่มเพิ่มตำแหน่งอยู่แถวเดียวกัน (เดิมปุ่มอยู่แถวเครื่องมือของ AdminHead · ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-      <section className="panel glass">
-        <div className="strip">
-          {tabs}
-          <button
-            type="button"
-            className="btn solid btn-solid my-1.5"
-            onClick={() => setEditing("")}
-          >
-            <PlusIcon className="size-4" strokeWidth={2.4} />
-            เพิ่มตำแหน่ง
-          </button>
+      {/* หัวหน้าแบบเดียวกับแท็บแผนก: ชื่อแท็บซ้าย ปุ่มเพิ่มขวา (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <AdminHead title="ตำแหน่ง" desc="เพิ่ม แก้ชื่อ ย้ายแผนก ตั้งผู้อนุมัติ และปิดใช้งานตำแหน่ง">
+        <button type="button" className="btn solid btn-solid" onClick={() => setEditing("")}>
+          <PlusIcon className="size-4" strokeWidth={2.4} />
+          เพิ่มตำแหน่ง
+        </button>
+      </AdminHead>
+
+      {/* การ์ดเดียว: แถบแท็บ + ตารางเดียวเรียงตามแผนก แทนการ์ดพับรายแผนก (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <section className="glass overflow-hidden rounded-[18px]">
+        {tabs && <div className="border-b border-border px-3">{tabs}</div>}
+
+        <div className="px-4 pt-3.5 pb-4 sm:px-5">
+          <div className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_72px_72px_96px_58px_84px] ${thCls}`}>
+            <span className="text-center max-md:hidden">#</span>
+            <span>ชื่อตำแหน่ง</span>
+            <span className="max-md:hidden">แผนก</span>
+            {KINDS.map((k) => (
+              <span key={k.key} className="text-center max-md:hidden">
+                {k.label}
+              </span>
+            ))}
+            <span className="text-center">เปิดใช้</span>
+            <span />
+          </div>
+
+          {rows.length === 0 ? (
+            <p className="py-8 text-center text-[13px] text-muted-foreground">ยังไม่มีตำแหน่ง</p>
+          ) : (
+            rows.map((p, i) => {
+              const off = isOff(p);
+              const n = hr.emp.filter((e) => holdsPos(e, p.v)).length;
+              const why = blockOf(p.v);
+              const deptName = depts.find((d) => d.v === p.dept)?.label ?? hrDept(p.dept).label;
+              return (
+                <div
+                  key={p.v}
+                  className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_72px_72px_96px_58px_84px] ${trCls} ${off ? "opacity-50" : ""}`}
+                >
+                  <span className="num text-center text-[12px] text-muted-foreground max-md:hidden">{i + 1}</span>
+                  <span className="min-w-0">
+                    {/* ปิดใช้แล้วจางทั้งแถว ไม่มีป้าย (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                    <b className="block truncate text-[13.5px] font-semibold">{p.label}</b>
+                    {/* จอแคบไม่มีคอลัมน์แผนกและป้าย เอามาไว้ใต้ชื่อแทน */}
+                    <small className="mt-0.5 block text-[11.5px] text-muted-foreground md:hidden">
+                      {deptName} · ลา {apprShort(route.draft, byRole, p.v, "leave")} · โอที{" "}
+                      {apprShort(route.draft, byRole, p.v, "ot")} · เบิก {apprShort(route.draft, byRole, p.v, "expense")}
+                    </small>
+                  </span>
+                  <span className="truncate text-[13px] max-md:hidden">{deptName}</span>
+                  {KINDS.map((k) => (
+                    <span key={k.key} className="text-center max-md:hidden">
+                      <ApprChip who={apprShort(route.draft, byRole, p.v, k.key)} />
+                    </span>
+                  ))}
+                  <span className="flex justify-center">
+                    <Switch on={!off} onToggle={() => togglePos(p.v)} label={`เปิดหรือปิดใช้งานตำแหน่ง ${p.label}`} />
+                  </span>
+                  <span className="flex justify-end gap-1.5">
+                    <IconBtn label={`แก้ไข ${p.label}`} title="แก้ไข" onClick={() => setEditing(p.v)}>
+                      <PencilIcon className="size-3.5" strokeWidth={1.9} />
+                    </IconBtn>
+                    {/* ลบไม่ได้ก็ไม่ต้องมีปุ่มลบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+                    {!why && (
+                      <IconBtn label={`ลบ ${p.label}`} title="ลบ" danger onClick={() => removePos(p.v)}>
+                        <TrashIcon className="size-3.5" strokeWidth={1.9} />
+                      </IconBtn>
+                    )}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
       </section>
-
-      {(
-        <div className="grid gap-3">
-          {depts.map((dp) => {
-            const inDept = list.filter((p) => p.dept === dp.v);
-            const open = !shut.includes(dp.v);
-            return (
-              <section key={dp.v} className="glass overflow-hidden rounded-[16px]">
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => setShut((v) => (open ? [...v, dp.v] : v.filter((x) => x !== dp.v)))}
-                  className="flex w-full items-center gap-2.5 px-5 py-4 text-left hover:bg-muted/40"
-                >
-                  <span className="size-2.5 flex-none rounded-full bg-primary" />
-                  <b className="text-[15px] font-bold">{dp.label}</b>
-                  <span className="text-[13px] text-muted-foreground">({inDept.length} ตำแหน่ง)</span>
-                  <ChevronDownIcon
-                    className={`ml-auto size-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-                    strokeWidth={2.2}
-                  />
-                </button>
-
-                {open && (
-                  <div className="border-t border-border px-5 pt-3 pb-4">
-                    {inDept.length === 0 ? (
-                      <p className="py-5 text-center text-[13px] text-muted-foreground">แผนกนี้ยังไม่มีตำแหน่ง</p>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-[minmax(0,1.5fr)_84px_84px_104px_58px_84px] items-center gap-2 pb-1.5 text-[11.5px] font-bold text-muted-foreground max-md:hidden">
-                          <span>ตำแหน่ง</span>
-                          <span className="text-center">ลา</span>
-                          <span className="text-center">โอที</span>
-                          <span className="text-center">เบิกค่าใช้จ่าย</span>
-                          <span className="text-center">เปิดใช้</span>
-                          <span />
-                        </div>
-                        {inDept.map((p) => {
-                          const off = isOff(p);
-                          const n = hr.emp.filter((e) => holdsPos(e, p.v)).length;
-                          const why = blockOf(p.v);
-                          return (
-                            <div
-                              key={p.v}
-                              className="grid grid-cols-[minmax(0,1fr)_58px_84px] items-center gap-2 border-b border-border py-2.5 last:border-b-0 md:grid-cols-[minmax(0,1.5fr)_84px_84px_104px_58px_84px]"
-                            >
-                              <div className="min-w-0">
-                                <b
-                                  className={`block text-[13.5px] ${
-                                    off ? "font-medium text-muted-foreground" : "font-semibold"
-                                  }`}
-                                >
-                                  {p.label}
-                                  {off && (
-                                    <em className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground not-italic">
-                                      ปิดใช้งาน
-                                    </em>
-                                  )}
-                                </b>
-                                <small className="block text-[11.5px] text-muted-foreground">
-                                  {n ? `พนักงานอยู่ ${n} คน` : "ยังไม่มีพนักงาน"}
-                                </small>
-                                {/* จอแคบไม่มีคอลัมน์ป้าย เอาสายอนุมัติมาไว้ใต้ชื่อแทน */}
-                                <small className="mt-0.5 block text-[11.5px] text-muted-foreground md:hidden">
-                                  ลา {apprShort(route.draft, byRole, p.v, "leave")} · โอที {apprShort(route.draft, byRole, p.v, "ot")} ·
-                                  เบิก {apprShort(route.draft, byRole, p.v, "expense")}
-                                </small>
-                              </div>
-                              {KINDS.map((k) => (
-                                <span key={k.key} className="text-center max-md:hidden">
-                                  <ApprChip who={apprShort(route.draft, byRole, p.v, k.key)} dim={off} />
-                                </span>
-                              ))}
-                              <span className="flex justify-center">
-                                <Switch
-                                  on={!off}
-                                  onToggle={() => togglePos(p.v)}
-                                  label={`เปิดหรือปิดใช้งานตำแหน่ง ${p.label}`}
-                                />
-                              </span>
-                              <span className="flex justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  aria-label={`แก้ไข ${p.label}`}
-                                  className="btn glass-thin btn-mini"
-                                  onClick={() => setEditing(p.v)}
-                                >
-                                  <PencilIcon className="size-4" strokeWidth={2.2} />
-                                </button>
-                                {/* ลบไม่ได้ก็ไม่ต้องมีปุ่มลบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
-                                {!why && (
-                                  <button
-                                    type="button"
-                                    aria-label={`ลบ ${p.label}`}
-                                    className="btn glass-thin btn-mini"
-                                    onClick={() => removePos(p.v)}
-                                  >
-                                    <TrashIcon className="size-4" strokeWidth={2.2} />
-                                  </button>
-                                )}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
 
       <SaveBar
         dirty={cat.dirty || route.dirty}
@@ -441,7 +402,9 @@ function DeptSheet({
   onSave: (label: string) => void;
 }) {
   const [label, setLabel] = useState(initial?.label ?? "");
-  const bad = !label.trim() ? "ใส่ชื่อแผนก" : "";
+  /* ขึ้นเตือนเฉพาะหลังกดบันทึกตอนยังไม่กรอก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const [tried, setTried] = useState(false);
+  const bad = tried && !label.trim() ? "ใส่ชื่อแผนก" : "";
   return (
     <Sheet
       title={initial ? "แก้แผนก" : "เพิ่มแผนก"}
@@ -454,8 +417,7 @@ function DeptSheet({
           <button
             type="button"
             className="btn solid btn-solid disabled:opacity-45"
-            disabled={Boolean(bad)}
-            onClick={() => onSave(label)}
+            onClick={() => (label.trim() ? onSave(label) : setTried(true))}
           >
             บันทึก
           </button>
@@ -495,7 +457,9 @@ function PosSheet({
       KINDS.map((k) => [k.key, choices.includes(route[k.key] as ApproverKey) ? route[k.key] : choices[0]]),
     ),
   );
-  const bad = !label.trim() ? "ใส่ชื่อตำแหน่ง" : "";
+  /* ขึ้นเตือนเฉพาะหลังกดบันทึกตอนยังไม่กรอก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const [tried, setTried] = useState(false);
+  const bad = tried && !label.trim() ? "ใส่ชื่อตำแหน่ง" : "";
 
   return (
     <Sheet
@@ -509,8 +473,7 @@ function PosSheet({
           <button
             type="button"
             className="btn solid btn-solid disabled:opacity-45"
-            disabled={Boolean(bad)}
-            onClick={() => onSave(label, dept, appr)}
+            onClick={() => (label.trim() ? onSave(label, dept, appr) : setTried(true))}
           >
             บันทึก
           </button>
@@ -545,7 +508,7 @@ function PosSheet({
               >
                 {choices.map((a) => (
                   <option key={a} value={a}>
-                    {names[a].name} · {names[a].title}
+                    {nameOf(names[a].name)} ({names[a].title})
                   </option>
                 ))}
               </select>

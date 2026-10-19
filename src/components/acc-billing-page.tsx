@@ -19,8 +19,11 @@ import { INVOICE_STATUS, parseTermsPct, planFromPct } from "@/lib/acc-data";
 import { useCrm } from "@/lib/crm-store";
 import {
   canBill,
+  canEditInvoiceDates,
   dealPaid,
   invoiceDue,
+  invoiceLateDays,
+  invoiceNotYet,
   invoiceOf,
   invoiceStatus,
   issueInvoice,
@@ -29,6 +32,7 @@ import {
   receiptsOf,
   savePlan,
   seqLocked,
+  updateInvoiceDates,
   seqStatus,
   unseenDeals,
   useAcc,
@@ -37,9 +41,11 @@ import {
 import { lockScroll } from "@/lib/scroll-lock";
 import {
   TH_MONTHS_FULL,
+  addDays,
   baht,
   bkkNow,
   daysBetween,
+  parseIsoDate,
   round2,
   thaiDate,
   toIsoDate,
@@ -64,7 +70,9 @@ import {
 import { Sheet } from "./lead-dialogs";
 import { AccFilters, MonthNav, NewDot, useAccFilter } from "./acc-ui";
 import { Field, Textarea } from "./ui";
+import { SearchBox } from "./sales-ui";
 import { IssueReceiptDialog, ReceiptGroupsTable, receiptGroups, receiptHref } from "./acc-receipts-page";
+import { stackNo } from "@/lib/stack-no";
 
 import { DateField } from "./thai-date-picker";
 import { CancelDealDialog } from "./cancel-deal-dialog";
@@ -84,8 +92,30 @@ export function AccBillingPage() {
   const router = useRouter();
   /* หน้าอื่นลิงก์มาหาเอกสารใบเดียวด้วย ?find= ใช้ช่องค้นหาเป็นตัวกรอง */
   const find = useFindParam();
-  const filter = useAccFilter(find);
-  const { hit, inRange } = filter;
+  /* ลิงก์ที่ส่งเลขที่ดีลมา — ใส่เลขใบเสนอราคาของดีลนั้นลงช่องค้นหาแทน ไม่โชว์รหัสดีล (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const filter = useAccFilter(acc.deals.find((d) => d.no === find)?.quo || find);
+  const { inRange } = filter;
+  /*
+   * ค้นหาได้ทั้งชื่อลูกค้า เลขที่เอกสาร (ดีล/ใบเสนอราคา/ใบแจ้งหนี้/ใบเสร็จ) และยอดเงิน (ผู้ใช้สั่ง 13 ต.ค. 2569)
+   * ยอดเงินพิมพ์ 88400 / 88,400 / 88,400.00 ได้ — ดู amountQuery ใน acc-ui
+   */
+  const searching = filter.active;
+  const NOT_FOUND = "ไม่พบรายการที่ค้นหา";
+  const quoOf = (dealNo: string) => acc.deals.find((d) => d.no === dealNo)?.quo ?? "";
+  const dealHit = (d: AccDeal) => {
+    const invs = acc.invoices.filter((v) => v.deal === d.no);
+    const rcs = acc.receipts.filter((r) => r.deal === d.no);
+    return filter.match(
+      [d.cus, d.quo, d.no, ...invs.map((v) => v.no), ...rcs.map((r) => r.no)],
+      [d.net, d.base, ...d.plan.map((p) => p.amount), ...invs.map((v) => v.total)],
+    );
+  };
+  const invHit = (v: Invoice) =>
+    filter.match(
+      [v.no, v.cus, v.deal, quoOf(v.deal), ...acc.receipts.filter((r) => r.inv === v.no).map((r) => r.no)],
+      [v.total, invoiceDue(v)],
+    );
+  const rcHit = (r: Receipt) => filter.match([r.no, r.inv, r.cus, r.deal, quoOf(r.deal)], [r.total, r.base]);
   /* ?tab= ให้การ์ดตัวเลขบนแดชบอร์ดพามาลงแท็บที่ตรงกับตัวเลขที่กด
      ?find= สำคัญกว่า เพราะเจาะจงถึงใบเดียวอยู่แล้ว */
   const wanted = useSearchParams().get("tab");
@@ -113,6 +143,8 @@ export function AccBillingPage() {
   const [collecting, setCollecting] = useState<Invoice | null>(null);
   /* ออกใบเสร็จจากหน้านี้ ใช้กล่องเดียวกับหน้าใบเสร็จเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const [issuing, setIssuing] = useState<Invoice | null>(null);
+  /* แก้วันที่ออก/ครบกำหนดของใบที่ยังไม่รับชำระ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const [dating, setDating] = useState<Invoice | null>(null);
   /* จุดแดงที่แท็บใบแจ้งหนี้หลังออกใบใหม่ — หายเมื่อเปิดแท็บนั้น */
   const [invDot, setInvDot] = useState(false);
   const today = todayIso();
@@ -124,29 +156,40 @@ export function AccBillingPage() {
 
   /* ดีลอยู่ในแท็บนี้จนทุกงวดชำระครบ (ออกใบเสร็จจากแถวงวดได้ (ผู้ใช้สั่ง 9 ต.ค. 2569))
      งวดที่ยังออกไม่ได้แสดงว่ารอชำระงวดก่อนหน้า · กรองด้วยวันที่ส่งใบเสนอราคา */
-  const todo = acc.deals.filter(
-    (d) =>
-      !d.cancelled &&
-      hit(d.cus, d.quo, d.no) &&
-      inRange(d.quoDate) &&
-      (d.plan.length === 0 || d.plan.some((p) => seqStatus(acc, d.no, p.seq) !== "paid")),
-  );
+  /*
+   * ลำดับแบบกองซ้อน — นับจากข้อมูลทั้งชุดก่อนกรองช่วงวันที่/ค้นหา ใหม่สุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * ดีลไม่มีวันปิดในข้อมูลบัญชี ใช้วันส่งใบเสนอราคา · ใบแจ้งหนี้ใช้วันที่วางบิล เลขเดียวกันทั้งแท็บใบแจ้งหนี้และค้างชำระ
+   */
+  const dealNo = stackNo(acc.deals, (d) => d.quoDate, (d) => d.no);
+  const invNo = stackNo(acc.invoices, (v) => v.issue, (v) => v.no);
+  const todo = acc.deals
+    .filter(
+      (d) =>
+        !d.cancelled &&
+        dealHit(d) &&
+        inRange(d.quoDate) &&
+        (d.plan.length === 0 || d.plan.some((p) => seqStatus(acc, d.no, p.seq) !== "paid")),
+    )
+    .sort((a, b) => (dealNo.get(b.no) ?? 0) - (dealNo.get(a.no) ?? 0));
   /* ใบแจ้งหนี้ที่ยังต้องเก็บเงิน — เงื่อนไขชุดเดียวกับ awaitingReceipt ในสโตร์ กรองด้วยวันที่วางบิล */
   const invoices = acc.invoices
     .filter((v) => invoiceStatus(acc, v) !== "cancelled" && invoiceDue(v) > 0)
-    .filter((v) => hit(v.no, v.cus, v.deal) && inRange(v.issue))
-    .sort((a, b) => b.issue.localeCompare(a.issue));
+    .filter((v) => invHit(v) && inRange(v.issue))
+    .sort((a, b) => (invNo.get(b.no) ?? 0) - (invNo.get(a.no) ?? 0));
   /* เลยวันครบกำหนดแล้ว — กรองด้วยวันครบกำหนด */
-  const overdue = acc.invoices.filter(
-    (v) =>
-      invoiceDue(v) > 0 &&
-      invoiceStatus(acc, v) !== "cancelled" &&
-      daysBetween(v.due, today) > 0 &&
-      hit(v.no, v.cus, v.deal) &&
-      inRange(v.due),
-  );
+  const overdue = acc.invoices
+    .filter(
+      (v) =>
+        invoiceDue(v) > 0 &&
+        invoiceStatus(acc, v) !== "cancelled" &&
+        /* ใบที่ลงวันที่ล่วงหน้ายังไม่ถึงวันออก ไม่นับว่าค้าง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+        invoiceLateDays(v, today) > 0 &&
+        invHit(v) &&
+        inRange(v.due),
+    )
+    .sort((a, b) => (invNo.get(b.no) ?? 0) - (invNo.get(a.no) ?? 0));
   /* ใบเสร็จที่ออกแล้ว — กรองด้วยวันที่ออกใบเสร็จ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  const receipts = acc.receipts.filter((r) => hit(r.no, r.inv, r.cus) && inRange(r.date));
+  const receipts = acc.receipts.filter((r) => rcHit(r) && inRange(r.date));
   const rcGroups = receiptGroups(receipts);
 
   /* ดีลใหม่ที่ยังไม่ได้เปิดดู (AC-BR-01) — เปิดแท็บรอวางบิลอยู่ ให้จุดแดงค้างไว้ครู่หนึ่งพอให้เห็น แล้วถือว่าเปิดดูแล้ว */
@@ -166,8 +209,7 @@ export function AccBillingPage() {
    * คำค้นตรงกับเลขที่ใบแจ้งหนี้ของดีลก็นับ (ลิงก์ ?find= จากหน้าอื่นมักส่งเลขที่ใบแจ้งหนี้มา)
    */
   const month = today.slice(0, 7);
-  const phoneHit = (d: AccDeal) =>
-    hit(d.cus, d.quo, d.no, ...acc.invoices.filter((v) => v.deal === d.no).map((v) => v.no));
+  const phoneHit = dealHit;
   const phoneBase = acc.deals.filter((d) => {
     if (d.cancelled || !phoneHit(d)) return false;
     if (d.plan.length === 0 || d.plan.some((p) => seqStatus(acc, d.no, p.seq) !== "paid")) return true;
@@ -199,7 +241,13 @@ export function AccBillingPage() {
         <div>
           <h1>วางบิล</h1>
         </div>
-        <div className="tools w-full sm:w-auto">
+        <div className="tools w-full flex-wrap sm:w-auto">
+          {/* ช่องค้นหาอยู่หัวหน้าด้านขวาแบบหน้าใบเสนอราคา ใช้ได้ทุกแท็บ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+          <SearchBox
+            value={filter.f.q}
+            onChange={(q) => filter.setF((x) => ({ ...x, q }))}
+            placeholder="ค้นหาลูกค้า เลขที่เอกสาร หรือยอดเงิน"
+          />
           <MonthNav view={view} onChange={setView} />
         </div>
       </div>
@@ -220,14 +268,15 @@ export function AccBillingPage() {
               ใบเสร็จ
             </Tab>
           </div>
-          <AccFilters filter={filter} />
+          <AccFilters filter={filter} search={false} />
         </div>
 
         <div className="scroll-stable min-h-0 flex-1 overflow-auto max-sm:hidden">
           {tab === "todo" && (
-            <table className="data-table cards-sm min-w-[980px]">
+            <table className="data-table cards-sm min-w-[1040px]">
               <thead>
                 <tr>
+                  <th className="c" style={{ width: 60 }}>ลำดับ</th>
                   <th style={{ width: 190 }}>ลูกค้า</th>
                   <th style={{ width: 160 }}>ใบเสนอราคาล่าสุด</th>
                   {/* วันที่ส่งมาวางบิลแยกคอลัมน์ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
@@ -240,8 +289,8 @@ export function AccBillingPage() {
               <tbody>
                 {todo.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-muted-foreground">
-                      ไม่มีดีลที่รอวางบิล
+                    <td colSpan={7} className="py-10 text-center text-muted-foreground">
+                      {searching ? NOT_FOUND : "ไม่มีดีลที่รอวางบิล"}
                     </td>
                   </tr>
                 ) : (
@@ -255,6 +304,7 @@ export function AccBillingPage() {
                           style={{ cursor: has ? "pointer" : "default" }}
                           onClick={() => has && setOpen((o) => ({ ...o, [d.no]: !o[d.no] }))}
                         >
+                          <td data-label="ลำดับ" className="c num muted">{dealNo.get(d.no)}</td>
                           <td data-label="ลูกค้า" className="font-semibold">{d.cus}</td>
                           <td data-label="ใบเสนอราคาล่าสุด" className="muted">
                             <span className="num">{d.quo}</span>
@@ -299,7 +349,7 @@ export function AccBillingPage() {
                         </tr>
                         {isOpen && has && (
                           <tr className="sub">
-                            <td colSpan={6}>
+                            <td colSpan={7}>
                               <PlanRows
                                 acc={acc}
                                 deal={d}
@@ -318,9 +368,10 @@ export function AccBillingPage() {
           )}
 
           {tab === "inv" && (
-            <table className="data-table cards-sm min-w-[1140px]">
+            <table className="data-table cards-sm min-w-[1200px]">
               <thead>
                 <tr>
+                  <th className="c" style={{ width: 60 }}>ลำดับ</th>
                   <th style={{ width: 150 }}>เลขที่ใบแจ้งหนี้</th>
                   <th style={{ width: 170 }}>ลูกค้า</th>
                   <th style={{ width: 118 }}>วันที่วางบิล</th>
@@ -334,8 +385,8 @@ export function AccBillingPage() {
               <tbody>
                 {invoices.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-muted-foreground">
-                      ไม่มีใบแจ้งหนี้ที่รอชำระ
+                    <td colSpan={9} className="py-10 text-center text-muted-foreground">
+                      {searching ? NOT_FOUND : "ไม่มีใบแจ้งหนี้ที่รอชำระ"}
                     </td>
                   </tr>
                 ) : (
@@ -354,12 +405,30 @@ export function AccBillingPage() {
                         }
                       }}
                     >
+                      <td data-label="ลำดับ" className="c num muted">{invNo.get(v.no)}</td>
                       <td data-label="เลขที่ใบแจ้งหนี้" className="num">
                         <b className="font-semibold">{v.no}</b>
                         <span className="why">งวดที่ {v.seq}</span>
                       </td>
                       <td data-label="ลูกค้า">{v.cus}</td>
-                      <td data-label="วันที่วางบิล" className="num muted">{thaiDate(v.issue)}</td>
+                      <td data-label="วันที่วางบิล" className="num muted">
+                        {thaiDate(v.issue)}
+                        {/* ลงวันที่ล่วงหน้า + แก้วันที่ได้ถ้ายังไม่รับเงิน (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                        {invoiceNotYet(v, today) && <span className="why">ยังไม่ถึงวันออก</span>}
+                        {canEditInvoiceDates(acc, v) && (
+                          <button
+                            type="button"
+                            className="lnk quiet block text-[12px]"
+                            data-ceo-hide
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDating(v);
+                            }}
+                          >
+                            แก้วันที่
+                          </button>
+                        )}
+                      </td>
                       <td data-label="ครบกำหนดชำระ" className="num muted">
                         {thaiDate(v.due)}
                         <DueBadge invoice={v} today={today} />
@@ -408,9 +477,10 @@ export function AccBillingPage() {
           )}
 
           {tab === "due" && (
-            <table className="data-table cards-sm min-w-[1100px]">
+            <table className="data-table cards-sm min-w-[1160px]">
               <thead>
                 <tr>
+                  <th className="c" style={{ width: 60 }}>ลำดับ</th>
                   <th style={{ width: 150 }}>เลขที่ใบแจ้งหนี้</th>
                   <th>ลูกค้า</th>
                   <th style={{ width: 130 }}>ครบกำหนด</th>
@@ -423,8 +493,8 @@ export function AccBillingPage() {
               <tbody>
                 {overdue.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-muted-foreground">
-                      ไม่มีใบแจ้งหนี้ที่เกินกำหนด
+                    <td colSpan={8} className="py-10 text-center text-muted-foreground">
+                      {searching ? NOT_FOUND : "ไม่มีใบแจ้งหนี้ที่เกินกำหนด"}
                     </td>
                   </tr>
                 ) : (
@@ -432,13 +502,14 @@ export function AccBillingPage() {
                     const last = v.col[v.col.length - 1];
                     return (
                       <tr key={v.no}>
+                        <td data-label="ลำดับ" className="c num muted">{invNo.get(v.no)}</td>
                         <td data-label="เลขที่ใบแจ้งหนี้" className="num">
                           <b className="font-semibold">{v.no}</b>
                         </td>
                         <td data-label="ลูกค้า">{v.cus}</td>
                         <td data-label="ครบกำหนด" className="num muted">{thaiDate(v.due)}</td>
                         <td data-label="เกินกำหนด" className="c">
-                          <span className="late">{daysBetween(v.due, today)} วัน</span>
+                          <span className="late">{invoiceLateDays(v, today)} วัน</span>
                         </td>
                         <td data-label="ยอดคงเหลือ (บาท)" className="c num font-semibold">{baht(invoiceDue(v))}</td>
                         <td data-label="ติดตามล่าสุด" className="muted">
@@ -447,7 +518,6 @@ export function AccBillingPage() {
                               <span className="clip">{last.result}</span>
                               {/* ต้นแบบแยกวันที่ ช่องทาง และวันนัดคนละบรรทัด ไม่ใช้เครื่องหมายคั่น */}
                               <span className="why">{thaiDate(last.date)}</span>
-                              <span className="why">{last.channel}</span>
                               {last.next && (
                                 <span className="why">นัดอีกครั้ง {thaiDate(last.next)}</span>
                               )}
@@ -476,7 +546,7 @@ export function AccBillingPage() {
           )}
 
           {/* ใบเสร็จที่ออกแล้ว — ตารางเดียวกับหน้าใบเสร็จเดิม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-          {tab === "rc" && <ReceiptGroupsTable acc={acc} groups={rcGroups} />}
+          {tab === "rc" && <ReceiptGroupsTable acc={acc} groups={rcGroups} empty={searching ? NOT_FOUND : undefined} />}
         </div>
 
         <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
@@ -493,8 +563,8 @@ export function AccBillingPage() {
               type="search"
               value={filter.f.q}
               onChange={(e) => filter.setF((x) => ({ ...x, q: e.target.value }))}
-              placeholder="ค้นหาเลขที่เอกสารหรือลูกค้า"
-              aria-label="ค้นหาเลขที่เอกสารหรือลูกค้า"
+              placeholder="ค้นหาลูกค้า เลขที่เอกสาร หรือยอดเงิน"
+              aria-label="ค้นหาลูกค้า เลขที่เอกสาร หรือยอดเงิน"
               className="h-full min-w-0 flex-1 bg-transparent text-[14.5px] text-[#2A1F22] outline-none placeholder:text-[#9A8E91]"
             />
           </label>
@@ -531,7 +601,7 @@ export function AccBillingPage() {
         <div className="flex flex-col gap-3 pt-3">
           {phoneTodo.length === 0 ? (
             <div className="rounded-[22px] bg-white px-4 py-10 text-center text-[13.5px] text-[#6E6164] shadow-[0_1px_2px_rgba(40,20,25,.04)]">
-              ไม่มีดีลที่รอวางบิล
+              {searching ? NOT_FOUND : "ไม่มีดีลที่รอวางบิล"}
             </div>
           ) : (
             phoneTodo.map((d) => (
@@ -549,6 +619,7 @@ export function AccBillingPage() {
                 onBill={(item) => setBilling({ deal: d, item })}
                 onCancel={canCancel(d.no) ? () => openCancel(d.no) : undefined}
                 onReceipt={setIssuing}
+                onDates={setDating}
               />
             ))
           )}
@@ -612,6 +683,7 @@ export function AccBillingPage() {
           }}
         />
       )}
+      {dating && <InvoiceDatesDialog invoice={dating} onClose={() => setDating(null)} />}
       {collecting && (
         <CollectDialog invoice={collecting} today={today} onClose={() => setCollecting(null)} />
       )}
@@ -781,6 +853,8 @@ export function InvoiceTag({ acc, invoice }: { acc: AccState; invoice: Invoice }
 /* บัญชีต้องรู้ว่าต้องไล่ตามใบไหนก่อน จึงบอกจำนวนวันเทียบกับวันครบกำหนด */
 function DueBadge({ invoice, today }: { invoice: Invoice; today: string }) {
   if (invoiceDue(invoice) <= 0) return <span className="why">ชำระแล้ว</span>;
+  /* ลงวันที่ล่วงหน้า — ลูกค้ายังไม่ได้รับ ไม่นับวัน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  if (invoiceNotYet(invoice, today)) return <span className="why">ออกวันที่ {thaiDate(invoice.issue)}</span>;
   const n = daysBetween(invoice.due, today);
   if (n > 0) return <span className="late">เกินกำหนด {n} วัน</span>;
   if (n === 0) return <span className="soon">ครบกำหนดวันนี้</span>;
@@ -854,7 +928,7 @@ function PlanRows({
                 </td>
                 <td data-label="จัดการ" className="c">
                   {/* ช่องคงที่: ใบแจ้งหนี้ · ใบเสร็จ · ปุ่มข้อความ */}
-                  <span className="inline-grid items-center gap-x-2" style={{ gridTemplateColumns: "30px 30px 96px" }}>
+                  <span className="inline-grid items-center gap-x-2" style={{ gridTemplateColumns: "76px 56px 96px" }}>
                     {st === "pending" && !canBill(acc, deal, i) ? (
                       <span className="why" style={{ gridColumn: "1 / -1" }}>
                         รอชำระงวดก่อนหน้า
@@ -864,12 +938,11 @@ function PlanRows({
                         {inv?.no ? (
                           <Link
                             href={invoiceHref(inv.no)}
-                            className={icon}
-                            style={{ width: 30, height: 30 }}
+                            className="lnk"
                             title={`เปิดใบแจ้งหนี้ ${inv.no}`}
-                            aria-label={`เปิดใบแจ้งหนี้ ${inv.no}`}
                           >
-                            <EyeIcon className="size-3.5" strokeWidth={2} />
+                            {/* ป้ายข้อความแทนไอคอน (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                            ใบแจ้งหนี้
                           </Link>
                         ) : (
                           <span aria-hidden="true" />
@@ -877,12 +950,10 @@ function PlanRows({
                         {rc ? (
                           <Link
                             href={receiptHref(rc.no)}
-                            className={icon}
-                            style={{ width: 30, height: 30 }}
+                            className="lnk"
                             title={`เปิดใบเสร็จ ${rc.no}`}
-                            aria-label={`เปิดใบเสร็จ ${rc.no}`}
                           >
-                            <ReceiptIcon className="size-3.5" strokeWidth={2} />
+                            ใบเสร็จ
                           </Link>
                         ) : (
                           <span aria-hidden="true" />
@@ -946,6 +1017,7 @@ function PhoneDeal({
   onBill,
   onCancel,
   onReceipt,
+  onDates,
 }: {
   acc: AccState;
   deal: AccDeal;
@@ -957,6 +1029,7 @@ function PhoneDeal({
   onBill: (item: Installment) => void;
   onCancel?: () => void;
   onReceipt: (v: Invoice) => void;
+  onDates?: (v: Invoice) => void;
 }) {
   const has = d.plan.length > 0;
   const isOpen = open && has;
@@ -1082,6 +1155,7 @@ function PhoneDeal({
                 onEdit={() => onPlan(p.seq)}
                 onBill={() => onBill(p)}
                 onReceipt={onReceipt}
+                onDates={onDates}
               />
             ))}
             {cancelBtn && <div className="grid grid-cols-2 justify-items-center">{cancelBtn}</div>}
@@ -1102,6 +1176,7 @@ function PhoneSeq({
   onEdit,
   onBill,
   onReceipt,
+  onDates,
 }: {
   acc: AccState;
   deal: AccDeal;
@@ -1111,6 +1186,7 @@ function PhoneSeq({
   onEdit: () => void;
   onBill: () => void;
   onReceipt: (v: Invoice) => void;
+  onDates?: (v: Invoice) => void;
 }) {
   const router = useRouter();
   const pending = seqStatus(acc, deal.no, p.seq) === "pending";
@@ -1155,6 +1231,17 @@ function PhoneSeq({
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="num text-[12.5px] font-bold">{inv.no}</span>
               <PhoneDueBadge invoice={inv} today={today} />
+              {/* แก้วันที่ออก/ครบกำหนดของใบที่ยังไม่รับชำระ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+              {onDates && canEditInvoiceDates(acc, inv) && (
+                <button
+                  type="button"
+                  data-ceo-hide
+                  className="ml-auto text-[12px] font-semibold text-[#C8102E]"
+                  onClick={() => onDates(inv)}
+                >
+                  แก้วันที่
+                </button>
+              )}
             </p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button
@@ -1196,6 +1283,9 @@ function PhoneSeq({
 function PhoneDueBadge({ invoice, today }: { invoice: Invoice; today: string }) {
   const pill = "inline-flex h-[22px] items-center rounded-full px-2 text-[11.5px] font-semibold";
   if (invoiceDue(invoice) <= 0) return <span className={`${pill} bg-[#E7F5EC] text-[#1C7A43]`}>ชำระแล้ว</span>;
+  /* ลงวันที่ล่วงหน้า — ยังไม่ถึงวันออก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  if (invoiceNotYet(invoice, today))
+    return <span className={`${pill} bg-[#F2EAEC] text-[#6E6164]`}>ออกวันที่ {thaiDate(invoice.issue)}</span>;
   const n = daysBetween(invoice.due, today);
   if (n > 0) return <span className={`${pill} bg-[#FDE8EB] text-[#C0121F]`}>เกินกำหนด {n} วัน</span>;
   if (n === 0) return <span className={`${pill} bg-[#FFF1DC] text-[#9A5B00]`}>ครบกำหนดวันนี้</span>;
@@ -1701,7 +1791,11 @@ function PlanDialog({
   );
 }
 
-/** ออกใบแจ้งหนี้ — ต้องเลือกวันครบกำหนดก่อน (เริ่มว่างทุกครั้ง) เพราะเอกสารออกเลขแล้วแก้วันไม่ได้ง่าย ๆ */
+/**
+ * ออกใบแจ้งหนี้ — ฝ่ายบัญชีเลือกวันที่ออกและวันครบกำหนดเอง (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * วันที่ออกตั้งต้นวันนี้ ย้อนหลังหรือล่วงหน้าได้ · ครบกำหนดตั้งต้นตามงวด (ถ้าไม่ก่อนวันออก) ไม่งั้นวันออก + 30 วัน
+ * บันทึกแล้วมีผลทันที ไม่รอถึงวันที่ออก
+ */
 function BillDialog({
   deal,
   item,
@@ -1716,13 +1810,34 @@ function BillDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [due, setDue] = useState("");
-  /* มือถือ: ปฏิทินในกล่องเริ่มที่เดือนนี้และยังไม่เลือกวันทุกครั้งที่เปิด (กล่องสร้างใหม่ทุกครั้ง) */
   const today = todayIso();
+  const dueFor = (issue: string) => (item.due && item.due >= issue ? item.due : addDays(issue, BILL_DUE_DAYS));
+  const [issue, setIssue] = useState(today);
+  const [due, setDue] = useState(() => dueFor(today));
+  /* แก้วันครบกำหนดเองแล้ว เปลี่ยนวันออกทีหลังจะไม่ทับค่าที่เลือกไว้ */
+  const [dueTouched, setDueTouched] = useState(false);
+  const [tried, setTried] = useState(false);
+  const badIssue = !issue;
+  const badDue = !due || (Boolean(issue) && due < issue);
+  /* มือถือ: ปฏิทินในกล่องเริ่มที่เดือนของวันครบกำหนดตั้งต้น */
   const [calMonth, setCalMonth] = useState(() => {
-    const n = bkkNow();
-    return new Date(n.getFullYear(), n.getMonth(), 1);
+    const d = parseIsoDate(dueFor(today));
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   });
+
+  const pickIssue = (iso: string) => {
+    setIssue(iso);
+    if (!dueTouched && iso) {
+      const next = dueFor(iso);
+      setDue(next);
+      const d = parseIsoDate(next);
+      setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+  };
+  const pickDue = (iso: string) => {
+    setDue(iso);
+    setDueTouched(true);
+  };
 
   return (
     <Sheet
@@ -1736,9 +1851,9 @@ function BillDialog({
           <button
             type="button"
             className={`btn solid btn-solid disabled:opacity-45 ${PHONE_FOOT} max-md:flex-[1.4]!`}
-            disabled={!due}
             onClick={() => {
-              issueInvoice(deal.no, item.seq, due);
+              if (badIssue || badDue) return setTried(true);
+              issueInvoice(deal.no, item.seq, issue, due);
               onDone();
             }}
           >
@@ -1755,24 +1870,35 @@ function BillDialog({
           </span>
           <b className="num text-[16px] font-bold">{baht(item.amount)} ฿</b>
         </div>
+        <p className="mt-4 mb-1.5 text-[13px] font-semibold text-[#2A1F22]">วันที่ออกใบแจ้งหนี้</p>
+        <DateField
+          value={issue}
+          onChange={pickIssue}
+          label="วันที่ออกใบแจ้งหนี้"
+          placeholder="เลือกวันที่"
+          invalid={tried && badIssue}
+          className="h-[46px] rounded-[12px] text-[15px] font-bold"
+        />
         <p className="mt-4 mb-1.5 text-[13px] font-semibold text-[#2A1F22]">วันครบกำหนดชำระ</p>
         <input
           readOnly
           tabIndex={-1}
           aria-label="วันครบกำหนดชำระ"
+          aria-invalid={tried && badDue}
           value={due ? thaiDate(due) : ""}
           placeholder="เลือกวันที่จากปฏิทินด้านล่าง"
-          className="field-control h-[46px] w-full rounded-[12px] px-3.5 text-[15px] font-bold placeholder:font-normal"
+          className={`field-control h-[46px] w-full rounded-[12px] px-3.5 text-[15px] font-bold placeholder:font-normal ${
+            tried && badDue ? "border-destructive bg-[var(--destructive-soft)]" : ""
+          }`}
         />
         <div className="mt-3 rounded-[14px] border border-[#EFE6E8] px-2.5 py-3">
           <MonthCal
             month={calMonth}
             onMonth={setCalMonth}
             selected={due}
-            onPick={setDue}
+            onPick={pickDue}
             today={today}
-            minIso={today}
-            lockPast
+            minIso={issue}
             cell={42}
           />
         </div>
@@ -1789,17 +1915,115 @@ function BillDialog({
         </span>
       </p>
 
-      <div className="mt-4 max-md:hidden">
+      <div className="mt-4 grid gap-4 max-md:hidden">
+        <Field label="วันที่ออกใบแจ้งหนี้">
+          <DateField
+            value={issue}
+            onChange={pickIssue}
+            label="วันที่ออกใบแจ้งหนี้"
+            placeholder="เลือกวันที่"
+            invalid={tried && badIssue}
+            className="h-[38px] rounded-[10px] text-[13.5px]"
+          />
+        </Field>
         <Field label="วันครบกำหนดชำระ">
           <DateField
             value={due}
-            onChange={(iso) => setDue(iso)}
+            onChange={pickDue}
             label="วันครบกำหนดชำระ"
             placeholder="เลือกวันที่"
+            min={issue || undefined}
+            invalid={tried && badDue}
             className="h-[38px] rounded-[10px] text-[13.5px]"
           />
         </Field>
       </div>
+      <BillDateNote issue={issue} due={due} today={today} tried={tried} />
+    </Sheet>
+  );
+}
+
+/** จำนวนวันครบกำหนดตั้งต้นเมื่องวดไม่ได้ระบุวันไว้ — ระบบยังไม่มีเครดิตเทอมต่อลูกค้า (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+const BILL_DUE_DAYS = 30;
+
+/** ข้อความใต้ช่องวันที่ — ผิดเงื่อนไขขึ้นสีแดง · ลงวันที่ล่วงหน้าบอกว่ายังไม่ถึงวันออก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+function BillDateNote({ issue, due, today, tried }: { issue: string; due: string; today: string; tried: boolean }) {
+  if (tried && (!issue || !due)) {
+    return <p className="mt-2 text-[12.5px] font-semibold text-destructive">กรุณาเลือกวันที่ให้ครบ</p>;
+  }
+  if (tried && due < issue) {
+    return <p className="mt-2 text-[12.5px] font-semibold text-destructive">วันครบกำหนดชำระต้องไม่ก่อนวันที่ออกใบแจ้งหนี้</p>;
+  }
+  if (issue > today) {
+    return (
+      <p className="mt-2 text-[12.5px] text-muted-foreground">
+        ใบแจ้งหนี้ลงวันที่ล่วงหน้า {thaiDate(issue)} — บันทึกแล้วมีผลทันที แต่ยังไม่นับเป็นค้างชำระจนถึงวันออก
+      </p>
+    );
+  }
+  return null;
+}
+
+/** แก้วันที่ออก/วันครบกำหนดของใบที่ยังไม่รับชำระ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+function InvoiceDatesDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const today = todayIso();
+  const [issue, setIssue] = useState(invoice.issue);
+  const [due, setDue] = useState(invoice.due);
+  const [tried, setTried] = useState(false);
+  const badIssue = !issue;
+  const badDue = !due || (Boolean(issue) && due < issue);
+
+  return (
+    <Sheet
+      title="แก้วันที่ใบแจ้งหนี้"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className={`btn glass-thin ${PHONE_FOOT} max-md:flex-1!`} onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className={`btn solid btn-solid ${PHONE_FOOT} max-md:flex-[1.4]!`}
+            onClick={() => {
+              if (badIssue || badDue) return setTried(true);
+              updateInvoiceDates(invoice.no, issue, due);
+              onClose();
+            }}
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <p className="flex flex-col gap-1 text-[13.5px] leading-normal">
+        <span className="font-semibold">{invoice.no}</span>
+        <span className="text-muted-foreground">{invoice.cus} · งวดที่ {invoice.seq}</span>
+      </p>
+      <div className="mt-4 grid gap-4">
+        <Field label="วันที่ออกใบแจ้งหนี้">
+          <DateField
+            value={issue}
+            onChange={setIssue}
+            label="วันที่ออกใบแจ้งหนี้"
+            placeholder="เลือกวันที่"
+            invalid={tried && badIssue}
+            className="h-[38px] rounded-[10px] text-[13.5px]"
+          />
+        </Field>
+        <Field label="วันครบกำหนดชำระ">
+          <DateField
+            value={due}
+            onChange={setDue}
+            label="วันครบกำหนดชำระ"
+            placeholder="เลือกวันที่"
+            min={issue || undefined}
+            invalid={tried && badDue}
+            className="h-[38px] rounded-[10px] text-[13.5px]"
+          />
+        </Field>
+      </div>
+      <BillDateNote issue={issue} due={due} today={today} tried={tried} />
     </Sheet>
   );
 }
@@ -1814,10 +2038,7 @@ function CollectDialog({
   today: string;
   onClose: () => void;
 }) {
-  const channels = optionsOf("collectChannel");
-  const [channel, setChannel] = useState(() => channels[0] ?? "");
-  /* เพิ่มช่องทางใหม่ได้จากหน้างาน (เจ้าของสั่ง 28 ก.ย. 2569) — เพิ่มแล้วเลือกให้เลย */
-  const addChannel = useAddOption({ list: "collectChannel" }, setChannel);
+  /* ไม่มีช่องทางติดตามหนี้แล้ว (ผู้ใช้สั่ง 15 ต.ค. 2569) */
   const [result, setResult] = useState("");
   const [next, setNext] = useState("");
   const resultBox = useRef<HTMLDivElement>(null);
@@ -1837,7 +2058,7 @@ function CollectDialog({
             onClick={() => {
               /* ต้องมีผลการติดตาม — ว่างอยู่ให้กลับไปที่ช่องนั้น */
               if (!result.trim()) return resultBox.current?.querySelector("textarea")?.focus();
-              logCollection(invoice.no, { date: today, channel, result: result.trim(), next });
+              logCollection(invoice.no, { date: today, channel: "", result: result.trim(), next });
               onClose();
             }}
           >
@@ -1861,28 +2082,6 @@ function CollectDialog({
             className="field-control h-[38px] w-full rounded-[10px] px-3 text-[13.5px]"
           />
         </Field>
-        <Field label="ช่องทาง">
-          <div className="seg" role="radiogroup" aria-label="ช่องทาง">
-            {channels.map((c) => (
-              <button
-                key={c}
-                type="button"
-                role="radio"
-                aria-checked={channel === c}
-                className={channel === c ? "on" : ""}
-                onClick={() => setChannel(c)}
-              >
-                {c}
-              </button>
-            ))}
-            {addChannel.canAdd && (
-              <button type="button" onClick={() => addChannel.pick(ADD_VALUE)}>
-                ＋ เพิ่ม
-              </button>
-            )}
-          </div>
-        </Field>
-        {addChannel.dialog}
         <Field label="ผลการติดตาม">
           <div ref={resultBox}>
           <Textarea

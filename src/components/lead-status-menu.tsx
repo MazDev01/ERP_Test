@@ -52,7 +52,7 @@ export function LeadStatusMenu({
       <ConfirmDialog
         open={pick === "รอนัดหมาย" || pick === "ปิดงาน"}
         title={`เปลี่ยนสถานะเป็น ${pick ?? ""}`}
-        description={`${name} (${code}) · ${status} → ${pick ?? ""}`}
+        description={`${name} · ${status} → ${pick ?? ""}`}
         detail={
           pick === "ปิดงาน"
             ? undefined

@@ -1,24 +1,28 @@
 "use client";
 
-import { DevicePushCard } from "./device-push-card";
-import { isIOS, useHydrated } from "@/lib/pwa";
+import { enableNotify, isIOS, useHydrated, usePwa } from "@/lib/pwa";
+import { Switch } from "./admin-ui";
+import { pushSupported, subscribeThisDevice, unsubscribeThisDevice, useThisDevice } from "@/lib/push-subs";
 
-import { optionsOf } from "@/lib/options";
-import { bkkNow, parseIsoDate, todayIso } from "@/lib/format";
+import { bkkNow, parseIsoDate, thaiDate } from "@/lib/format";
 
-import { cloneElement, isValidElement, useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import "@/styles/mobile/profile.css";
 import { useRole } from "@/lib/role";
-import { saveProfile, useProfile } from "@/lib/profile-data";
+import { useProfile } from "@/lib/profile-data";
+import { useHr } from "@/lib/hr-store";
 import {
-  NOTIFY_CHANNELS,
-  NOTIFY_EVENTS,
-  saveNotifySettings,
-  useNotifySettings,
-  type NotifySettings,
-} from "@/lib/notify-settings";
+  HR_EMPTYPE,
+  HR_STATUS,
+  ROLE_EMPLOYEE,
+  accountRoles,
+  hrDept,
+  hrPos,
+  posOf,
+  type Employee,
+} from "@/lib/hr-data";
 import { setProfilePhoto, useProfilePhoto } from "@/lib/profile-store";
 import {
   BOTNAV_SLOTS,
@@ -45,15 +49,10 @@ import {
   HomeIcon,
   LockIcon,
   LogoutIcon,
-  PencilIcon,
   UserIcon,
 } from "./icons";
-import { FileDrop, type PickedFile } from "./file-drop";
 import { PhotoCropper } from "./photo-cropper";
 
-import { DateField } from "./thai-date-picker";
-import { ADD_VALUE, useAddOption } from "./add-option";
-/* ข้อมูลตัวอย่างย้ายไปหน้าผู้ดูแลระบบ (/admin/data) — เป็นเครื่องมือดูแลระบบ ไม่ใช่ของพนักงาน */
 type Pane = "profile" | "notify" | "security" | "botnav";
 
 const PANES: { key: Pane; label: string; icon: React.ReactNode }[] = [
@@ -138,11 +137,13 @@ export function ProfilePage() {
 
   return (
     <div
-      className="pf-m mx-auto grid max-w-[1060px] grid-cols-[minmax(0,1fr)] items-start gap-[22px] lg:grid-cols-[262px_minmax(0,1fr)]"
+      className="pf-m grid grid-cols-[minmax(0,1fr)] items-start gap-[22px] lg:grid-cols-[262px_minmax(0,1fr)]"
       data-m={mobileScreen}
     >
       {/* พื้นไล่ชมพูด้านบน — มีเฉพาะมือถือ (ซ่อนด้วย hidden แล้ว profile.css เปิดเองบนจอแคบ) */}
       <div className="pf-glow hidden" aria-hidden="true" />
+      {/* ชื่อหน้ามุมซ้ายบน (จอคอม) — แถบบนเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1 lg:col-span-2">โปรไฟล์ของฉัน</h1>
       <ProfileCard
         pane={current}
         panes={panes}
@@ -165,8 +166,8 @@ export function ProfilePage() {
             {saved}
           </p>
         )}
-        {current === "profile" && <PersonalPane onSaved={flash} />}
-        {current === "notify" && <NotifyPane onSaved={flash} />}
+        {current === "profile" && <PersonalPane />}
+        {current === "notify" && <NotifyPane />}
         {current === "security" && <SecurityPane onSaved={flash} />}
         {false && current === "botnav" && <BotnavPane onSaved={flash} />}
       </div>
@@ -198,7 +199,13 @@ function ProfileCard({
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  const me = useProfile();
+  /* ชื่อ–ตำแหน่งบนการ์ดอ่านจากทะเบียนฝ่ายบุคคลก่อน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const prof = useProfile();
+  const emp = useMyEmployee();
+  const me = {
+    name: emp?.name ?? prof.name,
+    position: emp ? hrPos(emp.pos).label : prof.position,
+  };
   const short = me.name.split(" ").map((s) => s[0]).join("").slice(0, 2);
 
   /* แถวเมนูของหน้ารวมบนมือถือ — แผงข้อมูลส่วนตัวเปิดจากปุ่มแดงในการ์ดแทน */
@@ -234,8 +241,9 @@ function ProfileCard({
         )}
         {panes.some((p) => p.key === "profile") && (
           <button type="button" className="pf-edit" onClick={() => onOpenMobile("profile")}>
-            <PencilIcon className="size-4" />
-            แก้ไขข้อมูลส่วนตัว
+            {/* ดูอย่างเดียว ไม่ใช่ปุ่มแก้ไข (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+            <UserIcon className="size-4" />
+            ข้อมูลส่วนตัว
           </button>
         )}
       </section>
@@ -364,583 +372,228 @@ function ProfileCard({
 }
 
 // ─── ข้อมูลส่วนตัว ────────────────────────────────────────────────
-function PersonalPane({ onSaved }: { onSaved: (m: string) => void }) {
-  /* ระดับการศึกษาเพิ่มได้จากตรงนี้ — ใช้ชุดเดียวกับหน้าผู้ดูแลระบบ "ตัวเลือกในรายการ" */
-  const addEdu = useAddOption({ list: "eduLevel" }, () => {});
-  const me = useProfile();
-  const [name, setName] = useState(me.name);
-  const [phone, setPhone] = useState(me.phone);
-  const [officePhone, setOfficePhone] = useState(me.officePhone);
-  const [emPhone, setEmPhone] = useState(me.emergencyPhone);
-  const [birth, setBirth] = useState(me.birth);
-  const [nums, setNums] = useState({ weight: "", height: "", sibs: "", order: "" });
-  const [files, setFiles] = useState<PickedFile[]>([]);
-  const [bad, setBad] = useState<{ name?: boolean; phone?: boolean }>({});
-  const age = ageFrom(birth);
+/* อ่านอย่างเดียวจากทะเบียนพนักงานที่ฝ่ายบุคคลกรอก — พนักงานแก้เองไม่ได้แล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+function useMyEmployee(): Employee | undefined {
+  const role = useRole();
+  const hr = useHr();
+  return (
+    hr.emp.find((e) => e.id === ROLE_EMPLOYEE[role]) ??
+    hr.emp.find((e) => accountRoles(e.account).includes(role))
+  );
+}
 
-  function save() {
-    const digits = phone.replace(/\D/g, "");
-    const next = { name: !name.trim(), phone: digits.length < 9 };
-    setBad(next);
-    if (next.name || next.phone) return;
-    /* เก็บเข้าสโตร์กลาง หน้าอื่นที่ใช้ชื่อ–เบอร์เดียวกันจะเปลี่ยนตามทันที */
-    saveProfile({
-      name: name.trim(),
-      phone,
-      officePhone,
-      emergencyPhone: emPhone,
-      birth,
-    });
-    onSaved("บันทึกข้อมูลส่วนตัวเรียบร้อย");
-  }
+function PersonalPane() {
+  const me = useProfile();
+  const emp = useMyEmployee();
+  const hr = useHr();
+  const boss = emp?.boss ? hr.emp.find((e) => e.id === emp.boss)?.name : "";
+  const age = ageFrom(emp?.birth ?? "");
+
+  const groups: { title: string; rows: { label: string; value?: string; wide?: boolean; tel?: boolean }[]; sos?: boolean }[] = [
+    {
+      title: "ข้อมูลทั่วไป",
+      rows: [
+        { label: "ชื่อ–สกุล", value: emp?.name ?? me.name },
+        { label: "ชื่อเล่น", value: emp?.nick },
+        { label: "เพศ", value: emp?.sex },
+        { label: "วัน/เดือน/ปีเกิด", value: emp?.birth ? thaiDate(emp.birth) : "" },
+        { label: "อายุ", value: age },
+        { label: "เบอร์ติดต่อ", value: emp?.phone ?? me.phone },
+        { label: "อีเมล", value: emp?.email ?? me.email },
+        { label: "ที่อยู่", value: emp?.address, wide: true },
+      ],
+    },
+    {
+      title: "ข้อมูลการทำงาน",
+      rows: [
+        {
+          label: "ตำแหน่ง",
+          value: emp ? posOf(emp).map((p) => hrPos(p).label).join(" · ") : me.position,
+        },
+        { label: "แผนก", value: emp ? hrDept(hrPos(emp.pos).dept).label : me.department },
+        { label: "ประเภทพนักงาน", value: emp ? HR_EMPTYPE[emp.type]?.label : me.employmentType },
+        { label: "สถานะ", value: emp ? HR_STATUS[emp.status]?.label : "" },
+        {
+          label: "วันที่เริ่มงาน",
+          value: emp?.startedAt ? thaiDate(emp.startedAt) : me.startDate ? thaiDate(me.startDate) : "",
+        },
+      ],
+    },
+    {
+      title: "การศึกษาและประสบการณ์",
+      rows: [
+        { label: "การศึกษา", value: emp?.edu, wide: true },
+        { label: "ประสบการณ์ทำงาน", value: emp?.exp.filter(Boolean).join("\n"), wide: true },
+      ],
+    },
+    {
+      /* ผู้ติดต่อฉุกเฉินเป็นกล่องแยก เบอร์กดโทรได้ — ชื่อเดียวกับหน้าฝ่ายบุคคล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+      title: "ผู้ติดต่อฉุกเฉิน",
+      sos: true,
+      rows: [
+        { label: "ชื่อ–สกุล", value: emp?.sos.name },
+        { label: "ความสัมพันธ์", value: emp?.sos.rel },
+        { label: "โทรศัพท์", value: emp?.sos.phone, tel: true },
+      ],
+    },
+  ];
 
   return (
     <section className="pf-sheet glass rounded-[20px] px-4 py-5 sm:px-7 sm:py-[26px]">
       <h2 className="pf-intro text-lg font-semibold">ข้อมูลส่วนตัว</h2>
-      <p className="pf-intro mt-1 text-[13px] leading-relaxed text-muted-foreground">
-        ช่องที่มี{" "}
-        <em className="text-primary not-italic">*</em> ต้องกรอก
-      </p>
-
-      {/* .pf-grp ไม่มีสไตล์บนจอคอม (หน้าตาเดิม) · บนมือถือแต่ละกลุ่มเป็นการ์ดของตัวเอง */}
-      <div className="pf-grp">
-      <H3>ข้อมูลทั่วไป</H3>
-      <div className="pf-grid grid gap-4 sm:grid-cols-2 sm:gap-x-5">
-        <F
-          label="ชื่อ–สกุล (ภาษาไทย)"
-          required
-          wide
-          error={bad.name ? "กรอกชื่อ–สกุลภาษาไทย" : undefined}
+      {groups.map((g) => (
+        <div
+          key={g.title}
+          className={`pf-grp ${g.sos ? "pf-sos mt-4 rounded-[14px] border border-border border-l-4 border-l-[var(--destructive)] bg-card px-4 py-3.5" : ""}`}
         >
-          <Input
-            value={name}
-            onChange={(v) => {
-              setName(v);
-              setBad((b) => ({ ...b, name: false }));
-            }}
-          />
-        </F>
-        <F label="ชื่อ–สกุล (ภาษาอังกฤษ)" wide>
-          <Input placeholder="Chitpon Panyanon" />
-        </F>
-        <F label="ชื่อเล่น">
-          <Input />
-        </F>
-        <F label="เพศ">
-          {/* มือถือ: ปุ่มเรดิโอกลายเป็นแถบเลือกแบบแบ่งช่อง (pf-seg) ด้วย CSS ล้วน */}
-          <div className="pf-seg flex h-12 items-center gap-[18px]">
-            {/* อ่านจากข้อมูลหลัก — เพิ่มเพศใหม่แล้วขึ้นให้เลือกที่นี่ด้วย */}
-            {optionsOf("sex").map((g) => (
-              <label
-                key={g}
-                className="flex cursor-pointer items-center gap-2.5 text-[13.5px] font-medium"
-              >
-                <input
-                  type="radio"
-                  name="sex"
-                  defaultChecked={g === optionsOf("sex")[0]}
-                  className="size-[19px] accent-[var(--primary)]"
-                />
-                {g}
-              </label>
+          <H3>{g.title}</H3>
+          <dl className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+            {g.rows.map((r) => (
+              <div key={r.label} className={`min-w-0 ${r.wide ? "sm:col-span-2" : ""}`}>
+                <dt className="text-[12px] font-normal text-muted-foreground/70">{r.label}</dt>
+                <dd className="mt-0.5 text-[15px] font-semibold text-foreground leading-relaxed break-words whitespace-pre-line">
+                  {r.value?.trim() ? (
+                    r.tel ? (
+                      <a href={`tel:${r.value.replace(/[^\d+]/g, "")}`} className="num text-primary underline underline-offset-2">
+                        {r.value}
+                      </a>
+                    ) : (
+                      r.value
+                    )
+                  ) : <span className="text-muted-foreground/60">—</span>}
+                </dd>
+              </div>
             ))}
-          </div>
-        </F>
-
-        <div className="pf-wide sm:col-span-2">
-          <F label="ที่อยู่ที่ติดต่อได้">
-            <textarea
-              aria-label="ที่อยู่ที่ติดต่อได้"
-              className="field-control h-[86px] resize-y rounded-xl px-[15px] py-3 text-sm leading-relaxed"
-              placeholder="บ้านเลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"
-            />
-          </F>
+          </dl>
         </div>
-
-        <F
-          label="เบอร์ติดต่อ"
-          required
-          error={bad.phone ? "กรอกเบอร์ติดต่อให้ครบ 9–10 หลัก" : undefined}
-        >
-          <Input
-            inputMode="numeric"
-            value={phone}
-            onChange={(v) => {
-              setPhone(formatPhone(v));
-              setBad((b) => ({ ...b, phone: false }));
-            }}
-          />
-        </F>
-        <F label="เบอร์ออฟฟิศที่ถืออยู่">
-          <Input
-            inputMode="numeric"
-            placeholder="ถ้าบริษัทให้เครื่องด้วย"
-            value={officePhone}
-            onChange={(v) => setOfficePhone(formatPhone(v))}
-          />
-        </F>
-        <F label="E-mail (ส่วนตัว)" wide>
-          <Input type="email" placeholder="name@example.com" />
-        </F>
-        <F label="E-mail (บริษัท)" wide>
-          <Input defaultValue={me.email} readOnly />
-        </F>
-        <F label="ID LINE" wide>
-          <Input placeholder="@lineid" />
-        </F>
-        <F label="วัน/เดือน/ปีเกิด">
-          <DateField
-            value={birth}
-            onChange={setBirth}
-            label="วัน/เดือน/ปีเกิด"
-            max={todayIso()}
-            clearable
-            className="h-12 rounded-xl px-[15px] text-sm font-normal"
-          />
-        </F>
-        <F label="อายุ">
-          <Input value={age} readOnly />
-        </F>
-        <F label="สถานภาพสมรส" wide>
-          <Select options={["โสด", "สมรส", "หย่าร้าง", "หม้าย"]} />
-        </F>
-        <F label="น้ำหนัก (กก.)">
-          <Input
-            inputMode="numeric"
-            placeholder="0"
-            value={nums.weight}
-            onChange={(v) => setNums((n) => ({ ...n, weight: digits3(v) }))}
-          />
-        </F>
-        <F label="ส่วนสูง (ซม.)">
-          <Input
-            inputMode="numeric"
-            placeholder="0"
-            value={nums.height}
-            onChange={(v) => setNums((n) => ({ ...n, height: digits3(v) }))}
-          />
-        </F>
-        <F label="เชื้อชาติ">
-          <Input placeholder="ไทย" />
-        </F>
-        <F label="สัญชาติ">
-          <Input placeholder="ไทย" />
-        </F>
-        <F label="การรับราชการทหาร" wide>
-          <Select
-            options={[
-              "ผ่านการเกณฑ์ทหารแล้ว",
-              "ได้รับการยกเว้น",
-              "ยังไม่ได้เกณฑ์",
-              "ไม่เกี่ยวข้อง",
-            ]}
-          />
-        </F>
-      </div>
-      </div>
-
-      <div className="pf-grp">
-      <H3>ข้อมูลครอบครัว</H3>
-      <div className="pf-grid grid gap-4 sm:grid-cols-2 sm:gap-x-5">
-        <F label="ชื่อบิดา">
-          <Input />
-        </F>
-        <F label="อาชีพบิดา">
-          <Input />
-        </F>
-        <F label="ชื่อมารดา">
-          <Input />
-        </F>
-        <F label="อาชีพมารดา">
-          <Input />
-        </F>
-        <F label="จำนวนพี่น้อง (คน)">
-          <Input
-            inputMode="numeric"
-            placeholder="0"
-            value={nums.sibs}
-            onChange={(v) => setNums((n) => ({ ...n, sibs: digits3(v) }))}
-          />
-        </F>
-        <F label="คุณเป็นบุตรคนที่">
-          <Input
-            inputMode="numeric"
-            placeholder="0"
-            value={nums.order}
-            onChange={(v) => setNums((n) => ({ ...n, order: digits3(v) }))}
-          />
-        </F>
-      </div>
-      </div>
-
-      <div className="pf-grp">
-      <div className="pf-grp-head flex items-center justify-between gap-3">
-        <H3>ประวัติการศึกษา</H3>
-        {addEdu.canAdd && (
-          <button type="button" className="lnk text-[12.5px]" onClick={() => addEdu.pick(ADD_VALUE)}>
-            ＋ เพิ่มระดับการศึกษา
-          </button>
-        )}
-      </div>
-      {addEdu.dialog}
-      {/* จอเล็กกรอกทีละระดับ — มือถือพับเก็บได้ทีละระดับ (แตะเพื่อกรอก) ตามต้นแบบ · จอใหญ่เป็นตารางเหมือนแบบฟอร์มกระดาษ */}
-      <div className="pf-edu space-y-3 md:hidden">
-        {optionsOf("eduLevel").map((lv) => (
-          <details key={lv} className="pf-edu-item glass-thin rounded-[14px]">
-            <summary>
-              {lv}
-              <span>แตะเพื่อกรอก</span>
-            </summary>
-            <div className="pf-edu-body">
-              <F label="ชื่อสถานศึกษา" wide>
-                <Input aria-label={`สถานศึกษา ${lv}`} />
-              </F>
-              <F label="ประเทศ">
-                <Input placeholder="ไทย" aria-label={`ประเทศ ${lv}`} />
-              </F>
-              <F label="สาขาวิชา">
-                <Input aria-label={`สาขาวิชา ${lv}`} />
-              </F>
-              <F label="เกรดเฉลี่ย">
-                <Input inputMode="decimal" placeholder="0.00" aria-label={`เกรด ${lv}`} />
-              </F>
-              <F label="ปีที่สำเร็จ">
-                <Input inputMode="numeric" placeholder="2562" aria-label={`ปีที่สำเร็จ ${lv}`} />
-              </F>
-            </div>
-          </details>
-        ))}
-      </div>
-      <div className="glass-thin hidden overflow-x-auto rounded-[14px] md:block">
-        <table className="data-table min-w-[760px]">
-          <thead>
-            <tr>
-              <th style={{ width: 170 }}>ระดับการศึกษา</th>
-              <th>ชื่อสถานศึกษา</th>
-              <th style={{ width: 130 }}>ประเทศ</th>
-              <th style={{ width: 140 }}>สาขาวิชา</th>
-              <th style={{ width: 100 }}>เกรดเฉลี่ย</th>
-              <th style={{ width: 110 }}>ปีที่สำเร็จ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {optionsOf("eduLevel").map((lv) => (
-              <tr key={lv}>
-                <td className="text-[12.5px] font-medium whitespace-nowrap text-muted-foreground">
-                  {lv}
-                </td>
-                <td>
-                  <input className="field-control h-[38px] text-[13px]" aria-label={`สถานศึกษา ${lv}`} />
-                </td>
-                <td>
-                  <input className="field-control h-[38px] text-[13px]" placeholder="ไทย" aria-label={`ประเทศ ${lv}`} />
-                </td>
-                <td>
-                  <input className="field-control h-[38px] text-[13px]" aria-label={`สาขาวิชา ${lv}`} />
-                </td>
-                <td>
-                  <input className="field-control h-[38px] text-[13px]" inputMode="decimal" placeholder="0.00" aria-label={`เกรด ${lv}`} />
-                </td>
-                <td>
-                  <input className="field-control h-[38px] text-[13px]" inputMode="numeric" placeholder="2562" aria-label={`ปีที่สำเร็จ ${lv}`} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      </div>
-
-      <div className="pf-grp">
-      <H3>บุคคลที่ติดต่อได้กรณีเร่งด่วน</H3>
-      <div className="pf-grid grid gap-4 sm:grid-cols-2 sm:gap-x-5">
-        <F label="ชื่อ–สกุล" wide>
-          <Input />
-        </F>
-        <F label="ความสัมพันธ์">
-          <Select
-            options={["บิดา", "มารดา", "คู่สมรส", "พี่น้อง", "บุตร", "ญาติ", "เพื่อน"]}
-          />
-        </F>
-        <F label="โทรศัพท์">
-          <Input
-            inputMode="numeric"
-            placeholder="08x-xxx-xxxx"
-            value={emPhone}
-            onChange={(v) => setEmPhone(formatPhone(v))}
-          />
-        </F>
-      </div>
-      </div>
-
-      <div className="pf-grp">
-      <H3>เอกสารแนบ</H3>
-      <FileDrop
-        files={files}
-        onChange={setFiles}
-        title="แนบรูปถ่าย"
-        hint="รูปถ่ายหน้าตรง พื้นหลังสุภาพ · JPG หรือ PNG"
-        accept="image/*"
-        label="เลือกรูปถ่าย"
-      />
-      </div>
-
-      {/* ฟอร์มยาวมาก — มือถือให้ปุ่มบันทึกลอยอยู่เหนือแถบล่างตลอด ไม่ต้องเลื่อนลงไปหา
-          (.pf-bar บนจอแคบกว่า md เป็นแถบล่างแบบต้นแบบ: ยกเลิก / บันทึก 1fr 1.4fr) */}
-      <div className="pf-bar mt-[26px] grid gap-3.5 max-sm:sticky max-sm:bottom-[calc(var(--botbar)+10px)] max-sm:z-10 max-sm:grid-cols-2 max-sm:gap-2.5 max-sm:rounded-2xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:p-2.5 max-sm:shadow-[0_-6px_16px_-10px_rgb(0_0_0/0.25)] sm:grid-cols-2">
-        <button
-          type="button"
-          className="h-12 rounded-[14px] border-[1.5px] border-primary bg-white text-[14.5px] font-semibold text-primary transition-colors hover:bg-accent max-sm:h-11 max-sm:text-[13.5px]"
-          onClick={() => setBad({})}
-        >
-          <CancelLabel />
-        </button>
-        <button
-          type="button"
-          className="btn-solid h-12 rounded-[14px] text-[14.5px] font-semibold max-sm:h-11 max-sm:text-[13.5px]"
-          onClick={save}
-        >
-          บันทึกการเปลี่ยนแปลง
-        </button>
-      </div>
+      ))}
     </section>
   );
 }
 
-/** ช่องกรอกมาตรฐานของหน้านี้ — สูง 48px มุมมน 12px ตามแบบฟอร์ม */
-function Input({
-  value,
-  onChange,
-  className,
-  ...props
-}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
-  onChange?: (v: string) => void;
-}) {
-  return (
-    <input
-      {...props}
-      value={value}
-      onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-      className={`field-control h-12 rounded-xl px-[15px] text-sm ${className ?? ""}`}
-    />
-  );
-}
-
-function Select({ options, id }: { options: string[]; id?: string }) {
-  return (
-    <select id={id} className="field-control h-12 cursor-pointer rounded-xl px-[15px] text-sm">
-      <option value="">— เลือก —</option>
-      {options.map((o) => (
-        <option key={o}>{o}</option>
-      ))}
-    </select>
-  );
-}
-
-function digits3(v: string) {
-  return v.replace(/\D/g, "").slice(0, 3);
-}
-
 // ─── การแจ้งเตือน ─────────────────────────────────────────────────
-const LEAD_IN = [0, 5, 10, 15, 30];
-const LEAD_OUT = [0, 5, 10, 15];
-const REPEAT = [0, 5, 10, 15];
+/*
+ * เหลือกล่องเดียว "การแจ้งเตือนบนอุปกรณ์นี้" (ผู้ใช้สั่ง 16 ต.ค. 2569)
+ * เอารายการเรื่อง / ช่องป๊อปอัป-เสียง-สั่น / เวลาเตือน / ปิดเสียงพักกลางวัน / ปุ่มบันทึก ออกทั้งหมด
+ * เรื่องที่ส่งระบบเลือกตามบทบาท (topicsForRoles) · เวลาเตือนใช้เวลาทำงานของระบบ (reminderTimes)
+ */
+function NotifyPane() {
+  const role = useRole();
+  const empId = ROLE_EMPLOYEE[role];
+  const pwa = usePwa();
+  const hydrated = useHydrated();
+  const device = useThisDevice(empId);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const ios = hydrated && isIOS();
 
-function NotifyPane({ onSaved }: { onSaved: (m: string) => void }) {
-  const stored = useNotifySettings();
-  /* แก้ในหน้าก่อน กดบันทึกแล้วค่อยเขียนลงสโตร์ที่หน้าอื่นอ่าน */
-  const [draft, setDraft] = useState<NotifySettings>(stored);
-  const { on, leadIn, leadOut, repeat, quietLunch: quiet, channels } = draft;
-  const patch = (v: Partial<NotifySettings>) => setDraft((d) => ({ ...d, ...v }));
-  const setOn = (v: boolean) => patch({ on: v });
-  const setLeadIn = (v: number) => patch({ leadIn: v });
-  const setLeadOut = (v: number) => patch({ leadOut: v });
-  const setRepeat = (v: number) => patch({ repeat: v });
-  const setQuiet = (v: boolean) => patch({ quietLunch: v });
-  /* สวิตช์สั่นกดได้ทุกเครื่อง (ผู้ใช้สั่ง 29 ก.ย. 2569) — iPhone ไม่ให้เว็บสั่งสั่น เครื่องสั่นตามการตั้งค่าของ iPhone เอง
-     จึงบอกไว้ใต้ตาราง ไม่ล็อกสวิตช์ · อ่านชนิดเครื่องหลัง hydrate เท่านั้น */
-  const ios = useHydrated() && isIOS();
+  const supported = hydrated && pushSupported();
+  const perm = pwa.notify;
+  const subscribed = perm === "granted" && !!device;
+  const state: "loading" | "unsupported" | "blocked" | "on" | "off" | "idle" = !hydrated
+    ? "loading"
+    : !supported
+      ? "unsupported"
+      : perm === "denied"
+        ? "blocked"
+        : subscribed
+          ? device.enabled
+            ? "on"
+            : "off"
+          : "idle";
+
+  async function turnOn() {
+    if (!empId) return;
+    setBusy(true);
+    setMsg(null);
+    /* ขอสิทธิ์ก่อนอย่างอื่น — iOS ยอมให้ขอเฉพาะตอนที่ผู้ใช้เพิ่งกดปุ่ม */
+    const r = await enableNotify();
+    if (r.ok) await subscribeThisDevice(empId);
+    else setMsg(r.reason);
+    setBusy(false);
+  }
 
   return (
     <section className="pf-sheet glass rounded-[20px] px-4 py-5 sm:px-7 sm:py-[26px]">
       <h2 className="pf-intro text-lg font-semibold">การแจ้งเตือน</h2>
 
-      <DevicePushCard />
+      <div className="glass-thin mt-5 rounded-[14px] px-4 py-4 text-[13.5px] sm:px-5">
+        <b className="block text-[15px] font-semibold">การแจ้งเตือนบนอุปกรณ์นี้</b>
 
-      {/* มือถือ: สวิตช์ใหญ่เป็นการ์ดบนสุดของจอ (.pf-master) */}
-      <div className="pf-master glass-thin mt-5 flex items-center justify-between gap-3 rounded-[14px] px-4 py-3.5 text-sm font-semibold">
-        <span>
-          เปิดการแจ้งเตือน
-        </span>
-        <Switch on={on} onToggle={() => setOn(!on)} label="เปิดการแจ้งเตือน" />
-      </div>
+        {state === "loading" && <p className="mt-1.5 text-muted-foreground">กำลังตรวจ…</p>}
 
-      <div className={`pf-stack ${on ? "" : "pointer-events-none opacity-40"}`}>
-        {/* .pf-grp ไม่มีสไตล์บนจอคอม · มือถือเป็นการ์ด "เรื่องที่แจ้งเตือน" */}
-        <div className="pf-grp pf-events">
-        <h2 className="pf-grp-title hidden">เรื่องที่แจ้งเตือน</h2>
-        <div className="pf-chhead mt-5 grid grid-cols-[minmax(0,1fr)_44px_44px_44px] sm:grid-cols-[minmax(0,1fr)_60px_60px_60px] gap-2.5 border-b border-border pb-2.5">
-          <span />
-          {NOTIFY_CHANNELS.map((c) => (
-            <span key={c.key} className="text-center text-[11.5px] font-semibold text-muted-foreground">
-              {c.label}
-            </span>
-          ))}
-        </div>
+        {state === "unsupported" && (
+          <p className="mt-1.5 leading-relaxed text-muted-foreground">
+            อุปกรณ์นี้ไม่รองรับการแจ้งเตือน
+            {ios && (
+              <>
+                {" "}— iPhone ต้องเพิ่มแอปไปยังหน้าจอโฮมก่อน (กดแชร์ › เพิ่มไปยังหน้าจอโฮม) แล้วเปิดจากไอคอน{" "}
+                <Link href="/install" className="text-primary underline">
+                  ดูวิธี
+                </Link>
+              </>
+            )}
+          </p>
+        )}
 
-        {NOTIFY_EVENTS.map((e) => (
-          <div
-            key={e.key}
-            className="pf-ev grid grid-cols-[minmax(0,1fr)_44px_44px_44px] sm:grid-cols-[minmax(0,1fr)_60px_60px_60px] items-center gap-2.5 border-b border-border py-4"
-          >
-            <span className="pf-ev-txt">
-              <b className="block text-[13.5px] font-semibold">{e.title}</b>
-              <span className="mt-[3px] block text-xs leading-relaxed text-muted-foreground">
-                {e.detail}
-              </span>
-            </span>
-            {NOTIFY_CHANNELS.map((c) => (
-              <span key={c.key} className="pf-ch flex justify-center">
-                {/* มือถือ: ช่องทางเรียงลงเป็นแถว ชื่อช่องทางอยู่หน้าสวิตช์เล็ก (ต้นแบบ .pg-ch) */}
-                <span className="pf-ch-lbl hidden">{c.label}</span>
-                <Switch
-                  small
-                  on={channels[e.key][c.key]}
-                  label={`${e.title} — ${c.label}`}
-                  onToggle={() =>
-                    patch({
-                      channels: {
-                        ...channels,
-                        [e.key]: { ...channels[e.key], [c.key]: !channels[e.key][c.key] },
-                      },
-                    })
-                  }
-                />
-              </span>
-            ))}
+        {state === "blocked" && (
+          <div className="mt-1.5 leading-relaxed text-muted-foreground">
+            <p>การแจ้งเตือนถูกบล็อกไว้ในเบราว์เซอร์ ต้องอนุญาตที่การตั้งค่าของเว็บไซต์ก่อน แล้วโหลดหน้านี้ใหม่</p>
+            <ul className="mt-2 grid gap-1 text-[12.5px]">
+              <li>
+                <b className="font-semibold text-foreground">Chrome / Edge:</b> แตะไอคอนหน้าที่อยู่เว็บ › สิทธิ์ ›
+                การแจ้งเตือน › อนุญาต
+              </li>
+              <li>
+                <b className="font-semibold text-foreground">Safari (iPhone):</b> การตั้งค่า › การแจ้งเตือน › ERP MAZ ›
+                อนุญาตการแจ้งเตือน
+              </li>
+            </ul>
           </div>
-        ))}
+        )}
 
-        </div>
+        {(state === "on" || state === "off") && empId && (
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className={state === "on" ? "font-medium text-[var(--success)]" : "text-muted-foreground"}>
+              {state === "on" ? "เปิดอยู่บนอุปกรณ์นี้" : "ปิดอยู่บนอุปกรณ์นี้"}
+            </span>
+            <Switch
+              on={state === "on"}
+              label="การแจ้งเตือนบนอุปกรณ์นี้"
+              disabled={busy}
+              onToggle={async () => {
+                if (state === "on") return unsubscribeThisDevice(empId);
+                setBusy(true);
+                await subscribeThisDevice(empId);
+                setBusy(false);
+              }}
+            />
+          </div>
+        )}
 
-        <div className="pf-grp">
-        <H3>เวลาแจ้งเตือน</H3>
-        <div className="grid gap-[18px]">
-          <Pills label="เตือนล่วงหน้าก่อนเข้างาน" options={LEAD_IN} value={leadIn} onChange={setLeadIn} zero="ตรงเวลา" />
-          <Pills label="เตือนตอนเลิกงาน" options={LEAD_OUT} value={leadOut} onChange={setLeadOut} zero="ตรงเวลา" />
-          <Pills label="เตือนซ้ำถ้ายังไม่กด" options={REPEAT} value={repeat} onChange={setRepeat} zero="ไม่เตือนซ้ำ" every />
-        </div>
-        </div>
+        {state === "idle" && (
+          <>
+            <p className="mt-1.5 leading-relaxed text-muted-foreground">
+              ยังไม่ได้เปิด — เปิดแล้วจะได้รับแจ้งเตือนเรื่องงานของคุณบนอุปกรณ์นี้ แม้ไม่ได้เปิดแอปอยู่
+            </p>
+            <button
+              type="button"
+              disabled={busy || !empId}
+              onClick={turnOn}
+              className="btn-solid mt-3 h-11 w-full rounded-[22px] px-5 text-sm font-semibold disabled:opacity-45 sm:w-auto"
+            >
+              {busy ? "กำลังเปิด…" : "เปิดการแจ้งเตือน"}
+            </button>
+          </>
+        )}
 
-        <div className="pf-grp">
-        <H3>อื่น ๆ</H3>
-        <div className="pf-quiet flex items-center justify-between gap-3 py-3.5 text-[13.5px]">
-          <span>
-            ปิดเสียงช่วงพักกลางวัน
-            <small className="mt-0.5 block text-[11.5px] text-muted-foreground">
-              12:00–13:00 น. แจ้งเตือนแบบเงียบ
-            </small>
-          </span>
-          <Switch on={quiet} onToggle={() => setQuiet(!quiet)} label="ปิดเสียงช่วงพักกลางวัน" />
-        </div>
-        </div>
-      </div>
-
-      <div className="pf-bar mt-[26px] grid gap-3.5 sm:grid-cols-2">
-        <button
-          type="button"
-          className="h-12 rounded-[14px] border-[1.5px] border-primary bg-white text-[14.5px] font-semibold text-primary transition-colors hover:bg-accent"
-          onClick={() => setDraft(stored)}
-        >
-          <CancelLabel />
-        </button>
-        <button
-          type="button"
-          className="btn-solid h-12 rounded-[14px] text-[14.5px] font-semibold"
-          onClick={() => {
-            saveNotifySettings(draft);
-            onSaved("บันทึกการตั้งค่าแจ้งเตือนเรียบร้อย");
-          }}
-        >
-          บันทึกการเปลี่ยนแปลง
-        </button>
+        {msg && (
+          <p role="status" className="mt-3 rounded-[11px] bg-[var(--destructive-soft)] px-3.5 py-2.5 text-[13px] text-destructive">
+            {msg}
+          </p>
+        )}
       </div>
     </section>
-  );
-}
-
-function Pills({
-  label,
-  options,
-  value,
-  onChange,
-  zero,
-  every,
-}: {
-  label: string;
-  options: number[];
-  value: number;
-  onChange: (v: number) => void;
-  zero: string;
-  every?: boolean;
-}) {
-  return (
-    <div>
-      <p className="mb-2.5 text-[12.5px] font-semibold text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {options.map((o) => (
-          <button
-            key={o}
-            type="button"
-            onClick={() => onChange(o)}
-            aria-pressed={o === value}
-            className={`pf-chip rounded-xl border-[1.5px] px-4 py-2.5 text-[13px] transition-colors ${
-              o === value
-                ? "border-primary bg-accent font-semibold text-primary"
-                : "border-border bg-white text-muted-foreground hover:border-muted-foreground/40"
-            }`}
-          >
-            {o === 0 ? zero : `${every ? "ทุก " : ""}${o} นาที`}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Switch({
-  on,
-  onToggle,
-  label,
-  disabled,
-  small,
-}: {
-  on: boolean;
-  onToggle: () => void;
-  label: string;
-  disabled?: boolean;
-  /** มือถือ: สวิตช์เล็ก 40×24 สำหรับช่องทางย่อยของแต่ละเรื่อง (จอคอมขนาดเท่าเดิม) */
-  small?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      title={disabled ? "สั่นใช้ได้เฉพาะบนมือถือ" : undefined}
-      onClick={onToggle}
-      className={`pf-sw${small ? " pf-sw-sm" : ""} relative h-[25px] w-11 shrink-0 rounded-[14px] transition-colors disabled:opacity-35 ${
-        on ? "bg-primary" : "bg-[#dde2e9]"
-      }`}
-    >
-      <span
-        className={`absolute top-[3px] left-[3px] size-[19px] rounded-full bg-white shadow transition-transform ${
-          on ? "translate-x-[19px]" : ""
-        }`}
-      />
-    </button>
   );
 }
 
@@ -1079,20 +732,13 @@ function F({
   className?: string;
   children: React.ReactNode;
 }) {
-  /* ผูก label กับช่องกรอกให้เอง หลักการเดียวกับ Field ใน ui.tsx */
-  const id = useId();
-  const kid =
-    isValidElement<{ id?: string }>(children) && (children.type === Input || children.type === Select)
-      ? cloneElement(children, { id })
-      : children;
-
   return (
     <div className={`pf-f${wide ? " pf-wide" : ""}${className ? ` ${className}` : ""}`}>
-      <label htmlFor={id} className="mb-[7px] block text-[12.5px] font-medium text-muted-foreground">
+      <label className="mb-[7px] block text-[12.5px] font-medium text-muted-foreground">
         {label}
         {required && <em className="ml-0.5 text-primary not-italic">*</em>}
       </label>
-      {kid}
+      {children}
       {error ? (
         <p className="mt-1.5 text-[12.5px] text-destructive">{error}</p>
       ) : hint ? (
@@ -1100,13 +746,6 @@ function F({
       ) : null}
     </div>
   );
-}
-
-function formatPhone(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 10);
-  if (d.length > 6) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
-  if (d.length > 3) return `${d.slice(0, 3)}-${d.slice(3)}`;
-  return d;
 }
 
 function ageFrom(iso: string) {

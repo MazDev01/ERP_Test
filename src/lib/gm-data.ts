@@ -13,14 +13,16 @@
  */
 
 import { useMemo } from "react";
-import { useEmpRequests } from "./emp-requests";
+import { empReqLeaveHours, useEmpRequests } from "./emp-requests";
+import { fmtLeaveHours, leaveHoursOf } from "./leave-data";
 import { useAllClaims } from "./expense-store";
 import { addDays, thaiMonth } from "./format";
-import { HR_LEAVE_LABEL, ROLE_EMPLOYEE } from "./hr-data";
+import { HR_LEAVE_LABEL, ROLE_EMPLOYEE, leaveRowHours } from "./hr-data";
 import { useHrTime } from "./hr-link";
 import { useHr } from "./hr-store";
 import { useAllLeave } from "./leave-store";
 import { USERS } from "./mock-data";
+import { displayName, nameOf as empNameOf } from "./emp-name";
 import { useAllOt } from "./ot-store";
 import { approvesFor, useApprovalRoute, type Role } from "./role";
 
@@ -36,9 +38,16 @@ export type TeamLeave = {
   pending: boolean;
   /** รหัสใบลา — มีเฉพาะใบที่รออนุมัติ ใช้เปิดตรงรายการในหน้า /approvals (?find=) */
   id?: string;
+  /** ชั่วโมงลาของวันที่ลาไม่เต็มวัน — ไม่มีค่า = ลาเต็มวัน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  hours?: number;
   /** GM เป็นผู้อนุมัติใบนี้ — กดแล้วพาไปหน้ารายการรออนุมัติได้ */
   mine: boolean;
 };
+
+/** ต่อท้ายชื่อประเภทลาเมื่อลาไม่เต็มวัน — " · 3 ชม." · ลาเต็มวัน = "" (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+export function teamLeaveHoursText(l: Pick<TeamLeave, "hours">) {
+  return l.hours != null ? ` · ${fmtLeaveHours(l.hours)}` : "";
+}
 
 /** คำขอหนึ่งใบในคิวของ GM */
 export type GmPending = {
@@ -64,7 +73,7 @@ export function useTeamLeave(): TeamLeave[] {
   const route = useApprovalRoute();
 
   return useMemo(() => {
-    const nameOf = new Map(hr.emp.map((e) => [e.id, e.name]));
+    const nameOf = new Map(hr.emp.map((e) => [e.id, displayName(e)]));
     const gmLeaveFrom = new Set(approvesFor(GM, route).filter((d) => d.kind === "leave").map((d) => d.from));
     const out: TeamLeave[] = [];
 
@@ -74,11 +83,13 @@ export function useTeamLeave(): TeamLeave[] {
       let last: TeamLeave | undefined;
       for (const l of days) {
         const type = HR_LEAVE_LABEL[l.type as keyof typeof HR_LEAVE_LABEL] ?? "ลา";
-        if (last && last.type === type && addDays(last.to, 1) === l.d) {
+        /* ลาไม่เต็มวันแยกเป็นแถวของตัวเอง ไม่รวมเข้าช่วงลาเต็มวัน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+        const partial = l.span === "half";
+        if (!partial && last && last.hours == null && last.type === type && addDays(last.to, 1) === l.d) {
           last.to = l.d;
           continue;
         }
-        last = { key: `hr-${emp}-${l.d}`, emp, name: nameOf.get(emp) ?? emp, from: l.d, to: l.d, type, pending: false, mine: false };
+        last = { key: `hr-${emp}-${l.d}`, emp, name: nameOf.get(emp) ?? emp, from: l.d, to: l.d, type, pending: false, mine: false, ...(partial ? { hours: leaveRowHours(l) } : {}) };
         out.push(last);
       }
     }
@@ -93,6 +104,7 @@ export function useTeamLeave(): TeamLeave[] {
       out.push({
         key: `emp-${r.id}`, emp: r.emp, name: nameOf.get(r.emp) ?? r.emp,
         from: r.from, to: r.toDate || r.from, type: r.leaveType ?? "ลา", pending,
+        ...(r.span === "half" ? { hours: empReqLeaveHours(r) } : {}),
         id: pending ? r.id : undefined, mine: pending && r.to === GM,
       });
     }
@@ -105,8 +117,9 @@ export function useTeamLeave(): TeamLeave[] {
         if (v.status !== "รอการอนุมัติ" || seen.has(v.id)) continue;
         seen.add(v.id);
         out.push({
-          key: `role-${role}-${v.id}`, emp, name: nameOf.get(emp) ?? USERS[role as Role].name,
+          key: `role-${role}-${v.id}`, emp, name: nameOf.get(emp) ?? empNameOf(USERS[role as Role].name),
           from: v.date, to: v.toDate || v.date, type: v.type, pending: true,
+          ...(v.days < 1 ? { hours: leaveHoursOf(v) } : {}),
           id: v.id, mine: gmLeaveFrom.has(role as Role),
         });
       }
@@ -127,7 +140,7 @@ export function useGmPending(): GmPending[] {
   return useMemo(() => {
     const out: GmPending[] = [];
     for (const { kind, from } of approvesFor(GM, route)) {
-      const name = USERS[from].name;
+      const name = empNameOf(USERS[from].name);
       if (kind === "leave")
         for (const v of leaves[from])
           if (v.status === "รอการอนุมัติ")
@@ -141,7 +154,7 @@ export function useGmPending(): GmPending[] {
           if (v.status === "รออนุมัติ")
             out.push({ key: `ex-${from}-${v.month}`, kind, name, what: `ค่าน้ำมัน ${thaiMonth(v.month)}`, at: v.submittedAt || `${v.month}-01 00:00` });
     }
-    const nameOf = new Map(hr.emp.map((e) => [e.id, e.name]));
+    const nameOf = new Map(hr.emp.map((e) => [e.id, displayName(e)]));
     for (const r of extra) {
       if (r.to !== GM || r.status !== "pending") continue;
       const name = nameOf.get(r.emp) ?? r.emp;

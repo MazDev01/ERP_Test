@@ -8,6 +8,7 @@
  * เพราะเงินเดือนของพนักงานเปลี่ยนได้ภายหลัง ถ้าคำนวณใหม่ ยอดย้อนหลังจะไม่ตรงกับที่จ่ายจริง
  */
 
+import { nameOf } from "@/lib/emp-name";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { baht, thaiDate, thaiMonth } from "@/lib/format";
@@ -17,6 +18,7 @@ import {
   hrCycle,
   hrPos,
   rangeLabel,
+  probRoundLabel,
   type Cycle,
   type CycleSum,
   type PayGroup,
@@ -55,7 +57,7 @@ export function HrCyclesPage() {
         .sort((a, b) => b.to.localeCompare(a.to))
         .map((r) => ({
           key: r.id,
-          label: rangeLabel(r),
+          label: probRoundLabel(r),
           range: { from: r.from, to: r.to },
           year: Number(r.to.slice(0, 4)),
           sum: r.sum,
@@ -115,7 +117,8 @@ export function HrCyclesPage() {
       {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองปีอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569)
           มือถือซ่อน .bar ทั้งแถบ จึงมีแถบขั้นตอนอีกชุดด้านล่าง และตัวกรองปีอยู่หัวรายการ */}
       <div className="bar">
-        <h1 className="sr-only">ประวัติรอบจ่าย</h1>
+        {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+        <h1 className="page-h1">ประวัติรอบจ่าย</h1>
         <div className="tools ml-auto">{yearPick}</div>
       </div>
 
@@ -348,6 +351,7 @@ function SumDialog({
             {sum.com > 0 && <Line k="Commission" v={baht(sum.com)} />}
             {sum.inc > 0 && <Line k="Incentive" v={baht(sum.inc)} />}
             {sum.allow > 0 && <Line k="ค่าตำแหน่ง" v={baht(sum.allow)} />}
+            {(sum.more ?? 0) > 0 && <Line k="รายได้อื่นที่กรอกเอง" v={baht(sum.more ?? 0)} />}
             {/* ใบเบิกที่อนุมัติแล้ว จ่ายคืนพร้อมเงินเดือน ไม่ใช่รายได้ แต่บวกเข้ายอดสุทธิ
                 ต้องมีบรรทัดนี้ ไม่งั้นบวกลบในกล่องแล้วไม่ได้ยอดสุทธิ */}
             {(sum.reimb ?? 0) > 0 && <Line k="ค่าใช้จ่ายคืน (ใบเบิก)" v={baht(sum.reimb ?? 0)} />}
@@ -362,9 +366,10 @@ function SumDialog({
             {sum.ss > 0 && <Line k="ประกันสังคมหัก" v={`-${baht(sum.ss)}`} />}
             <Line k="หักมาสาย" v={sum.late ? `-${baht(sum.late)}` : "—"} />
             <Line
-              k="รายการปรับปรุงอื่น"
+              k="รายการหักที่กรอกเอง"
               v={sum.adj ? (sum.adj < 0 ? `-${baht(-sum.adj)}` : `+${baht(sum.adj)}`) : "—"}
             />
+            {(sum.wht ?? 0) > 0 && <Line k="ภาษีหัก ณ ที่จ่าย 3%" v={`-${baht(sum.wht ?? 0)}`} />}
             <Line k="รวมรายการหัก" v={`-${baht(cutOf(sum))}`} />
             {sum.ss > 0 && <Line k="นำส่งประกันสังคม (รวมส่วนบริษัท)" v={baht(sum.ss * 2)} />}
           </Part>
@@ -389,7 +394,7 @@ function SumDialog({
               <div className="hp-lines hp-only-m mt-2">
                 {sum.lines.map((x) => (
                   <div key={x.id}>
-                    <b>{x.name}</b>
+                    <b>{nameOf(x.name)}</b>
                     <b className="net num">{baht(x.net)}</b>
                     <span className="num">
                       {day ? `${x.days} วัน · ค่าจ้าง ${baht(x.base)}` : `เงินเดือน ${baht(x.base)}`}
@@ -421,7 +426,7 @@ function SumDialog({
                     {sum.lines.map((x) => (
                       <tr key={x.id}>
                         <td>
-                          {x.name}
+                          {nameOf(x.name)}
                           <span className="why">{hrPos(x.pos).label}</span>
                         </td>
                         {day ? (

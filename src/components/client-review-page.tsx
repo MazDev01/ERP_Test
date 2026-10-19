@@ -38,6 +38,7 @@ import {
 } from "@/lib/client-review-store";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, FileIcon, GridIcon, LinkIcon, MenuIcon } from "./icons";
 import "@/styles/review.css";
+import { nameOf } from "@/lib/emp-name";
 
 function Wordmark({ className = "h-[22px] w-auto" }: { className?: string }) {
   return (
@@ -157,11 +158,11 @@ function Review({ r, st }: { r: ReviewRound; st: Exclude<ReviewStatus, "expired"
           {r.project} – {r.taskName}
         </h1>
         <p className="rv-meta num">
-          {r.files.length} ไฟล์ · {totalSize(r.files)} · ส่งโดย {r.createdBy} · ลิงก์หมดอายุ {thaiDate(r.expiresAt)}
+          {r.files.length} ไฟล์ · {totalSize(r.files)} · ส่งโดย {nameOf(r.createdBy)} · ลิงก์หมดอายุ {thaiDate(r.expiresAt)}
         </p>
         {r.message && (
           <p className="rv-msg">
-            <b className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">ข้อความจาก {r.createdBy}</b>
+            <b className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">ข้อความจาก {nameOf(r.createdBy)}</b>
             {r.message}
           </p>
         )}

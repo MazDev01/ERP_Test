@@ -31,7 +31,7 @@ export function ProposalDialog({
 }) {
   return (
     <Sheet
-      title={`ข้อเสนอ ${request.no} รอบ ${round.round}`}
+      title={`ข้อเสนอ · ${customerName} รอบ ${round.round}`}
       onClose={onClose}
       wide
       footer={
@@ -57,7 +57,6 @@ export function ProposalDialog({
           </div>
           <div className="text-right">
             <h3 className="text-[16px] font-extrabold tracking-[0.04em]">ข้อเสนอโครงการ / PROPOSAL</h3>
-            <p className="num mt-0.5 text-[12.5px] font-bold text-primary">{request.no}</p>
             <p className="mt-0.5 text-[12.5px] font-bold text-primary">รอบที่ {round.round}</p>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground">จัดทำเมื่อ {thaiDate(round.at)}</p>
           </div>
@@ -71,7 +70,6 @@ export function ProposalDialog({
           <div>
             <Label>เสนอต่อ</Label>
             <p className="mt-1 text-[13px] font-semibold">{customerName}</p>
-            <p className="text-[11.5px] text-muted-foreground">{request.customerCode}</p>
           </div>
         </div>
 

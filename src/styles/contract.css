@@ -1,0 +1,14 @@
+/* เนื้อหาใบสัญญาบนกระดาษ A4 (ผู้ใช้สั่ง 14 ต.ค. 2569) — ใช้ใน contract-paper.tsx เท่านั้น */
+.paper .ct-body { margin-top: 20px; font-size: 13px; line-height: 1.78; }
+.paper .ct-body p { margin: 0 0 6px; }
+.paper .ct-body table {
+  width: 100%; border-collapse: collapse; margin: 4px 0 10px; table-layout: fixed;
+}
+.paper .ct-body td, .paper .ct-body th {
+  border: 1px solid #b9bfc8; padding: 4px 8px; vertical-align: top;
+  text-align: left; overflow-wrap: anywhere; font-size: 12.5px;
+}
+.paper .ct-body th { background: #edeef1; font-weight: 600; color: #25292f; }
+.paper .ct-body td p, .paper .ct-body th p { margin: 0; }
+.paper .ct-body tr { break-inside: avoid; page-break-inside: avoid; }
+.paper .ct-sign { break-inside: avoid; page-break-inside: avoid; }

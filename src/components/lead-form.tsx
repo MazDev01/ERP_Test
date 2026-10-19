@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { optionsOf } from "@/lib/options";
-import { addLead, nextLeadCode, useCrm } from "@/lib/crm-store";
+import { addLead, useCrm } from "@/lib/crm-store";
 import { todayIso } from "@/lib/format";
 import { Field, Sheet } from "./lead-dialogs";
 import { BranchInput } from "./lead-facts";
@@ -24,12 +24,21 @@ export function LeadForm({
   formId,
   onCreated,
   bare = false,
+  step,
+  onStep,
 }: {
   formId: string;
   /** เรียกเมื่อบันทึกสำเร็จ พร้อมรหัสผู้สนใจที่เพิ่งสร้าง */
   onCreated: (code: string) => void;
   /** อยู่ในป็อบอัพแล้ว ไม่ต้องมีการ์ดกระจกซ้อนการ์ดอีกชั้น */
   bare?: boolean;
+  /**
+   * แบ่งฟอร์มเป็นสองขั้น: 1 ข้อมูลผู้สนใจ → 2 การติดต่อครั้งแรก (ผู้ใช้สั่ง 14 ต.ค. 2569)
+   * ไม่ส่งมา = แสดงทั้งสองส่วนในหน้าเดียวเหมือนเดิม
+   * ทั้งสองส่วนยังอยู่ในฟอร์มเดียวกันตลอด (แค่ซ่อน) ค่าที่กรอกจึงไม่หายตอนย้อนกลับ
+   */
+  step?: 1 | 2;
+  onStep?: (step: 1 | 2) => void;
 }) {
   const card = bare ? "" : "glass rounded-2xl px-4 py-5 sm:px-6";
   const crm = useCrm();
@@ -55,11 +64,44 @@ export function LeadForm({
   const [nextAction, setNextAction] = useState("");
   const [followUp, setFollowUp] = useState("");
 
-  /* รหัสที่รายนี้จะได้เมื่อกดบันทึก — เลขเดินหน้าอย่างเดียว ไม่เอาเลขที่เคยออกไปแล้วกลับมาใช้ซ้ำ */
-  const nextCode = useMemo(() => nextLeadCode(crm.customers), [crm.customers]);
-
+  /* ขั้น 1 กับขั้น 2 ขึ้นกรอบแดงแยกกัน — เพิ่งผ่านขั้น 1 มา ขั้น 2 ยังไม่ควรแดงทั้งที่ยังไม่ได้กรอก */
+  const [touched1, setTouched1] = useState(false);
   const [touched, setTouched] = useState(false);
+  const stepping = step !== undefined;
+  /* เคยไปขั้น 2 แล้วหรือยัง — ตอนเปิดกล่องครั้งแรกขั้น 1 ไม่ต้องเลื่อนเข้า มีแค่ตอนย้อนกลับ
+     (ส่วนที่ซ่อนด้วย hidden แล้วโผล่กลับมา เบราว์เซอร์เล่นแอนิเมชันใหม่เอง ไม่ต้องเปลี่ยน key) */
+  const [reached2, setReached2] = useState(false);
+  const show1 = !stepping || step === 1;
+  const show2 = !stepping || step === 2;
   const [busy, setBusy] = useState(false);
+
+  /** เลื่อนกล่องกลับขึ้นบนสุดตอนสลับขั้น — ไม่งั้นขั้นใหม่จะเปิดค้างกลางหน้าเท่าที่เลื่อนไว้ */
+  function scrollTop() {
+    requestAnimationFrame(() => {
+      const form = document.getElementById(formId);
+      form?.closest(".ui-sheet-body")?.scrollTo({ top: 0 });
+    });
+  }
+
+  function goStep(s: 1 | 2) {
+    if (s === 2) setReached2(true);
+    onStep?.(s);
+    scrollTop();
+  }
+
+  /** ไปช่องแรกที่ยังกรอกไม่ครบ (ช่องที่ Field ติด data-miss ไว้) */
+  function focusMissing() {
+    /*
+     * กรอกไม่ครบแล้วกดบันทึก ต้องพาไปที่ช่องที่ยังขาด (เจ้าของแจ้ง 25 ก.ย. 2569)
+     * บนมือถือปุ่มบันทึกติดอยู่ท้ายกล่อง ส่วนช่องที่ขาดอยู่บนสุดหรือกลางฟอร์ม
+     * กดแล้วไม่เห็นข้อความเตือน จะดูเหมือนปุ่มเสีย
+     */
+    requestAnimationFrame(() => {
+      const first = document.querySelector<HTMLElement>(`#${formId} [data-miss="1"]`);
+      first?.scrollIntoView({ behavior: "smooth", block: "center" });
+      first?.focus?.();
+    });
+  }
 
   /** เบอร์ซ้ำมักแปลว่าเป็นลูกค้าเดิม — เตือนไว้ก่อนจะได้ไม่มีข้อมูลซ้ำสองรายการ */
   const duplicate = useMemo(() => {
@@ -79,21 +121,30 @@ export function LeadForm({
     summary: !summary.trim(),
   };
   const blocked = Object.values(problems).some(Boolean);
+  const step1Blocked = problems.name || problems.phone;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    /* ขั้น 1: กด "ถัดไป" (ปุ่ม submit ของฟอร์มเดียวกัน) — ตรวจเฉพาะช่องของขั้นนี้แล้วค่อยไปขั้น 2 */
+    if (stepping && step === 1) {
+      setTouched1(true);
+      if (step1Blocked) {
+        focusMissing();
+        return;
+      }
+      goStep(2);
+      return;
+    }
+    setTouched1(true);
     setTouched(true);
     if (blocked || busy) {
-      /*
-       * กรอกไม่ครบแล้วกดบันทึก ต้องพาไปที่ช่องที่ยังขาด (เจ้าของแจ้ง 25 ก.ย. 2569)
-       * บนมือถือปุ่มบันทึกติดอยู่ท้ายกล่อง ส่วนช่องที่ขาดอยู่บนสุดหรือกลางฟอร์ม
-       * กดแล้วไม่เห็นข้อความเตือน จะดูเหมือนปุ่มเสีย
-       */
-      requestAnimationFrame(() => {
-        const first = document.querySelector<HTMLElement>(`#${formId} [data-miss="1"]`);
-        first?.scrollIntoView({ behavior: "smooth", block: "center" });
-        first?.focus?.();
-      });
+      /* กันไว้เผื่อช่องขั้น 1 ยังขาด (เช่นกด Enter ข้ามมา) — พากลับไปขั้น 1 ก่อน */
+      if (stepping && step1Blocked) {
+        goStep(1);
+        setTimeout(focusMissing, 50);
+        return;
+      }
+      focusMissing();
       return;
     }
     setBusy(true);
@@ -122,19 +173,18 @@ export function LeadForm({
 
   return (
     <form id={formId} onSubmit={submit} noValidate className="space-y-4">
-      <section className={card}>
-        <h2 className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border pb-3 text-[15px] font-semibold">
-          ข้อมูลผู้สนใจ
-          <span className="text-xs font-normal text-muted-foreground">
-            รหัสที่จะได้ <b className="num font-semibold text-foreground">{nextCode}</b>
-          </span>
-        </h2>
+      {/* ไม่โชว์รหัสผู้สนใจที่จะได้ — รหัสภายในห้ามขึ้นจอ (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+      <section className={`${card} ${reached2 ? "step-in-back" : ""}`} hidden={!show1}>
+        {/* โหมดสองขั้นมีตัวบอกขั้นที่หัวกล่องแล้ว ไม่ต้องมีหัวข้อซ้ำ */}
+        {!stepping && (
+          <h2 className="mb-4 border-b border-border pb-3 text-[15px] font-semibold">ข้อมูลผู้สนใจ</h2>
+        )}
         <div className="grid gap-x-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Field
               label="ชื่อผู้สนใจ / ชื่อบริษัท"
               required
-              error={touched && problems.name ? "กรอกชื่อผู้สนใจหรือชื่อบริษัท" : undefined}
+              error={touched1 && problems.name ? "กรอกชื่อผู้สนใจหรือชื่อบริษัท" : undefined}
             >
               <input
                 value={name}
@@ -156,7 +206,7 @@ export function LeadForm({
 
           <Field
             label="เบอร์โทรศัพท์"
-            error={touched && problems.phone ? "เบอร์โทรศัพท์ต้องมี 9–10 หลัก" : undefined}
+            error={touched1 && problems.phone ? "เบอร์โทรศัพท์ต้องมี 9–10 หลัก" : undefined}
           >
             <input
               value={phone}
@@ -170,7 +220,7 @@ export function LeadForm({
               <p className="mt-2 rounded-lg bg-[var(--warning-soft)] px-3 py-2 text-[12.5px] leading-relaxed text-[var(--warning)]">
                 เบอร์นี้มีอยู่แล้วในระบบ:{" "}
                 <Link href={`/leads/${duplicate.code}`} className="font-semibold underline">
-                  {duplicate.name} ({duplicate.code})
+                  {duplicate.name}
                 </Link>{" "}
                 — ตรวจสอบก่อนบันทึกซ้ำ
               </p>
@@ -250,10 +300,10 @@ export function LeadForm({
         </div>
       </section>
 
-      <section className={card}>
-        <h2 className="mb-4 border-b border-border pb-3 text-[15px] font-semibold">
-          การติดต่อครั้งแรก
-        </h2>
+      <section className={`${card} ${stepping ? "step-in-next" : ""}`} hidden={!show2}>
+        {!stepping && (
+          <h2 className="mb-4 border-b border-border pb-3 text-[15px] font-semibold">การติดต่อครั้งแรก</h2>
+        )}
         <div className="grid gap-x-5 sm:grid-cols-2">
           <Field label="วันที่ติดต่อ" required>
             <DateField
@@ -323,7 +373,7 @@ export function LeadForm({
   );
 }
 
-/** ป็อบอัพเพิ่มผู้สนใจ — เนื้อในเดียวกับหน้าเต็ม ไม่ต้องออกจากรายการ */
+/** ป็อบอัพเพิ่มผู้สนใจ — สองขั้น: ข้อมูลผู้สนใจ → การติดต่อครั้งแรก (ผู้ใช้สั่ง 14 ต.ค. 2569) */
 export function LeadNewDialog({
   onClose,
   onCreated,
@@ -331,27 +381,83 @@ export function LeadNewDialog({
   onClose: () => void;
   onCreated: (code: string) => void;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const formId = "lead-new-dialog";
+
+  function back() {
+    setStep(1);
+    requestAnimationFrame(() => {
+      document.getElementById(formId)?.closest(".ui-sheet-body")?.scrollTo({ top: 0 });
+    });
+  }
+
   return (
     <Sheet
       title="เพิ่มผู้สนใจ"
       onClose={onClose}
       steady
+      subhead={<StepIndicator step={step} />}
       footer={
-        <>
-          <button type="button" className="btn glass-thin flex-1 justify-center sm:flex-none" onClick={onClose}>
-            ยกเลิก
-          </button>
-          <button
-            type="submit"
-            form="lead-new-dialog"
-            className="btn solid btn-solid flex-1 justify-center sm:flex-none"
-          >
-            บันทึกผู้สนใจ
-          </button>
-        </>
+        step === 1 ? (
+          <>
+            <button key="cancel" type="button" className="btn glass-thin flex-1 justify-center sm:flex-none" onClick={onClose}>
+              ยกเลิก
+            </button>
+            {/* ปุ่ม submit ของฟอร์ม — ฟอร์มตรวจช่องขั้น 1 เองแล้วค่อยพาไปขั้น 2 */}
+            <button key="next" type="submit" form={formId} className="btn solid btn-solid flex-1 justify-center sm:flex-none">
+              ถัดไป
+            </button>
+          </>
+        ) : (
+          <>
+            <button key="back" type="button" className="btn glass-thin flex-1 justify-center sm:flex-none" onClick={back}>
+              ย้อนกลับ
+            </button>
+            <button key="save" type="submit" form={formId} className="btn solid btn-solid flex-1 justify-center sm:flex-none">
+              บันทึกผู้สนใจ
+            </button>
+          </>
+        )
       }
     >
-      <LeadForm formId="lead-new-dialog" onCreated={onCreated} bare />
+      <LeadForm formId={formId} onCreated={onCreated} bare step={step} onStep={setStep} />
     </Sheet>
+  );
+}
+
+/** ตัวบอกขั้นของกล่องสองขั้น — ส่ง labels มาเองได้ เช่นกล่องเพิ่มพนักงาน (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+export function StepIndicator({
+  step,
+  labels = ["ข้อมูลผู้สนใจ", "การติดต่อครั้งแรก"],
+}: {
+  step: 1 | 2;
+  labels?: readonly [string, string];
+}) {
+  const items = [
+    { n: 1, label: labels[0] },
+    { n: 2, label: labels[1] },
+  ] as const;
+  return (
+    <ol className="flex items-center gap-2 text-[13px]" aria-label="ขั้นตอน">
+      {items.map((it, i) => {
+        const active = it.n === step;
+        const done = it.n < step;
+        return (
+          <li key={it.n} className="flex min-w-0 items-center gap-2" aria-current={active ? "step" : undefined}>
+            {i > 0 && <span aria-hidden className="text-muted-foreground">·</span>}
+            <span
+              className={`grid size-5 flex-none place-items-center rounded-full text-[11.5px] font-bold ${
+                active || done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {it.n}
+            </span>
+            <span className={`truncate ${active ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+              {it.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

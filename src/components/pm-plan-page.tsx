@@ -15,14 +15,16 @@
 import { ROLE_EMPLOYEE, useHrTime } from "@/lib/hr-link";
 import { hrPos } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
-import { useEmpRequests } from "@/lib/emp-requests";
-import { HR_LEAVE_LABEL } from "@/lib/hr-data";
+import { empReqLeaveHours, useEmpRequests } from "@/lib/emp-requests";
+import { fmtLeaveHours, leaveHoursOf } from "@/lib/leave-data";
+import { HR_LEAVE_LABEL, leaveRowHours } from "@/lib/hr-data";
 import { useAllLeave } from "@/lib/leave-store";
 import type { Role } from "@/lib/role";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { addDays, daysBetween, initials, thaiDate, thaiStamp, todayIso } from "@/lib/format";
+import { addDays, daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
+import { initialOf, useNameOf } from "@/lib/emp-name";
 import { useProfile } from "@/lib/profile-data";
 import {
   fileKind,
@@ -70,6 +72,7 @@ import { ThaiDatePicker } from "./thai-date-picker";
 import { AddDocButton, AddDocsDialog, DocChips, RenameButton, RenameDialog } from "./pm-project-tools";
 import { useAddOption } from "./add-option";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
+import { useCrumb } from "@/lib/crumb";
 
 /*
  * งานย่อยและเฟสระหว่างวางแผน — รูปเดียวกับร่างในสโตร์ (pm-store: DraftTask/DraftPhase)
@@ -197,6 +200,7 @@ export function PmPlanPage() {
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   /* ทีมจากทะเบียนเดียวกับฝ่ายบุคคล — คนที่พ้นสภาพแล้วมอบหมายงานใหม่ไม่ได้ */
   const team = useTeam().filter((m) => !m.left);
+  const nameOfEmp = useNameOf();
   const [bulkWho, setBulkWho] = useState(team[0]?.id ?? "");
   const [open, setOpen] = useState<Spot | null>(null);
   const [doc, setDoc] = useState<"quo" | "prop" | null>(null);
@@ -253,6 +257,13 @@ export function PmPlanPage() {
   /* ปุ่มถอดออกกดได้เฉพาะตอนคนที่เลือกเป็นผู้รับผิดชอบอยู่จริงในงานที่ติ๊กไว้ */
   const removable = pickedKeys.filter((k) => at(plan, k)?.whos.includes(bulkWho)).length;
 
+  /* เส้นทางบนแถบบน "โปรเจค / ลูกค้า / วางแผนงาน" แทนทางเดินในหน้า (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb(
+    job && { label: "โปรเจค", href: "/pm/projects", root: true },
+    job && (job.project ? { label: job.cus, href: projectHref(job.pj) } : job.cus),
+    job && "วางแผนงาน",
+  );
+
   if (gone || !job) {
     return (
       <div className="space-y-4">
@@ -264,7 +275,7 @@ export function PmPlanPage() {
               <p className="mx-auto mt-2 max-w-[520px] text-[13px] leading-relaxed text-muted-foreground">
                 <span className="num">{fromParam}</span>{" "}
                 {cancelled
-                  ? `ถูกยกเลิกเมื่อ ${cancelled.cancelled ? thaiDate(cancelled.cancelled.at.slice(0, 10)) : "แล้ว"} โดย ${cancelled.cancelled?.by ?? "ฝ่ายที่เกี่ยวข้อง"}`
+                  ? `ถูกยกเลิกเมื่อ ${cancelled.cancelled ? thaiDate(cancelled.cancelled.at.slice(0, 10)) : "แล้ว"} โดย ${cancelled.cancelled?.by ? nameOfEmp(cancelled.cancelled.by) : "ฝ่ายที่เกี่ยวข้อง"}`
                   : ""}
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2.5">
@@ -360,8 +371,9 @@ export function PmPlanPage() {
     <div className={`pmplan-m space-y-3.5 ${!ro && pickedKeys.length > 0 ? "max-md:pb-[170px]" : ""}`}>
       <div className="bar pl-bar">
         <div className="min-w-0">
-          {/* ทางเดิน โปรเจค / ลูกค้า / วางแผนงาน แทนปุ่มย้อนกลับ · แก้ชื่อที่หน้าโปรเจค (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-          <p className="mb-1 text-xs text-muted-foreground">
+          {/* ทางเดิน โปรเจค / ลูกค้า / วางแผนงาน แทนปุ่มย้อนกลับ · แก้ชื่อที่หน้าโปรเจค (ผู้ใช้สั่ง 8 ต.ค. 2569)
+              จอคอมย้ายไปแถบบนแล้ว เหลือเฉพาะมือถือ (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+          <p className="mb-1 text-xs text-muted-foreground md:hidden">
             <Link href="/pm/projects" className="hover:text-primary">
               โปรเจค
             </Link>
@@ -396,7 +408,7 @@ export function PmPlanPage() {
       {/* ร่างแผนบันทึกเองตั้งแต่ตอนแก้ — บอกให้เห็นว่ามีร่างค้างอยู่และแก้ล่าสุดเมื่อไร */}
       {draft && (
         <p className="rounded-[10px] bg-[var(--warning-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--warning)]">
-          ร่างแผนยังไม่ยืนยัน · แก้ล่าสุด {thaiStamp(draft.at)} น. โดย {draft.by}
+          ร่างแผนยังไม่ยืนยัน · แก้ล่าสุด {thaiStamp(draft.at)} น. โดย {nameOfEmp(draft.by)}
         </p>
       )}
 
@@ -652,7 +664,7 @@ export function PmPlanPage() {
           title={
             doc === "quo"
               ? `ใบเสนอราคา ${docs.quo}`
-              : `Proposal ${docs.proposal?.no ?? ""} รอบ ${docs.proposal?.round ?? ""}`
+              : `Proposal รอบ ${docs.proposal?.round ?? ""}`
           }
           wide
           onClose={() => setDoc(null)}
@@ -744,8 +756,9 @@ export function PmPlanPage() {
 
 function PageBar() {
   return (
-    <div className="bar" style={{ justifyContent: "flex-end" }}>
-      <h1 className="sr-only">จัดคิวงาน</h1>
+    /* ชื่อหน้าชิดซ้าย ปุ่มชิดขวา · มือถือคงเดิม (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+    <div className="bar max-md:justify-end!">
+      <h1 className="page-h1">จัดคิวงาน</h1>
       <div className="tools">
         <Link href="/pm/projects" className="btn glass-thin">
           ไปหน้าโปรเจค
@@ -925,27 +938,8 @@ function AddTaskDialog({
           className={`field-control ${warn && !name.trim() ? "!border-destructive" : ""}`}
         />
       </Field>
-      <div className="grid gap-x-4 sm:grid-cols-2">
-        <Field label="ตำแหน่งที่ควรทำ">
-          <select
-            value={role}
-            onChange={(e) => {
-              if (addRole.pick(e.target.value)) return;
-              setRole(e.target.value as TeamRole | "");
-              setWho("");
-            }}
-            className="field-control cursor-pointer"
-          >
-            <option value="">ไม่ระบุ</option>
-            {teamRoles().map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-              </option>
-            ))}
-            {addRole.option}
-          </select>
-        </Field>
-        {addRole.dialog}
+      <div className="grid gap-x-4">
+        {/* ไม่มีตำแหน่งในทีม — เลือกผู้รับผิดชอบจากพนักงานได้เลย (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
         <Field label="ผู้รับผิดชอบ">
           <select value={who} onChange={(e) => setWho(e.target.value)} className="field-control cursor-pointer">
             <option value="">ยังไม่มอบหมาย</option>
@@ -1555,7 +1549,7 @@ function PersonRow({
       }`}
     >
       <span className="grid size-11 flex-none place-items-center rounded-full bg-accent text-sm font-bold text-primary">
-        {initials(member.name)}
+        {initialOf(member.name)}
       </span>
       <span className="min-w-0 flex-1">
         <b className="block truncate text-[14.5px] font-bold">{member.name}</b>
@@ -1586,7 +1580,8 @@ function PersonRow({
 // ─── ตัวช่วยของหน้านี้ ────────────────────────────────────────────
 
 /** ช่วงลาหนึ่งช่วงของคนในทีม — pending = ใบที่ยื่นไว้แต่ยังไม่อนุมัติ */
-type TeamLeave = { from: string; to: string; type: string; pending: boolean };
+/* hours = ชั่วโมงลาของวันที่ลาไม่เต็มวัน · ไม่มีค่า = ลาเต็มวัน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+type TeamLeave = { from: string; to: string; type: string; pending: boolean; hours?: number };
 
 const TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
@@ -1600,7 +1595,7 @@ function leaveText(l: TeamLeave) {
       : m1 === m2
         ? `${d1}–${d2} ${TH_MON[m1 - 1]}`
         : `${d1} ${TH_MON[m1 - 1]} – ${d2} ${TH_MON[m2 - 1]}`;
-  return `${l.type} ${rng}${l.pending ? " (รออนุมัติ)" : ""}`;
+  return `${l.type} ${rng}${l.hours != null ? ` ${fmtLeaveHours(l.hours)}` : ""}${l.pending ? " (รออนุมัติ)" : ""}`;
 }
 
 /*
@@ -1622,17 +1617,18 @@ function useLeaveClash() {
       for (const l of days) {
         const type = HR_LEAVE_LABEL[l.type as keyof typeof HR_LEAVE_LABEL] ?? "ลา";
         const last = out[out.length - 1];
-        if (last && last.type === type && addDays(last.to, 1) === l.d) last.to = l.d;
-        else out.push({ from: l.d, to: l.d, type, pending: false });
+        const partial = l.span === "half";
+        if (!partial && last && last.hours == null && last.type === type && addDays(last.to, 1) === l.d) last.to = l.d;
+        else out.push({ from: l.d, to: l.d, type, pending: false, ...(partial ? { hours: leaveRowHours(l) } : {}) });
       }
       for (const r of extra) {
         if (r.emp !== id || r.kind !== "leave" || r.status === "rejected" || !r.from) continue;
-        out.push({ from: r.from, to: r.toDate || r.from, type: r.leaveType ?? "ลา", pending: r.status === "pending" });
+        out.push({ from: r.from, to: r.toDate || r.from, type: r.leaveType ?? "ลา", pending: r.status === "pending", ...(r.span === "half" ? { hours: empReqLeaveHours(r) } : {}) });
       }
       for (const [role, emp] of Object.entries(ROLE_EMPLOYEE)) {
         if (emp !== id) continue;
         for (const v of byRole[role as Role] ?? []) {
-          if (v.status === "รอการอนุมัติ") out.push({ from: v.date, to: v.toDate, type: v.type, pending: true });
+          if (v.status === "รอการอนุมัติ") out.push({ from: v.date, to: v.toDate, type: v.type, pending: true, ...(v.days < 1 ? { hours: leaveHoursOf(v) } : {}) });
         }
       }
       return out.filter((l) => l.from <= due && l.to >= start);

@@ -19,6 +19,7 @@ import { baht, daysBetween, thaiDate, todayIso } from "@/lib/format";
 import { ChevronDownIcon, ClockIcon, DownloadIcon, EyeIcon, FileIcon, PlusIcon } from "./icons";
 import { BillQuotationDialog, RejectQuotationDialog } from "./quotation-dialogs";
 import { Pager, SearchBox, Who, usePaged } from "./sales-ui";
+import { stackNo } from "@/lib/stack-no";
 
 const PER_PAGE = 7;
 
@@ -104,6 +105,23 @@ export function QuotationsPage() {
     return out;
   };
 
+  /*
+   * ลำดับแบบกองซ้อน — นับจากใบทั้งหมดก่อนกรองแท็บ/ค้นหา ใหม่สุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * ใบที่แก้ไขแล้ว (rev) ใช้วันที่ของใบแรกในสาย เลขจะได้ไม่กระโดดเมื่อออกฉบับแก้ไข
+   */
+  const noOf = useMemo(() => {
+    const root = (q: Quotation) => {
+      let cur = q;
+      for (let i = 0; i < 20 && cur.replaces && byNo.get(cur.replaces); i++) cur = byNo.get(cur.replaces)!;
+      return cur;
+    };
+    return stackNo(
+      crm.quotations.filter((q) => !q.replacedBy),
+      (q) => root(q).issued,
+      (q) => q.id,
+    );
+  }, [crm.quotations, byNo]);
+
   const rows = useMemo(() => {
     const qq = query.trim().toLowerCase();
     return crm.quotations.filter((q) => {
@@ -114,7 +132,10 @@ export function QuotationsPage() {
       return `${q.no} ${name} ${q.customerCode}`.toLowerCase().includes(qq);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crm.quotations, query, soonOnly, nameOf, hasDeal, today]);
+  }, [crm.quotations, query, soonOnly, nameOf, hasDeal, today]).sort(
+    /* ใหม่สุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+    (a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0),
+  );
   const tabRows = tab === "all" ? rows : rows.filter((q) => rowStatus(q) === tab);
   const countOf = (t: RowStatus | "all") =>
     t === "all" ? rows.length : rows.filter((q) => rowStatus(q) === t).length;
@@ -122,6 +143,7 @@ export function QuotationsPage() {
   const total = tabRows.reduce((sum, q) => sum + quotationTotals(q).grand, 0);
 
   const docHref = (q: Quotation) => `/quotations/${encodeURIComponent(q.no)}`;
+  const replaceHref = (q: Quotation) => `/quotations/new?from=${encodeURIComponent(q.no)}`;
   const openDoc = (q: Quotation) => router.push(docHref(q));
   /* ดาวน์โหลด PDF — เปิดเอกสารแท็บใหม่แล้วขึ้นหน้าต่างบันทึกเป็น PDF ทันที (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   const pdfHref = (q: Quotation) => `${docHref(q)}?pdf=1`;
@@ -139,7 +161,7 @@ export function QuotationsPage() {
           ปฏิเสธ
         </button>
       )}
-      <Link href={`/quotations/new?from=${encodeURIComponent(q.no)}`} className="lnk quiet">
+      <Link href={replaceHref(q)} className="lnk quiet">
         ออกใบใหม่
       </Link>
     </>
@@ -170,7 +192,7 @@ export function QuotationsPage() {
       );
     }
     items.push(
-      <Link key="re" href={`/quotations/new?from=${encodeURIComponent(q.no)}`} className={plain}>
+      <Link key="re" href={replaceHref(q)} className={plain}>
         ออกใบใหม่
       </Link>,
     );
@@ -197,7 +219,7 @@ export function QuotationsPage() {
     <>
       {q.replacedBy && <span className="why">ออกใบใหม่แทน {q.replacedBy}</span>}
       {q.replaces && <span className="why">แทนใบ {q.replaces}</span>}
-      {q.ps && <span className="why">อ้างอิงคำขอ {q.ps}</span>}
+      {q.ps && <span className="why">อ้างอิงคำขอทำข้อเสนอ</span>}
       {q.rejectedAt && <span className="why text-destructive">ผู้สนใจปฏิเสธ {thaiDate(q.rejectedAt)}</span>}
     </>
   );
@@ -267,9 +289,10 @@ export function QuotationsPage() {
         </div>
 
         <div className="scroll-stable hidden min-h-0 flex-1 overflow-auto md:block">
-          <table className="data-table qt-table">
+          <table className="data-table qt-table" style={{ minWidth: 1040 }}>
             <thead>
               <tr>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th style={{ width: 150 }}>เลขที่เอกสาร</th>
                 <th style={{ width: "21%" }}>ผู้สนใจ</th>
                 <th className="qt-hide" style={{ width: "12%" }}>วันที่ออก</th>
@@ -284,7 +307,7 @@ export function QuotationsPage() {
             <tbody>
               {paged.list.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-[54px] text-center text-[14px] text-muted-foreground">
+                  <td colSpan={9} className="py-[54px] text-center text-[14px] text-muted-foreground">
                     ไม่พบใบเสนอราคาที่ตรงกับเงื่อนไข
                   </td>
                 </tr>
@@ -303,6 +326,7 @@ export function QuotationsPage() {
                         onClick={() => (hasRev ? setOpened((o) => ({ ...o, [q.id]: !o[q.id] })) : openDoc(q))}
                         style={{ cursor: "pointer" }}
                       >
+                        <td className="c num muted">{noOf.get(q.id)}</td>
                         <td className="muted num">
                           {q.no}
                           {hasRev && (
@@ -313,7 +337,7 @@ export function QuotationsPage() {
                           )}
                         </td>
                         <td>
-                          <Who name={nameOf.get(q.customerCode) ?? q.customerCode} />
+                          <Who name={nameOf.get(q.customerCode) ?? "—"} />
                         </td>
                         <td className="qt-hide muted num">{q.issued ? thaiDate(q.issued) : "—"}</td>
                         <td className="muted num">
@@ -360,7 +384,7 @@ export function QuotationsPage() {
                       </tr>
                       {open && (
                         <tr className="sub">
-                          <td colSpan={8}>
+                          <td colSpan={9}>
                             <div className="qt-revwrap">
                               <h4>ประวัติการแก้ไข {hist.length} ครั้ง</h4>
                               <table className="qt-revs">
@@ -455,8 +479,8 @@ export function QuotationsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <Link href={`/leads/${q.customerCode}`} className="min-w-0">
                     <Who
-                      name={nameOf.get(q.customerCode) ?? q.customerCode}
-                      sub={q.no}
+                      name={nameOf.get(q.customerCode) ?? "—"}
+                      sub={`#${noOf.get(q.id)} · ${q.no}`}
                     />
                   </Link>
                   <span className="flex shrink-0 flex-col items-end gap-1">
@@ -495,14 +519,14 @@ export function QuotationsPage() {
       {rejecting && (
         <RejectQuotationDialog
           quotation={rejecting}
-          customerName={nameOf.get(rejecting.customerCode) ?? rejecting.customerCode}
+          customerName={nameOf.get(rejecting.customerCode) ?? "—"}
           onClose={() => setRejecting(null)}
         />
       )}
       {billing && (
         <BillQuotationDialog
           quotation={billing}
-          customerName={nameOf.get(billing.customerCode) ?? billing.customerCode}
+          customerName={nameOf.get(billing.customerCode) ?? "—"}
           onClose={() => setBilling(null)}
         />
       )}

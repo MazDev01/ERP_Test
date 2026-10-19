@@ -32,6 +32,7 @@ import {
 import { createPersistedStore } from "./persisted-store";
 import { hrSnapshot, subscribeHr } from "./hr-store";
 import type { Employee } from "./hr-data";
+import { displayName, nameOf } from "./emp-name";
 import { TEAM_ROLES_BY_POSITION } from "./pm-data";
 import { USERS } from "./mock-data";
 
@@ -364,6 +365,7 @@ export function pmSnapshot() {
  */
 /*
  * ทีมงาน = ทะเบียนพนักงานชุดเดียวกับฝ่ายบุคคล (ERD HR-BR-19)
+ * ชื่อในทีม = ชื่อเล่น (ผู้ใช้สั่ง 19 ต.ค. 2569) — ชื่อเต็มดูที่รายละเอียดพนักงาน
  * ชื่อและสถานะอ่านจากทะเบียนเสมอ (แก้ชื่อที่ฝ่ายบุคคลแล้วตามมาเอง) · ทักษะและจำนวนงานเป็นของฝั่ง PM
  * พนักงานใหม่ในตำแหน่งสายผลิตเข้าทีมเอง · คนที่พ้นสภาพยังอยู่ (left) เพื่อแสดงชื่อในงานเก่า
  */
@@ -371,12 +373,12 @@ export function teamFrom(stored: Member[], emp: Employee[]): Member[] {
   const byId = new Map(emp.map((e) => [e.id, e]));
   const fromStore = stored.map((m) => {
     const e = byId.get(m.id);
-    return e ? { ...m, name: e.name, left: e.status === "left" } : m;
+    return e ? { ...m, name: displayName(e), left: e.status === "left" } : m;
   });
   const have = new Set(stored.map((m) => m.id));
   const joined = emp
     .filter((e) => !have.has(e.id) && e.status === "active" && TEAM_ROLES_BY_POSITION[e.pos])
-    .map((e) => ({ id: e.id, name: e.name, roles: TEAM_ROLES_BY_POSITION[e.pos], load: 0 }));
+    .map((e) => ({ id: e.id, name: displayName(e), roles: TEAM_ROLES_BY_POSITION[e.pos], load: 0 }));
   return [...fromStore, ...joined];
 }
 
@@ -406,7 +408,7 @@ export function memberOf(id: string) {
 }
 
 export function memberName(id: string) {
-  return memberOf(id)?.name ?? id;
+  return memberOf(id)?.name ?? nameOf(id);
 }
 
 /**

@@ -11,6 +11,7 @@
  * ทุกตัวเลขคำนวณสดจากข้อมูลจริงในระบบ ไม่มีตัวเลขที่กรอกซ้ำเข้ามาเอง
  */
 
+import { displayName, initialOf } from "@/lib/emp-name";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { TH_MONTHS_SHORT, bkkStamp, daysBetween, thaiDate, toIsoDate, todayIso } from "@/lib/format";
@@ -22,14 +23,20 @@ import {
   hrPos,
   HR_EMPTYPE,
   HR_LEAVE_LABEL,
+  defaultDailyRange,
+  dailyRoundId,
+  isDaily,
   probEnd,
+  rangeLabel,
   type EmpType,
   type Employee,
 } from "@/lib/hr-data";
 import { optionsOf } from "@/lib/options";
 import { decideInternLeave, useHr } from "@/lib/hr-store";
 import { approveLeave, rejectLeave, useAllLeave } from "@/lib/leave-store";
+import { fmtLeave } from "@/lib/leave-data"; // ลาแสดงเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569)
 import { ROLE_EMPLOYEE } from "@/lib/hr-data";
+import { payHref } from "./hr-steps";
 import { UsersIcon, UserIcon, ClockIcon, ChartIcon } from "./icons";
 
 /** ใกล้ครบกำหนดทดลองงานภายในกี่วันถึงจะเตือน */
@@ -68,6 +75,12 @@ export function HrDashboardPage() {
   /* ช่วงวันจริงของรอบ — 26 ของเดือนก่อน ถึง 25 ของเดือนรอบ ไม่ใช่ 1–30 ของเดือนปฏิทิน */
   const payCycle = hrCycle(lastMonth);
   const span = rangeSpan(today, range);
+  /* แยกการ์ดเงินเดือนเป็นพนักงานประจำ (รอบเดือน) กับทดลองงาน (รอบรายวัน) (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const monthStaff = active.filter((e) => !isDaily(e)).length;
+  const dayStaff = active.filter((e) => isDaily(e)).length;
+  const dayRange = defaultDailyRange(hr.dailyRounds, today, (r) => !r.payClosedAt);
+  const dayRound = hr.dailyRounds.find((r) => r.id === dailyRoundId(dayRange));
+  const dayPaid = Boolean(dayRound?.payClosedAt);
 
   return (
     <div className="space-y-4">
@@ -144,27 +157,25 @@ export function HrDashboardPage() {
         </Panel>
 
         <Panel title="เงินเดือนรอบนี้" className="md:col-span-2">
-          <p className="num text-[34px] leading-none font-extrabold">
-            {payClosed ? 0 : active.length}
-          </p>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            {payClosed ? "ดำเนินการครบแล้ว" : `คนที่รอดำเนินการ จากคนที่ยังอยู่ ${active.length} คน`}
-          </p>
-          {/* ต้นแบบเป็นรายการคั่นเส้น รอบใช้เดือนย่อ
-              รอบเงินเดือนตัดวันที่ 25 ไม่ใช่เดือนปฏิทิน — บอกช่วงวันจริงไว้ด้วย (ตรงกับหน้าสลิปและหน้าคำนวณ) */}
-          <ul className="mt-3.5 divide-y divide-border text-[13px]">
-            <li className="py-2.5">
-              รอบ {shortMonth(lastMonth)}
-              <em className="num mt-0.5 block text-[11.5px] text-muted-foreground not-italic">
-                {thaiDate(payCycle.from)} – {thaiDate(payCycle.to)}
-              </em>
-            </li>
-            <li className="py-2.5">ดำเนินการแล้ว {payClosed ? active.length : 0} คน</li>
-            <li className="py-2.5">รอดำเนินการ {payClosed ? 0 : active.length} คน</li>
-          </ul>
-          <Link href="/hr/payroll?g=month" className="btn solid btn-solid mt-4 w-full justify-center" data-ceo-hide>
-            จัดการเงินเดือน
-          </Link>
+          {/* สองส่วน: พนักงานประจำ (รอบเดือน) · ทดลองงาน (รอบจ่ายรายวัน) (ผู้ใช้สั่ง 13 ต.ค. 2569)
+              รอบเดือนตัดวันที่ 25 ไม่ใช่เดือนปฏิทิน — บอกช่วงวันจริงไว้ด้วย (ตรงกับหน้าสลิปและหน้าคำนวณ) */}
+          <PaySection
+            title="พนักงานประจำ"
+            total={monthStaff}
+            done={payClosed}
+            round={`รอบ ${shortMonth(lastMonth)}`}
+            dates={`${thaiDate(payCycle.from)} – ${thaiDate(payCycle.to)}`}
+            href="/hr/payroll?g=month"
+          />
+          <PaySection
+            title="ทดลองงาน (จ่ายรายสัปดาห์)"
+            total={dayStaff}
+            done={dayPaid}
+            round="รอบจ่าย"
+            dates={rangeLabel(dayRange)}
+            href={payHref("/hr/payroll", "daily", null, dayRange)}
+            last
+          />
         </Panel>
 
         <div className="md:col-span-3 h-full">
@@ -190,6 +201,48 @@ export function HrDashboardPage() {
   );
 }
 
+/** ส่วนย่อยของการ์ดเงินเดือนรอบนี้ — หนึ่งกลุ่มการจ่าย (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+function PaySection({
+  title,
+  total,
+  done,
+  round,
+  dates,
+  href,
+  last,
+}: {
+  title: string;
+  total: number;
+  done: boolean;
+  round: string;
+  dates: string;
+  href: string;
+  last?: boolean;
+}) {
+  return (
+    <div className={last ? "mt-4 border-t border-border pt-4" : ""}>
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-[13px] font-semibold">{title}</h3>
+        <span className="num text-[12px] text-muted-foreground">{total} คน</span>
+      </div>
+      <p className="mt-1 text-[12px] text-muted-foreground">
+        {round} <span className="num">{dates}</span>
+      </p>
+      <ul className="mt-2 grid grid-cols-2 gap-2 text-[12.5px]">
+        <li className="rounded-[10px] bg-muted/50 px-2.5 py-1.5">
+          ดำเนินการแล้ว <b className="num block text-[15px]">{done ? total : 0}</b>
+        </li>
+        <li className="rounded-[10px] bg-muted/50 px-2.5 py-1.5">
+          รอดำเนินการ <b className="num block text-[15px]">{done ? 0 : total}</b>
+        </li>
+      </ul>
+      <Link href={href} className="btn glass-thin btn-mini mt-2.5 w-full justify-center" data-ceo-hide>
+        จัดการเงินเดือน
+      </Link>
+    </div>
+  );
+}
+
 /*
  * เริ่มงานล่าสุด — สี่คนที่เข้ามาใหม่ที่สุด (โครง mockup 24 ก.ย. 2569 การ์ด "เริ่มงานล่าสุด")
  * ฝ่ายบุคคลต้องรู้ว่าใครเพิ่งเข้า เพราะเป็นกลุ่มที่เอกสารยังไม่ครบและมีวันครบทดลองงานตามมา
@@ -208,10 +261,10 @@ function RecentStarters({ active }: { active: Employee[] }) {
         {list.map((e) => (
           <li key={e.id} className="flex items-center gap-3 py-2.5">
             <span className="grid size-9 flex-none place-items-center rounded-[11px] bg-[var(--accent)] text-[12px] font-bold text-primary">
-              {e.nick || e.name.slice(0, 2)}
+              {initialOf(e)}
             </span>
             <span className="min-w-0 flex-1">
-              <b className="block truncate text-[13px] font-semibold">{e.name}</b>
+              <b className="block truncate text-[13px] font-semibold">{displayName(e)}</b>
               <em className="block truncate text-[11.5px] text-muted-foreground not-italic">
                 {hrPos(e.pos).label} · {HR_EMPTYPE[e.type].label} · เริ่ม {thaiDate(e.startedAt)}
               </em>
@@ -237,7 +290,7 @@ function TeamNote({ active, today }: { active: Employee[]; today: string }) {
       </b>
       <p className="mt-1.5 text-[12.5px] leading-[1.55] text-white/80">
         {longest
-          ? `อยู่ด้วยกันนานที่สุดคือ ${longest.name} ${years} ปีแล้ว`
+          ? `อยู่ด้วยกันนานที่สุดคือ ${displayName(longest)} ${years} ปีแล้ว`
           : "ยังไม่มีพนักงานในทะเบียน"}
       </p>
     </section>
@@ -356,7 +409,8 @@ function PeopleDonut({ active }: { active: Employee[] }) {
       </div>
 
       <div className="min-w-0">
-        <h3 className="mb-2 text-[13px] font-semibold text-muted-foreground">จำนวนตามแผนก</h3>
+        {/* หัวข้อย่อยจางลงให้อ่านเป็นป้าย ไม่ใช่ข้อมูล (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+        <h3 className="mb-2 text-[12px] font-normal text-muted-foreground/70">จำนวนตามแผนก</h3>
         {depts.map((d) => (
           <div
             key={d.label}
@@ -379,7 +433,7 @@ function PeopleDonut({ active }: { active: Employee[] }) {
           </div>
         ))}
 
-        <h3 className="mt-4 mb-2 text-[13px] font-semibold text-muted-foreground">จำนวนตามเพศ</h3>
+        <h3 className="mt-4 mb-2 text-[12px] font-normal text-muted-foreground/70">จำนวนตามเพศ</h3>
         {sexes.map((g) => (
           <div
             key={g.label}
@@ -464,11 +518,11 @@ function InternLeaveCard({ hr }: { hr: ReturnType<typeof useHr> }) {
           >
             <div className="flex min-w-[240px] flex-1 flex-col gap-0.5">
               <b className="text-[13.5px] font-semibold">
-                {empOf(hr.emp, r.emp)?.name ?? r.emp} · {r.type}
+                {displayName(empOf(hr.emp, r.emp)) || "—"} · {r.type}
               </b>
               <span className="text-[12.5px] text-muted-foreground">
                 {thaiDate(r.from)}
-                {r.from !== r.to && ` – ${thaiDate(r.to)}`} รวม {r.days} วัน
+                {r.from !== r.to && ` – ${thaiDate(r.to)}`} รวม {fmtLeave(r.days)}
               </span>
               {/* การ์ดแดชบอร์ดแสดงแค่ชื่อ ประเภท และวันที่ขอ (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
             </div>
@@ -614,7 +668,7 @@ function TodoTable({
         out.push({
           key: `doc-${e.id}`,
           what: "เอกสารยังไม่ครบ",
-          who: e.name,
+          who: displayName(e),
           detail: `${missing.length} รายการ`,
           due: "",
           state: "รอเพิ่มข้อมูล",
@@ -629,7 +683,7 @@ function TodoTable({
       out.push({
         key: `prob-${e.id}`,
         what: "ครบกำหนดทดลองงาน",
-        who: e.name,
+        who: displayName(e),
         detail: `เริ่มงาน ${thaiDate(e.startedAt)}`,
         due: toIsoDate(probEnd(e.startedAt)),
         state: left < 0 ? `เลยกำหนด ${Math.abs(left)} วัน` : `เหลือ ${left} วัน`,

@@ -21,7 +21,7 @@ import { BUILTIN_SERVICES, BUILTIN_TEAM_ROLES } from "@/lib/pm-data";
 import { PM_EVENT_KIND } from "@/lib/pm-schedule-data";
 import { BUILTIN_HR_DEPT, BUILTIN_HR_DOCS, BUILTIN_HR_POSITION, holdsPos } from "@/lib/hr-data";
 import { BUILTIN_WHT_TYPES } from "@/lib/acc-data";
-import { AdminHead, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
+import { AdminHead, IconBtn, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
 import { GripIcon, PencilIcon, PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
@@ -180,9 +180,13 @@ function describeCat(a: Catalog, b: Catalog) {
  */
 export function AdminOptionsPage({
   only,
+  keys,
   topTabs,
 }: {
-  only?: CatKey;
+  /** รายการเดียว — หมวดที่มีรหัส หรือตัวเลือกธรรมดา (ตัวเลือกธรรมดาเพิ่ม ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  only?: CatKey | OptionKey;
+  /** หลายรายการในแท็บเดียว สลับด้วยแถบแท็บในการ์ด ตามลำดับที่ส่ง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  keys?: (CatKey | OptionKey)[];
   /** แถบแท็บของหน้าที่ฝังหมวดนี้ไว้ (เช่น แผนกในตำแหน่งและสายอนุมัติ) — วางบนสุดของการ์ด */
   topTabs?: React.ReactNode;
 } = {}) {
@@ -208,6 +212,7 @@ export function AdminOptionsPage({
   const [editing, setEditing] = useState<{ key: OptionKey; index: number } | null>(null);
 
   const onlySpec = only ? CAT_SPECS.find((c) => c.key === only) : undefined;
+  const onlyOpt = only && !onlySpec ? OPTION_GROUPS.find((g) => g.key === only) : undefined;
   const setList = (key: OptionKey, list: string[]) => d.setDraft({ ...d.draft, [key]: list });
 
   const editGroup = editing ? OPTION_GROUPS.find((g) => g.key === editing.key) : undefined;
@@ -220,15 +225,18 @@ export function AdminOptionsPage({
    * เหลือสามหมวด: แผนก · ประเภทนัดหมาย · ประเภทค่าใช้จ่าย
    * รายการอื่น (แหล่งที่มา เพศ ระดับการศึกษา ฯลฯ) ยังมีอยู่ในระบบและเพิ่มจากหน้างานได้เหมือนเดิม
    */
-  const tabs = only
+  const allTabs = only
     ? []
     : [
         /* แผนกย้ายไปเป็นแท็บแรกของ ตำแหน่งและสายอนุมัติ · บริการย้ายมาจากเมนูย่อยเป็นแท็บแรก (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-        ...(["services", "eventKinds"] as const).flatMap((k) => {
+        /* ข้อมูลหลักครบทุกรายการ — ดรอปดาวน์เพิ่มตัวเลือกเองไม่ได้แล้ว จึงต้องเพิ่มได้ที่นี่ทุกรายการ
+           ไม่มีประเภทนัดหมาย (เอาออกจากตารางงานแล้ว) · แผนก/ตำแหน่งอยู่หน้าตำแหน่งและสายอนุมัติ (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+        ...(["services", "whtTypes", "docs"] as const).flatMap((k) => {
           const c = CAT_SPECS.find((x) => x.key === k);
           return c ? [{ kind: "cat" as const, key: c.key as string, label: c.label, where: c.where, count: toItems(cat.draft, c.key).length }] : [];
         }),
-        ...OPTION_GROUPS.filter((g) => g.key === "expenseKind").map((g) => ({
+        /* เหตุผลต่าง ๆ พิมพ์เองในกล่อง ไม่ใช่ข้อมูลหลัก · ไม่มีตำแหน่งในทีม ใช้ตำแหน่งพนักงานแทน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+        ...OPTION_GROUPS.filter((g) => !["leadClose", "leadTakeover", "quoteReject"].includes(g.key)).map((g) => ({
           kind: "opt" as const,
           key: g.key as string,
           label: g.label,
@@ -236,9 +244,14 @@ export function AdminOptionsPage({
           count: d.draft[g.key].length,
         })),
       ];
+  /* เฉพาะรายการที่หมวดของตั้งค่าระบบขอ เรียงตามที่ส่งมา (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const tabs = keys
+    ? keys.flatMap((k) => allTabs.filter((t) => t.key === k))
+    : allTabs;
   const curTab = tabs.find((t) => t.kind === sel.kind && t.key === sel.key) ?? tabs[0];
   const spec = onlySpec ?? (curTab && curTab.kind === "cat" ? CAT_SPECS.find((c) => c.key === curTab.key) : undefined);
-  const optGroup = !onlySpec && curTab && curTab.kind === "opt" ? OPTION_GROUPS.find((g) => g.key === curTab.key) : undefined;
+  const optGroup =
+    onlyOpt ?? (!onlySpec && !only && curTab && curTab.kind === "opt" ? OPTION_GROUPS.find((g) => g.key === curTab.key) : undefined);
 
   /* รายการในแท็บที่เลือก — แปลงเป็นรูปแบบเดียวกันก่อนวาด ตารางจะได้ใช้โค้ดชุดเดียว */
   type Row = { id: string; label: string; extra: string; off: boolean; used: string; block: string };
@@ -335,10 +348,10 @@ export function AdminOptionsPage({
   return (
     <div className="space-y-4">
       <AdminHead
-        title={onlySpec ? onlySpec.label : "ข้อมูลหลัก"}
+        title={(onlySpec ?? onlyOpt)?.label ?? "ข้อมูลหลัก"}
         desc={
-          onlySpec
-            ? `เพิ่ม แก้ชื่อ และปิดใช้งานรายการ — ใช้ที่ ${onlySpec.where}`
+          onlySpec ?? onlyOpt
+            ? `เพิ่ม แก้ชื่อ และปิดใช้งานรายการ — ใช้ที่ ${(onlySpec ?? onlyOpt)?.where}`
             : "รายการตัวเลือกที่ใช้ทั่วระบบ ลากเพื่อเรียงลำดับ"
         }
       >
@@ -357,7 +370,7 @@ export function AdminOptionsPage({
           <div
             className="tabs wrap border-b border-border px-3 whitespace-nowrap"
             role="tablist"
-            aria-label="หมวดข้อมูลหลัก"
+            aria-label="หมวด"
           >
             {tabs.map((t) => {
               const on = curTab && t.kind === curTab.kind && t.key === curTab.key;
@@ -383,15 +396,15 @@ export function AdminOptionsPage({
           <div
             className={`grid grid-cols-[26px_minmax(0,1fr)_58px_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground ${
               extraHead
-                ? "sm:grid-cols-[28px_26px_minmax(0,1fr)_110px_120px_58px_84px]"
-                : "sm:grid-cols-[28px_26px_minmax(0,1fr)_120px_58px_84px]"
+                ? "sm:grid-cols-[28px_26px_minmax(0,1fr)_110px_58px_84px]"
+                : "sm:grid-cols-[28px_26px_minmax(0,1fr)_58px_84px]"
             }`}
           >
             <span className="max-sm:hidden" />
             <span className="text-center max-sm:hidden">#</span>
             <span className="max-sm:col-start-2">ชื่อ</span>
             {extraHead && <span className="max-sm:hidden">{extraHead}</span>}
-            <span className="max-sm:hidden">การใช้งาน</span>
+            {/* ไม่มีคอลัมน์การใช้งาน (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
             <span className="text-center">เปิดใช้</span>
             <span />
           </div>
@@ -416,9 +429,9 @@ export function AdminOptionsPage({
                 onDragEnd={() => setDrag("")}
                 className={`grid grid-cols-[26px_minmax(0,1fr)_58px_84px] items-center gap-2 border-b border-border py-2 last:border-b-0 hover:bg-muted/40 ${
                   extraHead
-                    ? "sm:grid-cols-[28px_26px_minmax(0,1fr)_110px_120px_58px_84px]"
-                    : "sm:grid-cols-[28px_26px_minmax(0,1fr)_120px_58px_84px]"
-                } ${drag === r.id ? "opacity-40" : ""}`}
+                    ? "sm:grid-cols-[28px_26px_minmax(0,1fr)_110px_58px_84px]"
+                    : "sm:grid-cols-[28px_26px_minmax(0,1fr)_58px_84px]"
+                } ${drag === r.id ? "opacity-40" : r.off ? "opacity-50" : ""}`}
               >
                 <button
                   type="button"
@@ -437,22 +450,13 @@ export function AdminOptionsPage({
                 </button>
                 <span className="num text-center text-[12px] text-muted-foreground max-sm:hidden">{i + 1}</span>
                 <span className="min-w-0 max-sm:col-start-2">
-                  <b className={`block truncate text-[13.5px] ${r.off ? "font-medium text-muted-foreground" : "font-semibold"}`}>
-                    {r.label}
-                    {r.off && (
-                      <em className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground not-italic">
-                        ปิดใช้งาน
-                      </em>
-                    )}
-                  </b>
+                  {/* ปิดใช้แล้วแค่จางทั้งแถว ไม่มีป้าย "ปิดใช้งาน" (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                  <b className="block truncate text-[13.5px] font-semibold">{r.label}</b>
                   <small className="block text-[11.5px] text-muted-foreground sm:hidden">
-                    {[r.extra, r.used || "ยังไม่ถูกใช้"].filter(Boolean).join(" · ")}
+                    {r.extra}
                   </small>
                 </span>
                 {extraHead && <span className="num text-[13px] max-sm:hidden">{r.extra}</span>}
-                <span className={`text-[12px] max-sm:hidden ${r.used ? "text-muted-foreground" : "text-muted-foreground/60"}`}>
-                  {r.used || "ยังไม่ถูกใช้"}
-                </span>
                 <span className="flex justify-center">
                   <Switch on={!r.off} onToggle={() => toggleRow(r.id)} label={`เปิดหรือปิดใช้งาน ${r.label}`} />
                 </span>
@@ -469,7 +473,8 @@ export function AdminOptionsPage({
       </section>
 
       {/* ตัวอย่างการหักตามต้นแบบ HR-17 — เห็นทันทีว่าอัตราที่ตั้งไว้คิดเป็นเงินเท่าไร */}
-      {spec?.key === "whtTypes" && (
+      {/* แท็บภาษีของตั้งค่าระบบแสดงแค่รายการและอัตรา ไม่มีตัวอย่างการหัก (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+      {spec?.key === "whtTypes" && !only && (
         <section className="glass rounded-[18px] px-4 py-4 sm:px-5">
           <h2 className="text-[14.5px] font-bold">ตัวอย่างการหัก (ฐาน 10,000 บาท ก่อน VAT)</h2>
           <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -555,39 +560,6 @@ export function AdminOptionsPage({
         }}
       />
     </div>
-  );
-}
-
-function IconBtn({
-  label,
-  title,
-  disabled,
-  danger,
-  onClick,
-  children,
-}: {
-  label: string;
-  title?: string;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      /* มือถือ: ปุ่มโตขึ้นให้นิ้วกดถูก (inline style กว้าง 30 ต้องใช้ ! ถึงจะชนะ) */
-      className={`iconbtn glass-thin shrink-0 text-muted-foreground disabled:opacity-30 max-sm:!size-[38px] ${
-        danger ? "hover:text-destructive" : "hover:text-primary"
-      }`}
-      style={{ width: 30, height: 30 }}
-    >
-      {children}
-    </button>
   );
 }
 

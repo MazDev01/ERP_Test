@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useHydrated } from "@/lib/pwa";
 import { useRole } from "@/lib/role";
+import { useCrumb } from "@/lib/crumb";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -107,13 +108,15 @@ function NewPageBody({ base }: { base: string }) {
   const [done, setDone] = useState<ReactNode>(null);
 
   const effective: Mode = fresh ? { kind: "new" } : mode;
+  /* เส้นทางอยู่บนแถบบนแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb("สร้างใบเสนอราคา");
 
   return (
     <div className="space-y-4">
       <div className="bar">
         <div className="min-w-0">
-          {/* เส้นทางแทนปุ่มย้อนกลับ (ต้นแบบ quotation-new.html · ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-          <nav aria-label="เส้นทาง" className="mb-2 flex items-center gap-2 text-[14px] text-muted-foreground">
+          {/* เส้นทางแทนปุ่มย้อนกลับ (ต้นแบบ quotation-new.html · ผู้ใช้สั่ง 5 ต.ค. 2569) · จอคอมย้ายไปแถบบนแล้ว เหลือเฉพาะมือถือ (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+          <nav aria-label="เส้นทาง" className="mb-2 flex items-center gap-2 text-[14px] text-muted-foreground md:hidden">
             <Link href={base} className="hover:text-foreground hover:underline underline-offset-4">
               ใบเสนอราคา
             </Link>
@@ -165,7 +168,7 @@ function FromLine({ mode, ps }: { mode: Mode; ps: string }) {
     lines.push(
       `คัดลอกจากใบ ${mode.src.no} ลงวันที่ ${thaiDate(mode.src.issued)} ยอด ${baht(quotationTotals(mode.src).grand)} บาท`,
     );
-  if (ps) lines.push(`ออกจากคำขอก่อนการขาย ${ps}`);
+  if (ps) lines.push("ออกจากคำขอก่อนการขาย");
   return (
     <>
       {lines.map((l) => (
@@ -428,7 +431,7 @@ function QuotationForm({
             {rejecting && (
               <RejectQuotationDialog
                 quotation={rejecting}
-                customerName={customer?.name ?? rejecting.customerCode}
+                customerName={customer?.name ?? "—"}
                 onClose={() => {
                   /* ปฏิเสธแล้วเลือกใบนั้นเป็นใบที่จะออกแทนให้เลย (ใบแก้) เปลี่ยนเป็นใบใหม่แยกได้ */
                   if (crm.quotations.some((x) => x.id === rejecting.id)) setRep(rejecting.no);

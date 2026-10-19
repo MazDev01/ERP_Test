@@ -29,3 +29,52 @@
 @media (prefers-reduced-motion: reduce) {
   .ck-m .ck-m-pulse { animation-duration: 4.8s; }
 }
+
+/*
+ * กรอบหน้าลงเวลาบนมือถือตามแบบ checkin.html (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * พื้นขาวทั้งหน้า · แถบล่างขาว 97% มุมบน 24px · ปุ่มกลาง "ลงเวลา" วงแดง 58px ยกขึ้น 42px
+ * ผูกกับ body:has(.ck-m) — มีผลเฉพาะตอนหน้าลงเวลาเปิดอยู่ หน้าอื่นใช้แถบล่างเดิม
+ */
+@media (max-width: 767.98px) {
+  body:has(.ck-m) { background: #ffffff; }
+  body:has(.ck-m) .botnav {
+    border: 0;
+    border-radius: 24px 24px 0 0;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 -8px 24px -16px rgba(90, 20, 35, 0.35);
+  }
+  body:has(.ck-m) .botnav > .bn-mid > i {
+    width: 58px;
+    height: 58px;
+    margin-top: -42px;
+    border: 0;
+    background: #c8102e;
+    box-shadow: 0 0 0 9px rgba(253, 227, 231, 0.85);
+  }
+}
+
+/* แถบล่างของบัญชีหน้าตาตาม checkin.html ทุกหน้า ไม่ใช่เฉพาะหน้าลงเวลา (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+@media (max-width: 767.98px) {
+  .botnav[data-role="acc"] {
+    border: 0;
+    border-radius: 24px 24px 0 0;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 -8px 24px -16px rgba(90, 20, 35, 0.35);
+  }
+  .botnav[data-role="acc"] > a { font-size: 11px; }
+  .botnav[data-role="acc"] > .bn-mid > i {
+    width: 58px;
+    height: 58px;
+    margin-top: -42px;
+    border: 0;
+    background: #c8102e;
+    box-shadow: 0 0 0 9px rgba(253, 227, 231, 0.85), 0 12px 22px -10px rgba(200, 16, 46, 0.9);
+  }
+}
+
+/* แถบล่างของบัญชี — สีช่องที่เปิดอยู่ #C8102E · ช่องอื่น #8A7E81 · ตัวอักษร 11px หนา 600 ตามต้นแบบ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+@media (max-width: 767.98px) {
+  .botnav[data-role="acc"] > a:not(.bn-mid) { color: #8a7e81; }
+  .botnav[data-role="acc"] > a.on:not(.bn-mid) { color: #c8102e; }
+  .botnav[data-role="acc"] > a:not(.bn-mid) > span { font-size: 11px; font-weight: 600; }
+}

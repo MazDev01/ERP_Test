@@ -68,21 +68,7 @@ export const PUSH_SCENARIOS: PushScenario[] = [
       vibrate: [200, 100, 200],
     }),
   },
-  {
-    key: "forgot",
-    label: "ลืมเช็คเอาท์ (ค้างจนกด)",
-    checks: "ระดับด่วน · Android ค้างบนจอจนกว่าจะกด · iOS ขึ้นแบบปกติ",
-    build: () => ({
-      title: "ยังไม่ได้เช็คเอาท์",
-      body: "เลยเวลาเลิกงานมา 30 นาทีแล้ว — กดเพื่อบันทึกเวลาออกงาน",
-      url: "/",
-      tag: "maz-forgot",
-      level: "late",
-      event: "forgot",
-      requireInteraction: true,
-      vibrate: [300, 100, 300, 100, 300],
-    }),
-  },
+  /* เลิกเรื่อง "ลืมเช็คเอาท์" แล้ว (ผู้ใช้สั่ง 16 ต.ค. 2569) — ชุดทดสอบนี้ถูกเอาออก */
   {
     key: "leave",
     label: "ใบลาไม่อนุมัติ",
@@ -102,7 +88,7 @@ export const PUSH_SCENARIOS: PushScenario[] = [
     checks: "เรื่อง presales · ลิงก์เจาะถึงรายการเดียว (?find=)",
     build: () => ({
       title: "คำขอก่อนการขายส่งกลับมาแล้ว",
-      body: "PS-2569-0031 — SA ส่งข้อเสนอกลับมาให้คุณตรวจ",
+      body: "สยามพลาสติก — SA ส่งข้อเสนอกลับมาให้คุณตรวจ",
       url: "/presales?find=PS-2569-0031",
       tag: "maz-presales",
       level: "info",
@@ -128,7 +114,7 @@ export const PUSH_SCENARIOS: PushScenario[] = [
     checks: "ส่งสองครั้ง ต้องเหลือแจ้งเตือนเดียว ตัวเลขในข้อความเปลี่ยน",
     build: () => ({
       title: "สถานะงานอัปเดต",
-      body: `อัปเดตล่าสุดเวลา ${new Date().toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok" })} น.`,
+      body: `อัปเดตล่าสุดเวลา ${new Date().toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour12: false })} น.`, // บังคับ 24 ชม. (ผู้ใช้สั่ง 13 ต.ค. 2569)
       url: "/my-tasks",
       tag: "maz-replace",
       level: "info",

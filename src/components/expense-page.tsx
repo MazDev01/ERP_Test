@@ -1,5 +1,6 @@
 "use client";
 
+import { nameOf } from "@/lib/emp-name";
 import Link from "next/link";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -53,12 +54,13 @@ import {
 } from "./icons";
 import { ApproverNote } from "./approver-note";
 import { Sheet } from "./lead-dialogs";
-import { hrCommission } from "@/lib/hr-data";
 
 import { DateField } from "./thai-date-picker";
 import { createPortal } from "react-dom";
 import { lockScroll } from "@/lib/scroll-lock";
+import { useCrumb } from "@/lib/crumb";
 import "@/styles/mobile/expense.css";
+import { stackNo } from "@/lib/stack-no";
 /*
  * ใบเบิกมีแค่ค่าน้ำมันรถ (ERD expense_claim: fuel / other)
  * ค่าคอมมิชชั่นคิดในเงินเดือนที่ฝ่ายบุคคลคำนวณจากดีลจริงแล้ว (payroll_line) ไม่ได้เบิกผ่านใบนี้ — กันได้ซ้ำสองทาง
@@ -71,20 +73,21 @@ type Screen =
   | { kind: "form"; month: string; pick?: Pick };
 
 /* ประเภทที่เลือกก่อนเปิดฟอร์ม → ฟอร์มเดิม (ค่าน้ำมัน / ค่าใช้จ่ายอื่นพร้อมประเภท) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-type Pick = { key: "travel" | "fuel" | "commission" | "other"; label: string; t: MType; kind: string };
+type Pick = { key: "travel" | "fuel" | "other"; label: string; t: MType; kind: string };
+/*
+ * เอา "ค่าคอมมิชชั่น" ออกจากประเภทการเบิก — ค่าคอมมิชชั่น/อินเซนทีฟ ผู้บริหารให้ในรอบเงินเดือนเท่านั้น
+ * พนักงานเบิกเองไม่ได้ · ใบเก่าที่เคยเบิกค่าคอมไว้ยังเปิดดูเป็นประวัติได้ (ผู้ใช้สั่ง 14 ต.ค. 2569)
+ */
 const PICKS: Pick[] = [
   { key: "travel", label: "ค่าเดินทาง", t: "other", kind: "ค่าเดินทาง" },
   { key: "fuel", label: "ค่าน้ำมันรถ", t: "fuel", kind: "" },
-  { key: "commission", label: "ค่าคอมมิชชั่น", t: "other", kind: "ค่าคอมมิชชั่น" },
   /* ประเภทมาจากที่เลือกตอนกด + แล้ว ฟอร์มไม่มีช่องเลือกประเภทซ้ำ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   /* อื่นๆ — ผู้ขอพิมพ์หัวข้อเอง เช่น ค่าบัญชี Google (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   { key: "other", label: "อื่นๆ", t: "other", kind: "" },
 ];
 
-/** ค่าคอมมิชชั่นขึ้นเฉพาะตำแหน่งที่มีอัตราค่าคอม (hrCommission) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 function usePicks() {
-  const role = useRole();
-  return PICKS.filter((p) => p.key !== "commission" || role in hrCommission());
+  return PICKS;
 }
 
 /* กล่องเลือกประเภทการเบิก จอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
@@ -140,10 +143,18 @@ const TABS: { key: "all" | ClaimStatus; label: string }[] = [
 /** ใบที่ยื่นแล้วอย่างน้อยหนึ่งครั้ง = หนึ่งรอบในรายการ · ใบร่างยังไม่นับ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 function roundsOf(claims: ExpenseClaim[]) {
   const at = (c: ExpenseClaim) => c.submittedAt || c.month;
-  /* ยื่นล่าสุดอยู่บนสุด เป็นลำดับที่ 1 */
+  /* ยื่นล่าสุดอยู่บนสุด */
   return claims
     .filter((c) => c.status !== "ร่าง")
     .sort((a, b) => at(b).localeCompare(at(a)) || b.month.localeCompare(a.month));
+}
+
+/**
+ * เลขลำดับแบบกองซ้อนของแต่ละรอบ — ใบแรกที่ยื่นเป็น 1 ใบล่าสุดเลขมากสุด (อยู่บนสุด)
+ * นับจากทุกรอบที่ยื่นแล้วก่อนกรองแท็บ เลขจึงไม่เปลี่ยนเมื่อยื่นใบใหม่ (ผู้ใช้สั่ง 12 ต.ค. 2569)
+ */
+function roundNos(rounds: ExpenseClaim[]) {
+  return stackNo(rounds, (c) => c.submittedAt || c.month, (c) => c.month);
 }
 
 /** ประเภทในใบ เช่น "ค่าน้ำมันรถ · ค่าใช้จ่ายอื่น" */
@@ -223,6 +234,7 @@ function ClaimList({
   const [page, setPage] = useState(1);
 
   const rounds = useMemo(() => roundsOf(claims), [claims]);
+  const noOf = useMemo(() => roundNos(rounds), [rounds]);
   const scoped = tab === "all" ? rounds : rounds.filter((c) => c.status === tab);
   const maxPage = Math.max(1, Math.ceil(scoped.length / PER_PAGE));
   const safePage = Math.min(page, maxPage);
@@ -314,11 +326,11 @@ function ClaimList({
                   </td>
                 </tr>
               ) : (
-                list.map((c, i) => {
+                list.map((c) => {
                   const n = c.fuel.length + (c.other?.length ?? 0);
                   return (
                     <tr key={c.month} className="cursor-pointer" onClick={() => onOpen(c.month)}>
-                      <td className="c num">{from + i + 1}</td>
+                      <td className="c num muted">{noOf.get(c.month)}</td>
                       <td className="whitespace-nowrap">{mMonthName(c.month)}</td>
                       <td>
                         <span className="clip">{typesOf(c) || "—"}</span>
@@ -338,7 +350,7 @@ function ClaimList({
                         )}
                       </td>
                       <td>
-                        <span className="clip">{boss.name}</span>
+                        <span className="clip">{nameOf(boss.name)}</span>
                       </td>
                       <td className="c" onClick={(e) => e.stopPropagation()}>
                         <span className="inline-flex items-center gap-2">
@@ -414,16 +426,11 @@ function ClaimList({
 function ClaimView({ month, onBack, onEdit }: { month: string; onBack: () => void; onEdit: () => void }) {
   const claims = useExpenseClaims();
   const claim = useMemo(() => claimOf(claims, month), [claims, month]);
+  /* ปุ่มย้อนกลับในหน้าย้ายไปเส้นทางบนแถบบน "เบิกค่าใช้จ่าย / ใบเบิก…" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: onBack, root: true }, `ใบเบิก${mMonthName(month)}`);
 
   return (
     <div className="space-y-4">
-      {/* ปุ่มย้อนกลับมุมซ้ายบน ตำแหน่งเดียวกับหน้าอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-      <div className="no-print hidden md:block">
-        <button type="button" onClick={onBack} className="btn glass-thin gap-1.5">
-          <ChevronLeftIcon className="size-4" strokeWidth={2.4} />
-          ย้อนกลับ
-        </button>
-      </div>
       <div className="bar no-print">
         <div>
           <h1>ใบเบิก{mMonthName(month)}</h1>
@@ -495,6 +502,8 @@ function ClaimForm({
   const month = monthKey(view);
   const claim = useMemo(() => claimOf(claims, month), [claims, month]);
   const locked = isLocked(claim.status);
+  /* ปุ่มย้อนกลับในหน้าย้ายไปเส้นทางบนแถบบน "เบิกค่าใช้จ่าย / ขอเบิก…" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: () => onBack(), root: true }, pick ? `ขอเบิก${pick.label}` : "ขอเบิกค่าใช้จ่าย");
   /* ออกจากฟอร์มโดยไม่ยื่น — แถวที่ยังไม่ได้กรอกไม่เก็บ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const onBack = () => {
     dropBlankRows(claim);
@@ -552,13 +561,6 @@ function ClaimForm({
 
   return (
     <div className="space-y-4">
-      {/* ปุ่มย้อนกลับมุมซ้ายบน ตำแหน่งเดียวกับหน้าอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-      <div className="no-print hidden md:block">
-        <button type="button" onClick={onBack} className="btn glass-thin gap-1.5">
-          <ChevronLeftIcon className="size-4" strokeWidth={2.4} />
-          ย้อนกลับ
-        </button>
-      </div>
       <div className="bar no-print">
         <div>
           <h1>{pick ? `ขอเบิก${pick.label}` : "ขอเบิกค่าใช้จ่าย"}</h1>
@@ -694,9 +696,8 @@ function ClaimSheet({
           <div className="claim">
             <p className="ftitle">แบบฟอร์มขออนุมัติเบิกค่าน้ำมันรถ</p>
             <p className="fsub">
-              {/* สถานะอยู่ที่ป้ายบนแถบแล้ว (ต้นแบบ) เหลือเดือนกับเลขที่ใบเบิก */}
+              {/* สถานะอยู่ที่ป้ายบนแถบแล้ว · ไม่แสดงเลขที่ใบเบิก (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
               ประจำเดือน {mMonthName(month)}
-              {claim.no && ` · เลขที่ ${claim.no}`}
             </p>
 
             <div className="meta">
@@ -1258,6 +1259,7 @@ function ExpenseMobile() {
   /* รายการรอบที่ยื่นแล้ว + แถบกรองสถานะ เหมือนจอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const [tab, setTab] = useState<"all" | ClaimStatus>("all");
   const rounds = roundsOf(claims);
+  const noOf = roundNos(rounds);
   const shown = tab === "all" ? rounds : rounds.filter((c) => c.status === tab);
 
   return (
@@ -1291,7 +1293,7 @@ function ExpenseMobile() {
               <b>{mMonthName(c.month)}</b>
               <span className="amt">{baht(claimTotal(c))} ฿</span>
               <span className="meta">
-                {typesOf(c)} · ยื่น {thaiStamp(c.submittedAt)}
+                #{noOf.get(c.month)} · {typesOf(c)} · ยื่น {thaiStamp(c.submittedAt)}
               </span>
               <span className={`exm-chip ${M_STATUS[c.status]}`}>{c.status}</span>
             </button>
@@ -1317,7 +1319,7 @@ function ExpenseMobile() {
             <div className="exm-panel">
               <div className="exm-grab" />
               <h2 id="exmSheetT">เลือกประเภทการเบิก</h2>
-              {/* ค่าเดินทาง / ค่าน้ำมัน / ค่าคอมมิชชั่น / อื่นๆ — เหมือนจอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+              {/* ค่าเดินทาง / ค่าน้ำมัน / อื่นๆ — เหมือนจอใหญ่ · ไม่มีค่าคอมมิชชั่นแล้ว (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
               {picks.map((p) => {
                 const ty = M_TYPES[p.t];
                 return (
@@ -1500,7 +1502,6 @@ function ExpenseMobileForm({
           <b id="exmFormT">{label && t === t0 ? label : ty.name}</b>
           <small>
             {mMonthName(month)}
-            {claim.no && ` · ${claim.no}`}
           </small>
         </div>
         <span />

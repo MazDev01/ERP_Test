@@ -36,3 +36,11 @@
 .rh-home .rh-scroll::-webkit-scrollbar {
   display: none;
 }
+/* หน้าหลักมือถือของบัญชี — กระดิ่ง 20px และตัวเลขหนา 700 ตามต้นแบบ home-glass-ref (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+.rh-home.rh-acc .rh-bell .iconbtn svg {
+  width: 20px;
+  height: 20px;
+}
+.rh-home.rh-acc .rh-bell .iconbtn > span {
+  font-weight: 700;
+}

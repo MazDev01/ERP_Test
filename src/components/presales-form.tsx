@@ -2,16 +2,20 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import type { Customer, Urgency } from "@/lib/crm-data";
+import { useEffect, useId, useRef, useState } from "react";
+import type { Customer } from "@/lib/crm-data";
 import { addPresalesRequest, useCrm } from "@/lib/crm-store";
 import { hrPos } from "@/lib/hr-data";
+import { services } from "@/lib/pm-data";
+import { canTakeService, empAssignee } from "@/lib/presales-work";
 import { useHr } from "@/lib/hr-store";
+import { displayName, nameHay } from "@/lib/emp-name";
 import { addDays, todayIso } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { CustomerCombo } from "./customer-combo";
 import { FileDrop, type PickedFile } from "./file-drop";
 import { CheckIcon, ChevronLeftIcon } from "./icons";
+import { useCrumb } from "@/lib/crumb";
 import { Field } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
 
@@ -21,12 +25,7 @@ import { DateField } from "./thai-date-picker";
  * ส่งแล้วขึ้นแถบสำเร็จด้านบน แล้วล้างฟอร์มให้ส่งคำขอถัดไปได้เลย
  */
 
-
-const URGENCIES: { key: Urgency; detail: string }[] = [
-  { key: "ปกติ", detail: "ตามคิวงาน" },
-  { key: "ด่วน", detail: "ขอให้จัดลำดับก่อนงานอื่น" },
-  { key: "ด่วนมาก", detail: "ต้องระบุเหตุผล" },
-];
+/* ช่องระดับความเร่งด่วนเอาออก — คำขอใหม่บันทึกเป็น "ปกติ" (ผู้ใช้สั่ง 14 ต.ค. 2569) */
 
 export function PresalesNewPage() {
   /* รอ hydrate ก่อน — ลูกค้าที่เพิ่งเพิ่มในเครื่องต้องหาเจอตอนเปิดจากลิงก์ ?customer= */
@@ -40,16 +39,21 @@ function PresalesNewBody() {
   const [formKey, setFormKey] = useState(0);
   const [preset, setPreset] = useState(params.get("customer") ?? undefined);
   const [done, setDone] = useState<string[] | null>(null);
+  /* เส้นทางบนแถบบน "ขอทำข้อเสนอ / ส่งโจทย์ใหม่" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb("ส่งโจทย์ใหม่");
 
   return (
     <div className="space-y-4">
       <div className="bar">
         <div className="min-w-0">
-          <Link href="/presales" className="btn glass-thin btn-mini mb-1.5">
-            <ChevronLeftIcon className="size-3.5" strokeWidth={2.4} />
-            คำขอก่อนการขาย
-          </Link>
-          <h1>ส่งคำขอก่อนการขาย</h1>
+          {/* ปุ่มกลับเหลือเฉพาะมือถือ — จอคอมใช้เส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+          <span className="md:hidden">
+            <Link href="/presales" className="btn glass-thin btn-mini mb-1.5">
+              <ChevronLeftIcon className="size-3.5" strokeWidth={2.4} />
+              ขอทำข้อเสนอ
+            </Link>
+          </span>
+          <h1>ส่งโจทย์ใหม่</h1>
         </div>
       </div>
 
@@ -105,17 +109,23 @@ function PresalesForm({
   const [customer, setCustomer] = useState<Customer | null>(
     () => crm.customers.find((c) => c.code === presetCustomer) ?? null,
   );
-  /* ส่งให้พนักงานคนไหนก็ได้ในบริษัท ไม่จำกัดแค่ SA/BD (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  /* "ส่งให้" = เลือกตัวคน (พนักงานที่ยังทำงานอยู่ทุกคน) — เลิกส่งตามประเภทงาน (ผู้ใช้สั่ง 14 ต.ค. 2569)
+     ประเภทงานยังเลือกเป็นข้อมูลของคำขอ แต่ไม่ได้กำหนดว่าใครเห็น */
   const hr = useHr();
-  const staff = hr.emp.filter((e) => e.status === "active");
-  const [toId, setToId] = useState("");
-  const to = staff.find((e) => e.id === toId);
-  const kind: "BD" | "SA" | "" = to ? (to.pos === "sa" ? "SA" : "BD") : "";
+  /* เฉพาะคนที่มีบัญชีเข้าระบบที่ใช้งานอยู่ — คนไม่มีบัญชีเปิดคิวงานไม่ได้ คำขอจะค้าง (ผู้ใช้สั่ง 15 ต.ค. 2569)
+     คำขอที่ส่งไปแล้วเก็บผู้รับไว้ที่คำขอ (toEmp/assignee) ไม่กระทบ */
+  const withAccount = hr.emp.filter((e) => e.status === "active" && e.account?.status === "active");
+  const types = services().filter((x) => !("off" in x && x.off));
+  const [service, setService] = useState("");
+  const [toEmp, setToEmp] = useState("");
+  /* เลือกประเภทงานก่อน แล้ว "ส่งให้" เหลือเฉพาะคนในตำแหน่งที่เกี่ยวข้อง (SERVICE_POS + SA/BD) (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  const people = service ? withAccount.filter((e) => canTakeService(e, service)) : [];
+  const person = people.find((e) => e.id === toEmp);
+  /* SA = วิเคราะห์เทคนิค · ตำแหน่งอื่นเป็นข้อเสนอธุรกิจ — กติกาเดียวกับตอนเลือกคน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const kind: "BD" | "SA" | "" = person ? (person.pos === "sa" ? "SA" : "BD") : "";
   const [problem, setProblem] = useState("");
   const [budget, setBudget] = useState("");
   const [due, setDue] = useState(() => addDays(today, 7));
-  const [urgency, setUrgency] = useState<Urgency>("ปกติ");
-  const [urgentReason, setUrgentReason] = useState("");
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [touched, setTouched] = useState(false);
   /** กำลังส่ง — หมุนรอราว 1.2 วินาทีก่อนบันทึก ตาม mockup */
@@ -123,17 +133,17 @@ function PresalesForm({
 
   const problems = {
     customer: !customer,
-    kind: !kind,
+    service: !service,
+    person: !person,
     problem: !problem.trim(),
     due: !due,
-    reason: urgency === "ด่วนมาก" && !urgentReason.trim(),
   };
   const blocked = Object.values(problems).some(Boolean);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (blocked || !customer || !kind || saving) return;
+    if (blocked || !customer || !person || !kind || saving) return;
     setSaving(true);
     window.setTimeout(() => {
       setSaving(false);
@@ -145,20 +155,18 @@ function PresalesForm({
     const no = addPresalesRequest({
       customerCode: customer.code,
       kind,
-      assignee: to ? `${to.name} (${hrPos(to.pos).label})` : undefined,
+      assignee: person ? empAssignee(person) : "",
+      service,
+      toEmp,
       problem: problem.trim(),
       due,
-      urgency,
-      urgentReason: urgency === "ด่วนมาก" ? urgentReason.trim() : "",
       budget: Number(budget.replace(/\D/g, "")) || 0,
       /* ลิงก์เก็บเป็นที่อยู่เต็ม ไฟล์เก็บชื่อ — ยังไม่มีที่เก็บไฟล์จริง */
       attachments: files.map((f) => f.url ?? f.name),
     });
-    /* บอกเลขที่คำขอที่เพิ่งสร้างด้วย — ต้องใช้อ้างอิงเวลาตามงานกับทีมก่อนการขาย
-       (เจ้าของแจ้ง 25 ก.ย. 2569 ว่าส่งแล้วไม่รู้ว่าได้เลขอะไร) */
+    /* ไม่บอกเลขที่คำขอ — รหัสอยู่ในฐานข้อมูลเท่านั้น (ผู้ใช้สั่ง 14 ต.ค. 2569) */
     onCreated([
-      `ส่งคำขอของ ${customer.name} ให้ ${to?.name ?? ""} เรียบร้อย`,
-      `เลขที่คำขอ ${no}`,
+      `ส่งคำขอของ ${customer.name} ให้ ${person ? empAssignee({ ...person, name: displayName(person) }) : ""} เรียบร้อย`,
       `แนบไฟล์ ${files.length} รายการ`,
       "สถานะ รอรับงาน",
     ]);
@@ -167,74 +175,77 @@ function PresalesForm({
   return (
     <form onSubmit={submit} noValidate className="space-y-4">
       <section className={card}>
-        <h2 className={h2}>ผู้สนใจและความเร่งด่วน</h2>
+        <h2 className={h2}>ผู้สนใจ</h2>
 
-        <div className="grid gap-x-5 sm:grid-cols-2">
-          <Field label="ผู้สนใจ" required error={touched && problems.customer ? "เลือกผู้สนใจก่อน" : undefined}>
-            <CustomerCombo
-              /* ต้นแบบ presales-new ไม่มีรายที่ปฏิเสธแล้วในรายการ — ส่งคำขอให้คนที่ไม่เอาแล้วไม่มีประโยชน์ */
-              customers={crm.customers.filter((c) => c.status !== "ปฏิเสธ")}
-              value={customer}
-              onChange={setCustomer}
-              invalid={touched && problems.customer}
-            />
-          </Field>
-
-          <Field label="ระดับความเร่งด่วน" required>
-            {/* มือถือก็วางสามช่องในแถวเดียว กดสลับได้ทันทีโดยไม่ต้องเลื่อนผ่านการ์ดยาว ๆ */}
-            <div className="grid grid-cols-3 gap-2">
-              {URGENCIES.map((u) => (
-                <button
-                  key={u.key}
-                  type="button"
-                  /* ปุ่มสลับสถานะ ต้องบอกโปรแกรมอ่านหน้าจอด้วยว่าอันไหนถูกเลือก ไม่ใช่รู้จากสีอย่างเดียว */
-                  aria-pressed={urgency === u.key}
-                  onClick={() => setUrgency(u.key)}
-                  className={`rounded-xl border-[1.4px] px-3 py-3 text-center transition-colors max-sm:px-2.5 ${
-                    urgency === u.key
-                      ? u.key === "ด่วนมาก"
-                        ? "border-destructive bg-[var(--destructive-soft)] text-destructive"
-                        : "border-primary bg-accent text-primary"
-                      : "border-border bg-white text-muted-foreground hover:border-muted-foreground/40"
-                  }`}
-                >
-                  {/* ชื่อระดับอย่างเดียว อยู่กลางปุ่ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-                  <b className="block text-[13.5px] font-semibold">{u.key}</b>
-                </button>
-              ))}
-            </div>
-          </Field>
-        </div>
-
-        {urgency === "ด่วนมาก" && (
-          <Field
-            label="เหตุผลที่ต้องด่วนมาก"
-            required
-            error={touched && problems.reason ? "กรอกเหตุผลเมื่อเลือกด่วนมาก" : undefined}
-          >
-            <textarea
-              value={urgentReason}
-              onChange={(e) => setUrgentReason(e.target.value)}
-              placeholder="เช่น ลูกค้าต้องใช้ยื่นประมูลวันที่ 15 หรือคู่แข่งยื่นข้อเสนอไปแล้ว"
-              className="field-control h-[76px] resize-y py-2.5 leading-relaxed"
-            />
-          </Field>
-        )}
+        {/* ช่องผู้สนใจเต็มความกว้าง — ช่องความเร่งด่วนเอาออก (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+        <Field label="ผู้สนใจ" required error={touched && problems.customer ? "เลือกผู้สนใจก่อน" : undefined}>
+          <CustomerCombo
+            /* ต้นแบบ presales-new ไม่มีรายที่ปฏิเสธแล้วในรายการ — ส่งคำขอให้คนที่ไม่เอาแล้วไม่มีประโยชน์ */
+            customers={crm.customers.filter((c) => c.status !== "ปฏิเสธ")}
+            value={customer}
+            onChange={setCustomer}
+            invalid={touched && problems.customer}
+          />
+        </Field>
       </section>
 
       <section className={card}>
         <h2 className={h2}>รายละเอียดงาน</h2>
 
-        <Field label="ส่งให้" required error={touched && problems.kind ? "เลือกพนักงานที่จะส่งให้" : undefined}>
-          <select value={toId} onChange={(e) => setToId(e.target.value)} className="field-control cursor-pointer" aria-label="ส่งให้">
-            <option value="">— เลือกพนักงาน —</option>
-            {staff.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} · {hrPos(e.pos).label}
+        {/* กล่องคำแนะนำสีเทาเอาออก (ผู้ใช้สั่ง 15 ต.ค. 2569)
+            ประเภทงานมาก่อน (ซ้าย) แล้วจึงส่งให้ (ขวา) — รายชื่อกรองตามประเภทงาน (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+        <div className="grid gap-x-6 sm:grid-cols-2">
+        <Field
+          label="ประเภทงาน"
+          required
+          error={touched && problems.service ? "เลือกประเภทงาน" : undefined}
+        >
+          <select
+            value={service}
+            onChange={(e) => {
+              const next = e.target.value;
+              setService(next);
+              /* เปลี่ยนประเภทแล้วคนที่เลือกไว้ไม่อยู่ในตำแหน่งที่เกี่ยวข้อง — ล้างออก */
+              const still = withAccount.find((x) => x.id === toEmp);
+              if (!next || !still || !canTakeService(still, next)) setToEmp("");
+            }}
+            className="field-control cursor-pointer"
+            aria-label="ประเภทงาน"
+          >
+            <option value="">— เลือกประเภทงาน —</option>
+            {types.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
               </option>
             ))}
           </select>
         </Field>
+        <Field
+          label="ส่งให้"
+          required
+          error={touched && problems.person ? (service ? "เลือกผู้รับคำขอ" : "เลือกประเภทงานก่อน") : undefined}
+        >
+          <PersonPicker
+            options={people.map((e) => ({
+              id: e.id,
+              /* โชว์ชื่อเล่น ค้นได้ทั้งชื่อเล่นและชื่อจริง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+              label: e.pos ? `${displayName(e)} · ${hrPos(e.pos).label}` : displayName(e),
+              hay: `${nameHay(e)} ${e.pos ? hrPos(e.pos).label : ""}`,
+            }))}
+            value={toEmp}
+            onChange={setToEmp}
+            disabled={!service}
+            placeholder={
+              !service
+                ? "เลือกประเภทงานก่อน"
+                : people.length
+                  ? "— เลือกผู้รับคำขอ —"
+                  : "ไม่มีผู้รับสำหรับประเภทงานนี้"
+            }
+            invalid={touched && problems.person}
+          />
+        </Field>
+        </div>
 
         <Field
           label="โจทย์จากลูกค้า"
@@ -304,5 +315,171 @@ function PresalesForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/*
+ * ดรอปดาวน์เลือกผู้รับคำขอ (ผู้ใช้สั่ง 15 ต.ค. 2569) — รายชื่อยาวได้ จึงไม่ใช้ select ของเบราว์เซอร์ที่กางสูงเต็มจอ
+ * กล่องรายการสูงไม่เกิน 280px เลื่อนในกล่อง · มีช่องค้นหาด้านบน · ใช้คีย์บอร์ดได้ (ลูกศรขึ้นลง Enter Esc)
+ */
+function PersonPicker({
+  options,
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  invalid,
+}: {
+  options: { id: string; label: string; hay?: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+  invalid?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const listId = useId();
+  const picked = options.find((o) => o.id === value);
+  const term = q.trim().toLowerCase();
+  const shown = term ? options.filter((o) => (o.hay ?? o.label).toLowerCase().includes(term)) : options;
+  const empty = !options.length;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) searchRef.current?.focus();
+  }, [open]);
+
+  /* เลื่อนรายการให้เห็นตัวที่เลือกด้วยคีย์บอร์ดอยู่เสมอ */
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${cursor}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [cursor, open]);
+
+  const show = () => {
+    if (disabled || empty) return;
+    setQ("");
+    setCursor(Math.max(0, options.findIndex((o) => o.id === value)));
+    setOpen(true);
+  };
+  const close = () => {
+    setOpen(false);
+    btnRef.current?.focus();
+  };
+  const pick = (id: string) => {
+    onChange(id);
+    close();
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setCursor((c) => Math.min(shown.length - 1, c + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setCursor((c) => Math.max(0, c - 1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setCursor(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setCursor(Math.max(0, shown.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (shown[cursor]) pick(shown[cursor].id);
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      if (e.key === "Escape") e.preventDefault();
+      close();
+    }
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="ส่งให้"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        disabled={disabled || empty}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={(e) => {
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            show();
+          }
+        }}
+        className={`field-control flex w-full cursor-pointer items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+          invalid ? "border-destructive bg-[var(--destructive-soft)]" : ""
+        }`}
+      >
+        <span className={`clip min-w-0 flex-1 ${picked ? "" : "text-muted-foreground"}`}>
+          {picked ? picked.label : placeholder}
+        </span>
+        <span aria-hidden className="shrink-0 text-[11px] text-muted-foreground">
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div className="glass-solid absolute top-[calc(100%+6px)] right-0 left-0 z-90 rounded-[13px] p-1.5">
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setCursor(0);
+            }}
+            onKeyDown={onKey}
+            placeholder="ค้นหาชื่อหรือตำแหน่ง"
+            aria-label="ค้นหาผู้รับคำขอ"
+            role="combobox"
+            aria-expanded
+            aria-controls={listId}
+            aria-activedescendant={shown[cursor] ? `${listId}-${cursor}` : undefined}
+            className="field-control mb-1.5 h-9 text-[13px]"
+          />
+          {shown.length === 0 ? (
+            <p className="px-3 py-4 text-center text-[13px] text-muted-foreground">ไม่พบรายชื่อที่ค้นหา</p>
+          ) : (
+            <ul ref={listRef} id={listId} role="listbox" aria-label="ส่งให้" className="scroll-stable max-h-[280px] overflow-auto">
+              {shown.map((o, i) => (
+                <li
+                  key={o.id}
+                  id={`${listId}-${i}`}
+                  data-i={i}
+                  role="option"
+                  aria-selected={o.id === value}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(o.id);
+                  }}
+                  onMouseEnter={() => setCursor(i)}
+                  className={`flex cursor-pointer items-center gap-2 rounded-[9px] px-[11px] py-2.5 text-[13.5px] transition-colors ${
+                    i === cursor ? "bg-accent" : "hover:bg-accent/60"
+                  }`}
+                >
+                  <span className="clip min-w-0 flex-1">{o.label}</span>
+                  {o.id === value && <CheckIcon className="size-4 shrink-0 text-primary" strokeWidth={2.4} />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

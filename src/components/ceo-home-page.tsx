@@ -33,6 +33,7 @@ import {
   UsersIcon,
 } from "./icons";
 import { NotificationMenu } from "./notification-menu";
+import { AccMobileHome } from "./acc-home-mobile";
 import { awaitingReceipt, invoiceDue, seqStatus, useAcc } from "@/lib/acc-store";
 import { useHr } from "@/lib/hr-store";
 import { inPeriod, inRange, isDaily, probEnd, rangeLabel } from "@/lib/hr-data";
@@ -40,9 +41,11 @@ import { usePm } from "@/lib/pm-store";
 import { useCrm } from "@/lib/crm-store";
 import { buildReport } from "@/lib/sales-report";
 import { leaveUsage, useLeaveRecords } from "@/lib/leave-store";
+import { fmtLeave } from "@/lib/leave-data";
 import { getRecordsServerSnapshot, getRecordsSnapshot, subscribeRecords } from "@/lib/attendance-store";
 import { formatClock, recordsOfDay } from "@/lib/attendance";
 import { WORK_SCHEDULE } from "@/lib/work-schedule";
+import { initialOf, useNameOf } from "@/lib/emp-name";
 import "@/styles/mobile/home.css";
 
 export function CeoHomePage() {
@@ -76,7 +79,10 @@ export function RoleHomePage() {
   const roles = useMyRoles();
   const access = useMenuAccess();
   const route = useApprovalRoute();
-  const me = useProfile();
+  /* ทักทายด้วยชื่อเล่น เหมือนเมนูผู้ใช้ด้านบน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const nameOf = useNameOf();
+  const prof = useProfile();
+  const me = { ...prof, name: nameOf(prof.name) };
   /* การ์ดตรงกับเมนูข้างเสมอ ไม่กรองทิ้งรายการไหน — มือถือกับจอกว้างจะได้เห็นหน้าชุดเดียวกัน
      (เดิมตัดโอทีกับสลิปเงินเดือนของทีมงานออกตามต้นแบบ my-home.html ที่มีแค่ห้าการ์ด
       แต่ต้นแบบนั้นไม่มีสองเมนูนี้ในเมนูข้างด้วย พอระบบจริงมี คนที่ใช้แต่มือถือจึงหาสลิปของตัวเองไม่เจอ) */
@@ -97,7 +103,7 @@ export function RoleHomePage() {
    * บทบาทผู้บริหารยังไม่มีชื่อจริงในทะเบียน เดิมจึงทักว่า "สวัสดี, CEO" ซึ่งอ่านเหมือนชื่อตำแหน่ง
    * ใช้ชื่อที่ผู้ดูแลตั้งไว้ในผู้อนุมัติระดับผู้บริหารก่อน ยังไม่ได้ตั้งค่อยใช้คำเรียกตำแหน่ง
    */
-  const execName = approvers().exec.name.trim();
+  const execName = nameOf(approvers().exec.name.trim());
   const hello =
     role === "ceo"
       ? execName && execName !== "CEO"
@@ -106,7 +112,7 @@ export function RoleHomePage() {
       : me.name.split(" ")[0];
 
   /* ชื่อย่อบนปุ่มโปรไฟล์ — ตัวแรกของชื่อกับของนามสกุล เหมือนที่ใช้ในเมนูผู้ใช้ */
-  const initials = me.name.split(" ").slice(0, 2).map((w) => w[0]).join("");
+  const initials = initialOf(me.name);
   const photo = useProfilePhoto();
   /* วันนี้เป็นวันอะไร — อ่านผ่าน bkkNow() ตามกติกาเวลาของโปรเจค ไม่ใช่ new Date() ตรง ๆ */
   const now = bkkNow();
@@ -137,6 +143,10 @@ export function RoleHomePage() {
 
   return (
     <>
+    {/* บัญชีใช้หน้าหลักมือถือตามต้นแบบ home-glass-ref ของตัวเอง — บทบาทอื่นคงของเดิม (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+    {role === "acc" ? (
+      <AccMobileHome hits={hits} q={q} setQ={setQ} name={fullName} photo={photo} />
+    ) : (
     <MobileHome
       role={role}
       menu={menu}
@@ -147,6 +157,7 @@ export function RoleHomePage() {
       photo={photo}
       employeeId={me.employeeId}
     />
+    )}
     {/* จอกว้าง — ของเดิมทุกอย่าง ซ่อนบนมือถือเพราะมือถือใช้หน้าหลักแบบใหม่ (MobileHome) */}
     <div className="-mx-4 -mt-[18px] min-h-full bg-[#fbf5f4] px-4 pt-2 pb-6 max-sm:hidden sm:-mx-[30px] sm:bg-[#F6F7FA] sm:px-12 sm:pt-8">
       {/* แถบบนของหน้าหลัก — ชื่อย่อของเจ้าของเครื่องซ้าย ชื่อหน้าตรงกลาง กระดิ่งขวา
@@ -378,8 +389,10 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
       if (has("/hr/employees")) stats.push({ value: `${active.length}`, unit: "คน", label: "พนักงาน", href: "/hr/employees" });
       /* วันลาคงเหลือ = ลากิจ + ลาพักร้อน (ไม่รวมลาป่วย) — ตัวคำนวณเดียวกับกล่อง "วันนี้ของฉัน" */
       if (has("/leave")) {
-        const days = Math.round((left("ลากิจ") + left("ลาพักร้อน")) * 10) / 10;
-        stats.push({ value: `${days}`, unit: "วัน", label: "วันลาคงเหลือ", href: "/leave" });
+        /* แสดงเป็นชั่วโมง — เลขแรกตัวใหญ่ หน่วยที่เหลือตัวเล็ก "29" + "วัน 4 ชม." (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+        const txt = fmtLeave(left("ลากิจ") + left("ลาพักร้อน"));
+        const cut = txt.indexOf(" ");
+        stats.push({ value: txt.slice(0, cut), unit: txt.slice(cut + 1), label: "วันลาคงเหลือ", href: "/leave" });
       }
 
       /* ดีลรอวางบิล — เงื่อนไขเดียวกับแท็บ "รอวางบิล" ของหน้าวางบิล (ไม่กรองช่วงวันที่) */
@@ -474,7 +487,7 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
           ? { title: "เช็คอินแล้ว", sub: `เข้างาน ${formatClock(new Date(firstIn.at))} น.` }
           : { title: "ออกงานแล้ว", sub: `${formatClock(new Date(firstIn.at))} – ${formatClock(new Date(last.at))} น.` };
 
-    const leaveBox = has("/leave") ? MY_LEAVE.map((l) => ({ label: l.label, n: left(l.type) })) : null;
+    const leaveBox = has("/leave") ? MY_LEAVE.map((l) => ({ label: l.label, n: fmtLeave(left(l.type)) })) : null;
 
     /* สลิปล่าสุดที่เผยแพร่แล้ว — เงื่อนไขเดียวกับหน้าสลิปของฉัน (ฝึกงานไม่มีสลิป) */
     let payslip: string | null = null;
@@ -525,7 +538,7 @@ function MobileHome({
   const { stats, todos, checkin, leaveBox, payslip } = useHomeData(role, menu, employeeId);
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const initials = name.split(" ").slice(0, 2).map((w) => w[0] ?? "").join("");
+  const initials = initialOf(name);
   const showSearch = searching || q !== "";
 
   useEffect(() => {
@@ -546,7 +559,7 @@ function MobileHome({
           {leaveBox.map((b) => (
             <span key={b.label} className="flex flex-1 flex-col items-center rounded-xl bg-[rgba(236,240,250,.9)] py-1.5">
               <span className="text-[11px] text-[#6B5F62]">{b.label}</span>
-              <span className="num text-[16px] font-bold text-[#1A5DB5]">{b.n}</span>
+              <span className="num text-[14px] font-bold whitespace-nowrap text-[#1A5DB5]">{b.n}</span>
             </span>
           ))}
         </span>

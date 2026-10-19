@@ -19,6 +19,8 @@ import {
   HR_PERIOD,
   HR_TIME,
   addTimeSample,
+  fillSeedLeaveHalf,
+  type ClashOk,
   HR_INTERN_LEAVE,
   HR_PAYAPPROVE,
   HR_PAST_MONTHS,
@@ -32,7 +34,9 @@ import {
   ensurePeriods,
   withLoginAccounts,
   fillSlip,
+  normalizeExtra,
   hrCycle,
+  payFromAfterPass,
   type CycleSum,
   type PayGroup,
   type PosKey,
@@ -44,12 +48,15 @@ import {
   type TimeRec,
   type InternLeave,
   type PayApproval,
+  type PaySnap,
+  payChanges,
   closedIn,
   HR_DAILY_SPLIT_MONTH,
   dailyRoundId,
   legacyDailyRound,
   newDailyRound,
   overlapRound,
+  weekRangeFor,
   seedSplitRounds,
   type Cycle,
   type DailyRound,
@@ -71,10 +78,14 @@ export type HrState = {
   extras: Record<string, Record<string, Extra>>;
   /** ใบลาของนักศึกษาฝึกงาน — ฝ่ายบุคคลอนุมัติเอง */
   internLeave: InternLeave[];
-  /** CEO อนุมัติยอดเงินเดือน แยกรอบและกลุ่ม (คีย์ month|group) */
+  /**
+   * การอนุมัติยอดเงินเดือนของ CEO (คีย์ รอบ|กลุ่ม) — ด่านก่อนปิดรอบเงินเดือน (กลับมาใช้ ผู้ใช้สั่ง 19 ต.ค. 2569)
+   */
   payApprove: Record<string, PayApproval>;
   /** รอบจ่ายรายวันของพนักงานทดลองงาน — ช่วงวันที่ใดก็ได้ ไม่ผูกกับรอบเดือน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
   dailyRounds: DailyRound[];
+  /** วันที่ลาแล้วแต่มีเช็คอินที่ HR ยืนยันแล้ว คีย์ "รหัสพนักงาน|วันที่" (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  clashOk: Record<string, ClashOk>;
 };
 
 /*
@@ -114,6 +125,7 @@ function addDailyRounds(s: HrState): HrState {
   return { ...s, payApprove, dailyRounds: rounds.sort((a, b) => a.from.localeCompare(b.from)) };
 }
 
+
 const INITIAL: HrState = addDailyRounds({
   emp: withLoginAccounts(HR_EMP),
   time: HR_TIME,
@@ -125,6 +137,7 @@ const INITIAL: HrState = addDailyRounds({
   internLeave: HR_INTERN_LEAVE,
   payApprove: HR_PAYAPPROVE,
   dailyRounds: undefined as unknown as DailyRound[],
+  clashOk: {},
 });
 
 function isHrState(value: unknown): value is HrState {
@@ -173,7 +186,15 @@ function addNewStaff(s: HrState): HrState {
           downloads: r.downloads ?? {},
         }))
       : withStaff.dailyRounds,
-    emp: withLoginAccounts(withStaff.emp),
+    /* บัญชีรับเงินเดือน — ข้อมูลเก่าไม่มี เติมเป็นค่าว่าง (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    emp: withLoginAccounts(withStaff.emp).map((e) => ({ ...e, bankName: e.bankName ?? "", bankNo: e.bankNo ?? "" })),
+    /* ค่าตอบแทนรุ่นเก่า (Incentive/ค่าตำแหน่ง/รายการปรับปรุง) → รายการตามแบบสลิป (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    extras: Object.fromEntries(
+      Object.entries(withStaff.extras ?? {}).map(([k, m]) => [
+        k,
+        Object.fromEntries(Object.entries(m ?? {}).map(([id, x]) => [id, normalizeExtra(x)])),
+      ]),
+    ),
     periods,
     payruns: withStaff.payruns.map(fillPeriod),
     slips: withStaff.slips.map(fillSlip),
@@ -186,14 +207,17 @@ function addNewStaff(s: HrState): HrState {
         ]
       : HR_INTERN_LEAVE,
     /* แถวเวลาทำงานตัวอย่างรอบ ต.ค. 2569 — เติมเฉพาะวันที่ที่ยังไม่มี */
-    time: addTimeSample(withStaff.time),
+    /* ลาครึ่งวันตั้งต้นที่ยังไม่มีช่วงเช้า/บ่าย เติมให้เฉพาะแถวที่ตรงกับข้อมูลตั้งต้น (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+    time: fillSeedLeaveHalf(addTimeSample(withStaff.time)),
+    /* ข้อมูลที่เก็บไว้ก่อนมีการยืนยันวันลาที่มีเช็คอิน (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+    clashOk: withStaff.clashOk ?? {},
     payApprove: withStaff.payApprove ?? HR_PAYAPPROVE,
   });
 }
 
 /*
  * รอบ ม.ค.–มิ.ย. 2569 ต้องเดินครบทุกขั้นแบบรอบ ก.ค. (ผู้ใช้สั่ง 6 ต.ค. 2569)
- * ปิดรอบเวลา → คำนวณ → CEO อนุมัติ → ปิดรอบเงินเดือน → เผยแพร่สลิป ทั้งสองกลุ่ม
+ * ปิดรอบเวลา → คำนวณ → ปิดรอบเงินเดือน → เผยแพร่สลิป ทั้งสองกลุ่ม (ไม่มีขั้น CEO แล้ว ผู้ใช้สั่ง 13 ต.ค. 2569)
  * ข้อมูลที่เก็บไว้ก่อนหน้านี้ไม่มีรอบเงินเดือน/สลิป/การอนุมัติของเดือนเหล่านี้ เติมให้เฉพาะที่ยังไม่มี ของเดิมไม่ถูกทับ
  * เติมเฉพาะเดือนที่รอบเวลาทั้งสองกลุ่มปิดแล้ว — กันรอบเงินเดือนปิดทั้งที่รอบเวลายังเปิดอยู่
  */
@@ -218,6 +242,8 @@ function addPastRounds(s: HrState): HrState {
   };
 }
 
+/* ไม่ล้างสถานะรอ CEO / ตีกลับทิ้งแล้ว — ขั้น CEO อนุมัติกลับมา (ผู้ใช้สั่ง 19 ต.ค. 2569)
+   เครื่องที่ผ่าน dropPayGate ไปแล้วเหลือแต่ที่อนุมัติแล้ว รอบที่ยังเปิดอยู่จึงเริ่มเป็นร่าง HR ส่งใหม่ได้เลย */
 const store = createPersistedStore<HrState>("maz-erp.hr.v3", INITIAL, isHrState, (s) =>
   addDailyRounds(addNewStaff(s)),
 );
@@ -273,6 +299,12 @@ export function changeEmpType(id: string, type: EmpType, today: string, note: st
  * เพราะตัวเลขเดิมของคนทดลองงานเป็นฐานของอัตรารายวัน คนละความหมายกับเงินเดือนรายเดือน
  */
 export function passProbation(id: string, at: string, salary: number) {
+  /*
+   * ผ่านกลางรอบ (ผู้ใช้สั่ง 13 ต.ค. 2569) — ประเภทเป็นพนักงานประจำตั้งแต่วันที่มีผล
+   * แต่ค่าจ้างยังคิดแบบทดลองงานจนจบรอบที่วันนั้นตกอยู่ เงินเดือนเริ่มรอบถัดไป (payFrom)
+   * แถวเงินเดือนใหม่จึงลงวันที่ payFrom — baseSalaryIn ของรอบที่ยังจ่ายรายวันได้อัตราเดิม
+   */
+  const payFrom = payFromAfterPass(at);
   store.update((s) => ({
     ...s,
     emp: s.emp.map((e) =>
@@ -281,9 +313,15 @@ export function passProbation(id: string, at: string, salary: number) {
         : {
             ...e,
             type: "full" as const,
+            probPass: { at, payFrom },
             history: [
               ...e.history,
-              { at, pos: e.pos, salary, note: "ผ่านทดลองงาน เปลี่ยนเป็นจ่ายรายเดือน" },
+              {
+                at: payFrom,
+                pos: e.pos,
+                salary,
+                note: at === payFrom ? "ผ่านทดลองงาน เปลี่ยนเป็นจ่ายรายเดือน" : "ผ่านทดลองงาน เริ่มจ่ายรายเดือนรอบนี้",
+              },
             ],
           },
     ),
@@ -386,13 +424,18 @@ export function setAccountStatus(id: string, status: "active" | "suspended", at 
 
 export type EmpProfile = Pick<
   Employee,
-  "name" | "nick" | "sex" | "birth" | "edu" | "exp" | "phone" | "email" | "address" | "sos" | "boss" | "docs"
+  "name" | "nick" | "sex" | "birth" | "edu" | "exp" | "phone" | "email" | "address" | "sos" | "boss" | "docs" | "bankName" | "bankNo"
 > & {
   /* ตำแหน่งควบ — แก้พร้อมข้อมูลพนักงานได้เลย ไม่ต้องลงประวัติเงินเดือนเหมือนการปรับตำแหน่งหลัก */
   posMore?: PosKey[];
 };
 
 /** by = ชื่อผู้แก้ (ฝ่ายบุคคล) · ประทับเวลาไว้ที่ตัวพนักงานเป็น "แก้ไขล่าสุด" */
+/** ลบพนักงานออกจากทะเบียน (ผู้ใช้สั่ง 13 ต.ค. 2569) — ยืนยันก่อนลบที่หน้าพนักงาน */
+export function deleteEmployee(id: string) {
+  store.update((s) => ({ ...s, emp: s.emp.filter((e) => e.id !== id) }));
+}
+
 export function updateEmpProfile(id: string, profile: EmpProfile, by: string) {
   store.update((s) => ({
     ...s,
@@ -457,8 +500,11 @@ export function setEmpLeft(id: string, leftAt: string, leftWhy: string) {
   /* พ้นสภาพแล้วต้องเข้าระบบไม่ได้ — ระงับบัญชีให้ทันทีเมื่อวันพ้นสภาพมาถึงแล้ว
      ลาออกล่วงหน้ายังใช้ระบบได้จนถึงวันนั้น · ยกเลิกการพ้นสภาพไม่คืนสิทธิ์เอง ให้ฝ่ายบุคคลตัดสินที่หน้าบัญชีผู้ใช้ */
   const e = store.get().emp.find((x) => x.id === id);
-  if (leftAt && leftAt <= todayIso() && e?.status === "left" && e.account?.status === "active") {
+  /* พ้นสภาพแล้วระงับบัญชีให้ทันที · ยกเลิกพ้นสภาพแล้วเปิดบัญชีคืน — HR ไม่ต้องไปทำซ้ำที่หน้าบัญชี (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  if (leftAt && e?.status === "left" && e.account?.status === "active") {
     setAccountStatus(id, "suspended", bkkStamp());
+  } else if (!leftAt && e?.status === "active" && e.account?.status === "suspended") {
+    setAccountStatus(id, "active");
   }
 }
 
@@ -531,6 +577,19 @@ export function noteIssue(id: string, day: string, note: string, time: { in?: st
   }));
 }
 
+/**
+ * HR ยืนยันวันที่ลาแล้วแต่มีเช็คอิน (ผู้ใช้สั่ง 15 ต.ค. 2569) — เก็บผู้ยืนยัน เวลา และหมายเหตุ
+ * ยืนยันแล้วไม่นับเป็นรายการที่ต้องตรวจ · ไม่แตะเวลาเข้า-ออกและใบลา
+ */
+export function confirmClash(id: string, day: string, note: string, by = HR_ME) {
+  store.update((s) => ({
+    ...s,
+    clashOk: { ...(s.clashOk ?? {}), [`${id}|${day}`]: { by, at: bkkStamp(), note: note.trim() } },
+  }));
+}
+
+/* ไม่มีการยกเลิกการยืนยัน — ยืนยันแล้วถือเป็นที่สิ้นสุด ข้อมูลส่งต่อถึง CEO (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+
 // ─── ใบลาของนักศึกษาฝึกงาน ───────────────────────────────────────
 
 /** วันทำงานระหว่างสองวัน (รวมหัวท้าย) — วันหยุดไม่นับเป็นวันลา */
@@ -569,30 +628,48 @@ export function decideInternLeave(id: string, ok: boolean, now: string, by = HR_
   });
 }
 
-// ─── CEO อนุมัติยอดเงินเดือน ─────────────────────────────────────
+// ─── CEO อนุมัติยอดเงินเดือน — กลับมาใช้ (ผู้ใช้สั่ง 19 ต.ค. 2569 · ยกเลิกคำสั่ง 13–14 ต.ค.) ─────────
+// HR คำนวณ → ส่ง CEO → CEO อนุมัติหรือไม่อนุมัติพร้อมเหตุผล → ไม่อนุมัติ HR แก้แล้วส่งใหม่
+// → อนุมัติแล้ว HR ปิดรอบเงินเดือน แล้วสร้างและเผยแพร่สลิป
+// แก้ยอดหลังส่ง (รอ CEO / อนุมัติแล้ว / ไม่อนุมัติ) = ระบบส่งใหม่ให้เอง "แก้ไขแล้ว รออนุมัติใหม่" (ผู้ใช้สั่ง 19 ต.ค. 2569)
+//   แบบเดียวกับงานที่ PM ตรวจ · นับครั้งที่ส่งใหม่ (ver) และเก็บสิ่งที่เปลี่ยนรายคนไว้ให้ CEO ดู (usePayrollAutoResubmit)
+// คีย์ "รอบ|กลุ่ม" — รอบเดือน "yyyy-mm|month" · รอบรายสัปดาห์ของทดลองงาน "จาก~ถึง|day"
 
-/** ฝ่ายบุคคลส่งยอดของกลุ่มหนึ่งให้ CEO อนุมัติ — ส่งซ้ำได้หลังถูกตีกลับ */
-export function sendPayrollToCeo(
-  month: string,
-  group: PayGroup,
-  snap: { people: number; net: number; ss: number },
-  now: string,
-  by = HR_ME,
-) {
-  store.update((s) => ({
-    ...s,
-    payApprove: {
-      ...s.payApprove,
-      [payApproveKey(month, group)]: { status: "waiting", ...snap, sentBy: by, sentAt: now },
-    },
-  }));
+/** ยอดที่ส่ง — รวมทั้งกลุ่ม + ยอดรายคน (lines) และชื่อรายคนไว้ทำรายการสิ่งที่เปลี่ยน */
+export type PaySend = { people: number; net: number; ss: number; lines?: PaySnap; names?: Record<string, string> };
+
+/** ยอดส่งชุดใหม่ทับของเดิม — เคยส่งแล้วนับเป็น "ส่งใหม่ครั้งที่ n" พร้อมสิ่งที่เปลี่ยนจากครั้งก่อน */
+function resend(cur: PayApproval | undefined, snap: PaySend, now: string, by: string, auto: boolean): PayApproval {
+  const { names, ...nums } = snap;
+  const sent = Boolean(cur && (cur.sentAt || cur.status !== "draft" || cur.reason));
+  if (!sent || !cur) return { status: "waiting", ...nums, sentBy: by, sentAt: now };
+  return {
+    status: "waiting",
+    ...nums,
+    sentBy: by,
+    sentAt: now,
+    ver: (cur.ver ?? 0) + 1,
+    auto,
+    prev: cur.status,
+    prevNet: cur.net,
+    changes: cur.lines && snap.lines ? payChanges(cur.lines, snap.lines, names) : [],
+    /* ร่างที่ถูกยกเลิกการอนุมัติแบบเก่า — ไม่มียอดรายคนให้เทียบ เก็บเหตุผลเดิม (ยอดเก่า → ใหม่) ไว้ให้ CEO อ่าน */
+    ...(cur.status === "draft" && cur.reason ? { reason: cur.reason } : {}),
+  };
+}
+
+/** ฝ่ายบุคคลส่งยอดของกลุ่มหนึ่งให้ CEO อนุมัติ — กด "ส่งใหม่" ได้หลังถูกตีกลับ (นับเป็นการส่งใหม่ครั้งถัดไป) */
+export function sendPayrollToCeo(month: string, group: PayGroup, snap: PaySend, now: string, by = HR_ME) {
+  store.update((s) => {
+    const key = payApproveKey(month, group);
+    if (isPayClosed(s, month, group)) return s;
+    return { ...s, payApprove: { ...s.payApprove, [key]: resend(s.payApprove[key], snap, now, by, false) } };
+  });
 }
 
 /**
- * CEO อนุมัติหรือตีกลับยอดที่ส่งมา — ตีกลับต้องมีเหตุผล ฝ่ายบุคคลจะเห็นบนป้ายสถานะ
- *
- * snap = ยอดที่ CEO เห็นบนจอตอนกด (อ่านจากผลคำนวณของรอบ ไม่ใช่ยอดที่เก็บไว้เอง)
- * บันทึกทับไว้ด้วย เพราะสิ่งที่อนุมัติคือเลขที่เห็น ถ้าเลขขยับทีหลังต้องรู้ได้ว่าขยับจากอะไร
+ * CEO อนุมัติหรือไม่อนุมัติยอดที่ส่งมา — ไม่อนุมัติต้องมีเหตุผล ฝ่ายบุคคลเห็นบนป้ายสถานะและกระดิ่ง
+ * snap = ยอดที่ CEO เห็นบนจอตอนกด (อ่านจากผลคำนวณของรอบ) บันทึกทับไว้ เพราะสิ่งที่อนุมัติคือเลขที่เห็น
  */
 export function decidePayroll(
   month: string,
@@ -601,19 +678,20 @@ export function decidePayroll(
   reason: string,
   now: string,
   by = "CEO",
-  snap?: { people: number; net: number; ss: number },
+  snap?: PaySend,
 ) {
   store.update((s) => {
     const key = payApproveKey(month, group);
     const cur = s.payApprove[key];
     if (!cur || cur.status !== "waiting") return s;
+    const nums = snap ? { people: snap.people, net: snap.net, ss: snap.ss, ...(snap.lines ? { lines: snap.lines } : {}) } : {};
     return {
       ...s,
       payApprove: {
         ...s.payApprove,
         [key]: {
           ...cur,
-          ...(ok && snap ? snap : {}),
+          ...(ok ? nums : {}),
           status: ok ? "approved" : "rejected",
           by,
           at: now,
@@ -625,19 +703,35 @@ export function decidePayroll(
 }
 
 /**
- * ยกเลิกการอนุมัติเอง เพราะยอดที่คิดได้ไม่ใช่ยอดที่ส่งไปแล้ว (ผู้ใช้กำหนด 23 ก.ย. 2569)
- *
- * CEO อนุมัติเลขหนึ่ง แล้วจ่ายอีกเลขหนึ่งไม่ได้ ตัวเลขขยับเมื่อไรการอนุมัติเดิมเป็นโมฆะทันที
- * กลับไปเป็นร่างพร้อมเหตุผล ไม่ใช่ "ตีกลับ" เพราะ CEO ไม่ได้เป็นคนสั่ง — ฝ่ายบุคคลต้องส่งใหม่
- * ยอดที่บันทึกไว้ล้างทิ้งด้วย ไม่งั้นรอบต่อไปจะเทียบกับเลขเก่าที่ไม่มีความหมายแล้ว
+ * HR แก้ยอดหลังส่ง → ส่งให้ CEO อนุมัติใหม่เอง ไม่ต้องกดส่งซ้ำ (ผู้ใช้สั่ง 19 ต.ค. 2569 · แทนการยกเลิกการอนุมัติกลับเป็นร่าง)
+ * ใช้กับรอบที่รอ CEO / อนุมัติแล้ว / ไม่อนุมัติ และรอบที่เคยถูกยกเลิกการอนุมัติแบบเก่า (ร่างที่มีเหตุผล)
+ * รอบที่ปิดเงินเดือนแล้วไม่ถูกแตะ (ยอดปิดไว้แล้ว)
  */
-export function voidPayApproval(month: string, group: PayGroup, why: string) {
+export function resubmitPayApproval(month: string, group: PayGroup, snap: PaySend, now: string) {
   store.update((s) => {
     const key = payApproveKey(month, group);
     const cur = s.payApprove[key];
-    if (!cur || (cur.status !== "waiting" && cur.status !== "approved")) return s;
-    return { ...s, payApprove: { ...s.payApprove, [key]: { status: "draft", reason: why } } };
+    if (!cur) return s;
+    if (cur.status === "draft" && !cur.reason) return s;
+    if (isPayClosed(s, month, group)) return s;
+    /* ตัวเฝ้าหลายตัวบนหน้าเดียวกันเรียกซ้ำได้ — ยอดชุดนี้ส่งไปแล้วไม่นับเป็นการส่งใหม่อีกครั้ง */
+    if (cur.status !== "draft" && cur.lines && snap.lines && payChanges(cur.lines, snap.lines).length === 0) return s;
+    return {
+      ...s,
+      payApprove: { ...s.payApprove, [key]: resend(cur, snap, now, cur.sentBy || HR_ME, true) },
+    };
   });
+}
+
+/** รอบเงินเดือนของกลุ่มนี้ปิดแล้วหรือยัง — รอบเดือนดู payruns · รอบทดลองงานดู payClosedAt ของรอบ */
+function isPayClosed(s: HrState, key: string, group: PayGroup) {
+  if (group === "day" && key.includes("~")) return Boolean(s.dailyRounds.find((r) => r.id === key)?.payClosedAt);
+  return closedIn(s.payruns.find((p) => p.month === key), group);
+}
+
+/** CEO อนุมัติยอดของรอบนี้แล้วหรือยัง — ด่านปิดรอบเงินเดือนที่ชั้นสโตร์ */
+function payApproved(s: HrState, key: string, group: PayGroup) {
+  return s.payApprove[payApproveKey(key, group)]?.status === "approved";
 }
 
 // ─── ปิดรอบ ─────────────────────────────────────────
@@ -693,18 +787,24 @@ export function closePayrun(
   group: PayGroup,
   sum: CycleSum,
   by = HR_ME,
-) {
+): boolean {
+  let done = false;
   store.update((s) => {
     /*
      * ห้ามข้ามขั้น — ปิดรอบเงินเดือนได้ก็ต่อเมื่อปิดรอบเวลาทำงานของกลุ่มนั้นแล้ว
-     * (ลำดับที่เจ้าของกำหนด: ปิดรอบเวลา → CEO อนุมัติ → ปิดเงินเดือน → ออกสลิป)
+     * (ลำดับ: ปิดรอบเวลา → คำนวณและปิดรอบเงินเดือน → ออกสลิป/เผยแพร่ · ไม่มีขั้น CEO แล้ว ผู้ใช้สั่ง 13 ต.ค. 2569)
      * กันที่ชั้นสโตร์ ไม่ใช่เชื่อว่าหน้าจอซ่อนปุ่มให้แล้ว — เงินเดือนที่ปิดจากเวลาที่ยังแก้ได้
      * คือยอดที่เปลี่ยนได้ทีหลังทั้งที่สลิปออกไปแล้ว
      */
     const period = s.periods.find((x) => x.month === month);
     if (!closedIn(period, group)) return s;
+    /* ต้องให้ CEO อนุมัติยอดก่อน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+    if (!payApproved(s, month, group)) return s;
+    done = true;
     return { ...s, payruns: closeIn(s.payruns, month, today, by, group, sum) };
   });
+  /* ปิดไม่สำเร็จ (ยังไม่อนุมัติ) — ผู้เรียกต้องไม่บันทึกใบเบิกว่าจ่ายแล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  return done;
 }
 
 // ─── รอบจ่ายรายวันของพนักงานทดลองงาน (ผู้ใช้สั่ง 6 ต.ค. 2569) ─────────
@@ -720,14 +820,22 @@ function editRound(id: string, fn: (r: DailyRound) => DailyRound) {
 export function closeDailyTime(c: Cycle, today: string, by = HR_ME) {
   store.update((s) => {
     if (s.dailyRounds.some((r) => r.id === dailyRoundId(c)) || overlapRound(s.dailyRounds, c)) return s;
+    /* รอบใหม่ต้องเป็นรอบรายสัปดาห์ (จันทร์–อาทิตย์ ตัดวันที่รอบรายวันเก่าจ่ายแล้ว) (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+    const w = weekRangeFor(c.from, s.dailyRounds);
+    if (w.from !== c.from || w.to !== c.to) return s;
     const dailyRounds = [...s.dailyRounds, newDailyRound(c, today, by)].sort((a, b) => a.from.localeCompare(b.from));
     return { ...s, dailyRounds };
   });
 }
 
 /** ปิดรอบเงินเดือนของรอบรายวัน พร้อมยอดที่บันทึกไว้ — ต้องปิดรอบเวลาแล้ว (มีรอบอยู่) */
-export function closeDailyPay(id: string, today: string, sum: CycleSum, by = HR_ME) {
+export function closeDailyPay(id: string, today: string, sum: CycleSum, by = HR_ME): boolean {
+  /* ต้องให้ CEO อนุมัติยอดของรอบรายสัปดาห์ก่อน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  if (!payApproved(store.get(), id, "day")) return false;
+  const r = store.get().dailyRounds.find((x) => x.id === id);
+  if (!r?.closedAt || r.payClosedAt) return false;
   editRound(id, (r) => (r.closedAt && !r.payClosedAt ? { ...r, payClosedAt: today, payClosedBy: by, sum } : r));
+  return true;
 }
 
 export function makeDailySlips(id: string, today: string) {
@@ -766,7 +874,7 @@ export function countDailyDownload(id: string, emp: string) {
 
 // ─── ค่าที่ไม่มีสูตร ──────────────────────────────────────────────
 
-/** บันทึก Incentive ค่าตำแหน่ง และรายการปรับปรุงของคนหนึ่งในรอบหนึ่ง */
+/** บันทึกรายการเงินได้/รายการหักที่กรอกเองของคนหนึ่งในรอบหนึ่ง (ผู้ใช้สั่ง 16 ต.ค. 2569) */
 export function saveExtra(month: string, id: string, extra: Extra) {
   store.update((s) => ({
     ...s,

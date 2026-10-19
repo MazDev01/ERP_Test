@@ -16,6 +16,7 @@ import { bkkStamp, daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/form
 import { fileKindLabel, lastSub, projName, type Project, type ProjectTask } from "@/lib/pm-data";
 import { memberName, openNudge, postTaskTalk, submitWork, taskTalks, usePm, type TaskTalk } from "@/lib/pm-store";
 import { useProfile } from "@/lib/profile-data";
+import { nameOf } from "@/lib/emp-name";
 import { FileDrop, type PickedFile } from "./file-drop";
 import { Field, Sheet } from "./lead-dialogs";
 import { SearchBox } from "./sales-ui";
@@ -182,13 +183,13 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
 
   return (
     <div className="m-mt space-y-[18px] max-md:space-y-3">
-      {/* ชื่อหน้ากับวันที่วันนี้ (ต้นแบบ appbar tk-head) อยู่ในแถบบนของเปลือกแอปแล้วทุกขนาดจอ
-          เคยมีหัวซ้ำเฉพาะมือถือ พอแถบบนของมือถือมีวันที่ด้วยจึงขึ้นซ้ำสองชั้น ตัดออก */}
+      {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว · มือถือชื่อหน้าอยู่แถบบนของมือถือเหมือนเดิม (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1">งานที่ได้รับ</h1>
 
       {/* แบนเนอร์ทักทาย — จอเล็กกว่า md ซ่อน ตามต้นแบบ (mt-mobile .tk-hero) */}
       <section className="relative hidden overflow-hidden rounded-[20px] bg-accent px-8 py-9 max-md:hidden! sm:block lg:px-[60px] lg:py-12">
         <h2 className="truncate text-[34px] leading-tight font-bold lg:text-[40px]">
-          สวัสดี, {me.name.split(" ")[0]}
+          สวัสดี, {nameOf(me.name).split(" ")[0]}
         </h2>
         <p className="mt-3 text-[16px] text-foreground/80">พร้อมเริ่มงานของวันนี้แล้วหรือยัง</p>
         <span
@@ -540,7 +541,7 @@ function TaskCard({
               </span>
             )}
             {t.assignedAt && <span className="num">มอบหมาย {thaiStamp(t.assignedAt)} น.</span>}
-            <span>โดย {t.lastChange?.by || p.pm}</span>
+            <span>โดย {nameOf(t.lastChange?.by || p.pm)}</span>
             {t.files.length > 0 && (
               <span className="num inline-flex items-center gap-1">
                 <FileIcon className="size-[13px]" strokeWidth={2} />
@@ -633,7 +634,7 @@ function DetailDialog({
       <ProjectDocs p={p} />
 
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-        <Kv k="ผู้มอบหมาย" v={t.lastChange?.by || p.pm} />
+        <Kv k="ผู้มอบหมาย" v={nameOf(t.lastChange?.by || p.pm)} />
         <Kv k="กำหนดส่ง" v={thaiDate(t.due)} warn={late} />
         {t.assignedAt && <Kv k="มอบหมายเมื่อ" v={`${thaiStamp(t.assignedAt)} น.`} />}
         {t.lastChange && (
@@ -762,7 +763,7 @@ function SubmitHistory({ p, t }: { p: Project; t: ProjectTask }) {
               <div className="flex flex-wrap items-center gap-2.5">
                 <b className="text-[13px] font-bold">รอบที่ {i + 1}</b>
                 <span className="num text-[12.5px] text-muted-foreground">ส่ง {stamp(sb.at)}</span>
-                {sb.by && <span className="text-[12px] text-muted-foreground">{memberName(sb.by)}</span>}
+                {sb.by && <span className="text-[12px] text-muted-foreground">{nameOf(memberName(sb.by))}</span>}
               </div>
               <div className="mt-2">
                 <FileList names={sb.files.map((n) => ({ n }))} empty="ไม่ได้แนบไฟล์" />
@@ -906,7 +907,7 @@ function SubmitDialog({
           <FileList names={t.files.map((f) => ({ n: f.n, sz: f.sz }))} empty="ไม่มีไฟล์แนบ" />
           <ProjectDocs p={p} />
           <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Kv k="ผู้มอบหมาย" v={t.lastChange?.by || p.pm} />
+            <Kv k="ผู้มอบหมาย" v={nameOf(t.lastChange?.by || p.pm)} />
             <Kv k="กำหนดส่ง" v={thaiDate(t.due)} />
             {t.assignedAt && <Kv k="มอบหมายเมื่อ" v={`${thaiStamp(t.assignedAt)} น.`} />}
           </dl>
@@ -1063,7 +1064,7 @@ function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string;
       <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line text-destructive">{back.why}</p>
       <em className="num mt-1.5 block text-[11.5px] text-muted-foreground not-italic">
         {/* บางใบเก็บเป็นรหัสพนักงาน — คนอ่านต้องเห็นชื่อ ไม่ใช่รหัส */}
-        {back.by ? memberName(back.by) : "PM"} · {thaiDate(back.at.split(" ")[0])}
+        {back.by ? nameOf(memberName(back.by)) : "PM"} · {thaiDate(back.at.split(" ")[0])}
       </em>
       {round && (
         <div className="mt-3 rounded-[12px] bg-card p-3">
@@ -1142,7 +1143,7 @@ function ProjectDocs({ p }: { p: Project }) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-medium">{d.n}</span>
               <em className="block text-[11.5px] text-muted-foreground not-italic">
-                {d.url ? "ลิงก์" : `${fileKindLabel(d.n)} · ${d.sz}`} · แนบโดย {d.by || "—"}
+                {d.url ? "ลิงก์" : `${fileKindLabel(d.n)} · ${d.sz}`} · แนบโดย {d.by ? nameOf(d.by) : "—"}
               </em>
             </span>
             {d.url ? (

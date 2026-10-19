@@ -17,23 +17,23 @@
  * การ์ดไหนขึ้นกับช่วงไหนเขียนบอกไว้ในหน้าจอแล้ว ไม่ต้องเดาจากหัวเรื่อง
  */
 
+import { displayName } from "@/lib/emp-name";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useAcc } from "@/lib/acc-store";
+import { invoiceLateDays, useAcc } from "@/lib/acc-store";
 import { useCrm } from "@/lib/crm-store";
 import { TH_MONTHS_SHORT, money, parseIsoDate, thaiDate, todayIso } from "@/lib/format";
 import { bucketsOf, rangeOf } from "@/lib/sales-report";
 import { quotationValidUntil } from "@/lib/crm-data";
 import {
-  GROUP_LABEL,
   HR_LEAVE_LABEL,
   empOf,
   hrCycle,
   hrPos,
-  payApproval,
+  dailyRoundsOfMonth,
   type CycleSum,
-  type PayGroup,
+  type DailyRound,
   type Period,
 } from "@/lib/hr-data";
 import { useTodayAttendance, type AttState } from "@/lib/hr-link";
@@ -81,23 +81,13 @@ export function CeoDashboardPage() {
   const pays = acc.payments.filter((p) => inR(p.date));
   const got = pays.reduce((a, p) => a + p.received + p.wht, 0);
   const open = acc.invoices.filter((v) => v.outstanding > 0);
-  const over = open.filter((v) => v.due && v.due < today);
+  /* ใบลงวันที่ล่วงหน้ายังไม่ถึงวันออกไม่นับว่าเกินกำหนด (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const over = open.filter((v) => v.due && invoiceLateDays(v, today) > 0);
   const won = crm.deals.filter((d) => d.status === "ปิดการขาย" && inR(d.closedAt));
-  const last = lastCost(hr.payruns);
+  const last = lastCost(hr.payruns, hr.dailyRounds);
 
-  /*
-   * รอบเงินเดือนที่ฝ่ายบุคคลส่งมาแล้วรอเราอนุมัติ
-   * การ์ดต้นทุนแรงงานพูดถึงรอบที่ "ปิดแล้ว" (ล่าสุดคือ ก.ค.) ส่วนรอบที่ต้องลงมือคือรอบที่รออนุมัติ
-   * ถ้าไม่ขึ้นตรงนี้ CEO จะเห็นแต่รอบเก่า แล้วไม่รู้ว่ามีรอบใหม่ค้างรอลายเซ็นอยู่
-   */
-  const waitPay = useMemo(() => {
-    const out: { month: string; group: PayGroup }[] = [];
-    for (const p of hr.periods)
-      for (const g of ["month", "day"] as PayGroup[])
-        if (payApproval(hr.payApprove, p.month, g).status === "waiting") out.push({ month: p.month, group: g });
-    return out.sort((a, b) => a.month.localeCompare(b.month));
-  }, [hr.periods, hr.payApprove]);
-  const waitPayMonths = [...new Set(waitPay.map((x) => x.month))];
+  /* ไม่มีรอบเงินเดือนรอเราอนุมัติแล้ว — ฝ่ายบุคคลปิดรอบตอนคำนวณแล้วออกสลิปได้เลย (ผู้ใช้สั่ง 13 ต.ค. 2569)
+     ต้นทุนแรงงานนับจากรอบเงินเดือนที่ปิดแล้ว (costOf อ่าน run.closed) ไม่ขึ้นกับการอนุมัติ */
 
   /*
    * ── ยอดขายแยกบริการ — บริการมาจากใบเสนอราคาของดีล (1 ใบ = 1 บริการ)
@@ -179,7 +169,7 @@ export function CeoDashboardPage() {
       .sort((a, b) => a.at.localeCompare(b.at))
       .map((r) => ({
         key: `${r.kind}-${r.id}`,
-        who: empOf(hr.emp, r.emp)?.name ?? r.emp,
+        who: displayName(empOf(hr.emp, r.emp)) || r.emp,
         type: r.kind === "ot" ? "OT" : r.label,
         detail: r.big,
         when: r.lines[0],
@@ -251,25 +241,6 @@ export function CeoDashboardPage() {
         />
       </div>
 
-      {/* รอบเงินเดือนที่รอลายเซ็นของเรา — ต้องเห็นบนหน้าแรก ไม่ใช่ต้องเข้าไปหาในหน้าคำขออนุมัติ */}
-      {waitPayMonths.length > 0 && (
-        <Link
-          href="/ceo/approvals?k=pay"
-          className="glass flex items-center gap-3 rounded-[14px] border border-[var(--warning)] px-5 py-3.5 text-[13.5px] hover:bg-muted max-sm:min-h-14"
-        >
-          <span className="min-w-0 flex-1">
-            <b className="block font-semibold text-destructive">
-              ยอดเงินเดือนรอเราอนุมัติ {waitPayMonths.map(shortRound).join(" · ")}
-            </b>
-            <em className="mt-0.5 block text-[12px] text-muted-foreground not-italic">
-              {waitPay.map((x) => `${shortRound(x.month)} ${GROUP_LABEL[x.group]}`).join(" · ")} · ยังไม่อนุมัติ
-            </em>
-          </span>
-          <span aria-hidden className="flex-none text-[18px] text-muted-foreground">
-            ›
-          </span>
-        </Link>
-      )}
 
       <div className="grid items-stretch gap-3.5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         {/* กราฟตามช่วงที่เลือก: เดือนนี้รายสัปดาห์ · ไตรมาส/ปีนี้รายเดือน (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
@@ -277,6 +248,7 @@ export function CeoDashboardPage() {
           <Trend
             payments={acc.payments}
             payruns={hr.payruns}
+            rounds={hr.dailyRounds}
             today={today}
             buckets={buckets}
             weekly={span.buckets === "week"}
@@ -431,7 +403,7 @@ export function CeoDashboardPage() {
                 .map((a) => (
                   <li key={a.e.id} className="flex items-center justify-between gap-3 py-2.5">
                     <span>
-                      <b className="block text-[13.5px] font-semibold">{a.e.name}</b>
+                      <b className="block text-[13.5px] font-semibold">{displayName(a.e)}</b>
                       <em className="text-[12px] text-muted-foreground not-italic">{hrPos(a.e.pos).label}</em>
                     </span>
                     {/* ลาบอกแค่ประเภท ไม่บอกเหตุผล (ต้นแบบ) */}
@@ -478,6 +450,7 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 function Trend({
   payments,
   payruns,
+  rounds,
   today,
   buckets,
   weekly,
@@ -485,6 +458,7 @@ function Trend({
 }: {
   payments: { date: string; received: number; wht: number }[];
   payruns: Period[];
+  rounds: DailyRound[];
   today: string;
   buckets: { label: string; from: string; to: string }[];
   weekly: boolean;
@@ -497,10 +471,10 @@ function Trend({
       b.from > today
         ? null
         : payments.filter((p) => p.date >= b.from && p.date <= b.to).reduce((a, p) => a + p.received + p.wht, 0),
-    pay: weekly ? null : (costOf(payruns.find((r) => r.month === b.from.slice(0, 7)))?.cost ?? null),
+    pay: weekly ? null : (costOf(payruns.find((r) => r.month === b.from.slice(0, 7)), rounds)?.cost ?? null),
   }));
   /* เดือนนี้: ต้นทุนแรงงานของรอบเดือนนี้ (ถ้าปิดแล้ว) เป็นเส้นอ้างอิงเส้นเดียว */
-  const ref = weekly ? (costOf(payruns.find((r) => r.month === month))?.cost ?? null) : null;
+  const ref = weekly ? (costOf(payruns.find((r) => r.month === month), rounds)?.cost ?? null) : null;
   const hasPay = ref !== null || pts.some((x) => x.pay !== null);
 
   const top =
@@ -714,23 +688,27 @@ function short(v: number) {
  * ค่าใช้จ่ายคืน (ใบเบิก) ไม่ใช่ค่าจ้าง จึงไม่นับ · ใช้ยอดที่ฝ่ายบุคคลบันทึกไว้ตอนปิดรอบ รอบที่ยังไม่ปิดไม่นับ
  */
 function sumCost(x: CycleSum) {
-  return x.base + x.ot + x.com + x.inc + x.allow + x.adj + x.ss;
+  /* รายได้อื่นที่กรอกเอง (more) เป็นค่าจ้าง · รายการหักที่กรอกเอง (adj) ยังหักออกเหมือนรายการปรับปรุงเดิม (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  return x.base + x.ot + x.com + x.inc + x.allow + (x.more ?? 0) + x.adj + x.ss;
 }
 
-function costOf(run?: Period) {
+/* กลุ่มทดลองงานอ่านจากรอบจ่ายรายวันที่ปิดเงินเดือนแล้ว (dailyRounds) ไม่ใช่ run.daySum ของรอบเดือนแบบเก่า
+   — ที่มาเดียวกับหน้ายอดเงินเดือนของ CEO ยอดจึงตรงกัน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+function costOf(run: Period | undefined, rounds: DailyRound[]) {
   if (!run || !run.closed || !run.sum) return null;
   let cost = sumCost(run.sum);
   let n = run.sum.n;
-  if (run.dayClosed && run.daySum) {
-    cost += sumCost(run.daySum);
-    n += run.daySum.n;
+  for (const r of dailyRoundsOfMonth(rounds, run.month)) {
+    if (!r.payClosedAt || !r.sum) continue;
+    cost += sumCost(r.sum);
+    n += r.sum.n;
   }
   return { cost, n, month: run.month };
 }
 
-function lastCost(runs: Period[]) {
+function lastCost(runs: Period[], rounds: DailyRound[]) {
   return runs
-    .map((r) => costOf(r))
+    .map((r) => costOf(r, rounds))
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
     .sort((a, b) => b.month.localeCompare(a.month))[0];
 }

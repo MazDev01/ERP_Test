@@ -30,7 +30,7 @@ export function PresalesDashPage() {
   const crm = useCrm();
   const today = todayIso();
   const nameOf = useMemo(() => new Map(crm.customers.map((c) => [c.code, c.name])), [crm.customers]);
-  const cus = (r: PresalesRequest) => nameOf.get(r.customerCode) ?? r.customerCode;
+  const cus = (r: PresalesRequest) => nameOf.get(r.customerCode) ?? "—";
 
   const my = crm.presales.filter(mine);
   const todo = my.filter((r) => r.status === "รอรับงาน");
@@ -124,7 +124,6 @@ export function PresalesDashPage() {
                     }`}
                   >
                     {RESULT_LABEL[x.st]}
-                    {x.deal ? ` ${x.deal.no}` : ""}
                   </em>
                 </Row>
               ))

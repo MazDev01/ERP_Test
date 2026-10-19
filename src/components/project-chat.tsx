@@ -8,7 +8,8 @@
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { bkkNow, daysBetween, initials, pad2, thaiDate, toIsoDate, todayIso } from "@/lib/format";
+import { bkkNow, daysBetween, pad2, thaiDate, toIsoDate, todayIso } from "@/lib/format";
+import { initialOf, nameOf } from "@/lib/emp-name";
 import { projectMembers, type ChatMessage, type Project } from "@/lib/pm-data";
 import { memberOf, postChat } from "@/lib/pm-store";
 import { lockScroll } from "@/lib/scroll-lock";
@@ -140,7 +141,7 @@ function Chat({
           )}
           {rows.map(({ m, sep, head }, i) => {
             const mine = m.who === me;
-            const name = m.who === "PM" ? project.pm : (memberOf(m.who)?.name ?? m.who);
+            const name = m.who === "PM" ? nameOf(project.pm) : (memberOf(m.who)?.name ?? nameOf(m.who));
             return (
               <div key={`${m.at}-${i}`} className="flex flex-col">
                 {sep && (
@@ -156,7 +157,7 @@ function Chat({
                         head ? "bg-accent text-primary" : "invisible"
                       }`}
                     >
-                      {initials(name)}
+                      {initialOf(name)}
                     </span>
                   )}
                   <div className="flex min-w-0 flex-col">

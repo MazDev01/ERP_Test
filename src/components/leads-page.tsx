@@ -8,11 +8,18 @@ import {
   type Customer,
   type CustomerStatus,
   CUSTOMER_STATUS,
+  rejectInfo,
 } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { daysBetween, thaiDate, todayIso } from "@/lib/format";
+import { stackNo } from "@/lib/stack-no";
+import { createdKey, setSort, usePipePrefs, type SortDir } from "@/lib/pipeline-cols";
+import { useProfile } from "@/lib/profile-data";
+import { useRole } from "@/lib/role";
 import { ClockIcon, PhoneIcon, PlusIcon } from "./icons";
 import { LeadNewDialog } from "./lead-form";
+import { LeadsFollowup } from "./leads-followup";
+import { LeadsPipeline } from "./leads-pipeline";
 import { Pager, SearchBox, TabStrip, Who, usePaged } from "./sales-ui";
 
 const PER_PAGE = 7;
@@ -33,8 +40,17 @@ export function LeadsPage() {
   const [query, setQuery] = useState("");
   const [staleOnly, setStaleOnly] = useState(false);
   const [adding, setAdding] = useState(false);
+  /* มุมมองรายการ | Pipeline — เป็นโหมดแสดงผลของหน้าเดียวกัน ไม่ใช่เมนูนำทาง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  /* เพิ่มมุมมองแผนติดตาม เฉพาะพนักงานขาย — บทบาทอื่นไม่เห็นปุ่มนี้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const isSales = useRole() === "sales";
+  const [viewPick, setView] = useState<"list" | "pipeline" | "followup">("list");
+  const view = viewPick === "followup" && !isSales ? "list" : viewPick;
   const router = useRouter();
   const today = todayIso();
+  /* ตัวเลือกการเรียงจำแยกตามพนักงาน ใช้ทั้ง Pipeline และรายการ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const profile = useProfile();
+  const user = profile.employeeId;
+  const sort = usePipePrefs(user).sort;
 
   /** วันที่ติดต่อล่าสุดของลูกค้าแต่ละราย ใช้ทั้งแสดงผลและหาผู้สนใจที่ค้าง */
   const lastContact = useMemo(() => {
@@ -47,11 +63,34 @@ export function LeadsPage() {
     return map;
   }, [crm.activities]);
 
+  /** วันติดต่อครั้งแรก — ใช้แทนวันที่สร้างซึ่งไม่มีในข้อมูลผู้สนใจ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const firstContact = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of crm.activities) {
+      if (!map[a.customerCode] || a.date < map[a.customerCode]) map[a.customerCode] = a.date;
+    }
+    return map;
+  }, [crm.activities]);
+
   const isStale = (c: Customer) =>
     c.status === "รอนัดหมาย" &&
     daysBetween(lastContact[c.code] ?? "2000-01-01", today) > STALE_DAYS;
 
-  const scoped = useMemo(() => {
+  /*
+   * ลำดับแบบกองซ้อน — นับจากผู้สนใจทั้งหมดก่อนกรองแท็บ/ค้นหา ใหม่สุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * ผู้สนใจไม่มีวันที่สร้าง ใช้รหัสเดิม (ปีเดือน-เลขรัน) แทนลำดับการสร้าง
+   */
+  const noOf = useMemo(
+    () =>
+      stackNo(
+        crm.customers.filter((c) => c.status !== "ปิดงาน"),
+        (c) => (c.leadCode ?? c.code).replace(/^[A-Z]+-/, ""),
+        (c) => c.code,
+      ),
+    [crm.customers],
+  );
+
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return crm.customers.filter((c) => {
       /* ลูกค้าที่ปิดการขายแล้ว (ปิดงาน) ไปอยู่ที่หน้าดีล — ข้อมูลยังอยู่ แค่ไม่แสดงที่นี่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
@@ -62,6 +101,14 @@ export function LeadsPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crm.customers, query, staleOnly, lastContact, today]);
+  /* เรียงเป็นอาร์เรย์ใหม่ — Pipeline จับการเปลี่ยนลำดับได้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const scoped = useMemo(() => [...filtered].sort((a, b) => {
+    /* ใหม่สุดอยู่บนเป็นค่าตั้งต้น (ผู้ใช้สั่ง 12 ต.ค. 2569) · สลับเป็นเก่าสุดก่อนได้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+    const ka = createdKey(a.code, a.leadCode, firstContact[a.code] ?? "", a.createdAt);
+    const kb = createdKey(b.code, b.leadCode, firstContact[b.code] ?? "", b.createdAt);
+    const d = kb.localeCompare(ka) || (noOf.get(b.code) ?? 0) - (noOf.get(a.code) ?? 0);
+    return sort === "old" ? -d : d;
+  }), [filtered, firstContact, noOf, sort]);
 
   const rows = tab === "all" ? scoped : scoped.filter((c) => c.status === tab);
   const paged = usePaged(rows, PER_PAGE);
@@ -87,16 +134,29 @@ export function LeadsPage() {
       <div className="bar">
         <div>
           <h1>ผู้สนใจ</h1>
-          <p>พบ {rows.length} รายการ</p>
+          <p>พบ {view === "list" ? rows.length : scoped.length} รายการ</p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
+          <div className="seg glass-thin shrink-0" role="group" aria-label="มุมมอง">
+            <button type="button" className={view === "list" ? "on" : ""} aria-pressed={view === "list"} onClick={() => setView("list")}>
+              รายการ
+            </button>
+            <button type="button" className={view === "pipeline" ? "on" : ""} aria-pressed={view === "pipeline"} onClick={() => setView("pipeline")}>
+              Pipeline
+            </button>
+            {isSales && (
+              <button type="button" className={view === "followup" ? "on" : ""} aria-pressed={view === "followup"} onClick={() => setView("followup")}>
+                แผนติดตาม
+              </button>
+            )}
+          </div>
           <SearchBox
             value={query}
             onChange={(v) => {
               setQuery(v);
               paged.setPage(1);
             }}
-            placeholder="ค้นหาชื่อ ผู้ติดต่อ เบอร์โทร หรือรหัส"
+            placeholder="ค้นหาชื่อ ผู้ติดต่อ หรือเบอร์โทร"
           />
           <button
             type="button"
@@ -109,6 +169,28 @@ export function LeadsPage() {
         </div>
       </div>
 
+      {view !== "list" ? (
+        <>
+          {/* Pipeline/แผนติดตาม ใช้ตัวค้นหา ตัวกรอง และการเรียงชุดเดียวกับรายการ แต่ไม่มีแท็บสถานะ เพราะคอลัมน์แทนแท็บแล้ว (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+          <div className="flex flex-wrap justify-end gap-2">
+            <SortSelect value={sort} onChange={(v) => setSort(user, v)} />
+            <button
+              type="button"
+              onClick={() => setStaleOnly((v) => !v)}
+              aria-pressed={staleOnly}
+              className={`btn ${staleOnly ? "bg-accent font-semibold text-primary" : "glass-thin"}`}
+            >
+              <ClockIcon className="size-[13px]" strokeWidth={2} />
+              ค้างติดตาม
+            </button>
+          </div>
+          {view === "pipeline" ? (
+            <LeadsPipeline crm={crm} rows={scoped} today={today} isStale={isStale} />
+          ) : (
+            <LeadsFollowup crm={crm} rows={scoped} today={today} user={user} by={profile.name} />
+          )}
+        </>
+      ) : (
       <section className="panel glass flex flex-col">
         <div className="strip">
           <TabStrip
@@ -120,6 +202,14 @@ export function LeadsPage() {
               paged.setPage(1);
             }}
           />
+          <div className="my-2 flex items-center gap-2">
+          <SortSelect
+            value={sort}
+            onChange={(v) => {
+              setSort(user, v);
+              paged.setPage(1);
+            }}
+          />
           <button
               type="button"
               onClick={() => {
@@ -127,15 +217,16 @@ export function LeadsPage() {
                 paged.setPage(1);
               }}
               aria-pressed={staleOnly}
-              className={`btn my-2 ${staleOnly ? "bg-accent font-semibold text-primary" : "glass-thin"}`}
+              className={`btn ${staleOnly ? "bg-accent font-semibold text-primary" : "glass-thin"}`}
             >
               {/* ไอคอนนาฬิกาหน้าป้ายตัวกรอง ตามต้นแบบ leads.html */}
               <ClockIcon className="size-[13px]" strokeWidth={2} />
               ค้างติดตาม
             </button>
+          </div>
         </div>
 
-        <CustomerTable rows={paged.list} lastContact={lastContact} today={today} isStale={isStale} />
+        <CustomerTable rows={paged.list} noOf={noOf} lastContact={lastContact} today={today} isStale={isStale} />
 
         <div className="foot flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
           <span>{paged.range("รายการ")}</span>
@@ -145,17 +236,35 @@ export function LeadsPage() {
           )}
         </div>
       </section>
+      )}
     </div>
+  );
+}
+
+/** ตัวเลือกการเรียงตามวันที่สร้าง (ใช้วันติดต่อครั้งแรกแทน) (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+function SortSelect({ value, onChange }: { value: SortDir; onChange: (v: SortDir) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as SortDir)}
+      aria-label="เรียงลำดับ"
+      className="field-control h-9 !w-[150px] flex-none cursor-pointer pr-8 text-[13px]"
+    >
+      <option value="new">ล่าสุด → เก่าสุด</option>
+      <option value="old">เก่าสุด → ล่าสุด</option>
+    </select>
   );
 }
 
 function CustomerTable({
   rows,
+  noOf,
   lastContact,
   today,
   isStale,
 }: {
   rows: Customer[];
+  noOf: Map<string, number>;
   lastContact: Record<string, string>;
   today: string;
   isStale: (c: Customer) => boolean;
@@ -167,11 +276,12 @@ function CustomerTable({
   return (
     <>
       <div className="scroll-stable hidden min-h-0 flex-1 overflow-auto md:block">
-        <table className="data-table min-w-[900px]">
+        <table className="data-table min-w-[840px]">
           <thead>
             <tr>
-              <th style={{ width: 132 }}>รหัส</th>
-              <th style={{ width: "26%" }}>ชื่อผู้สนใจ / บริษัท</th>
+              <th className="c" style={{ width: 60 }}>ลำดับ</th>
+              {/* ไม่มีคอลัมน์รหัส — รหัสอยู่ในฐานข้อมูลเท่านั้น (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+              <th style={{ width: "32%" }}>ชื่อผู้สนใจ / บริษัท</th>
               <th style={{ width: "18%" }}>ผู้ติดต่อ</th>
               <th style={{ width: "15%" }}>เบอร์โทรศัพท์</th>
               <th style={{ width: "18%" }}>ติดต่อล่าสุด</th>
@@ -192,11 +302,7 @@ function CustomerTable({
                     if (e.key === "Enter") router.push(`/leads/${c.code}`);
                   }}
                 >
-                  <td className="num muted">
-                    <Link href={`/leads/${c.code}`} className="lnk-code">
-                      {c.code}
-                    </Link>
-                  </td>
+                  <td className="c num muted">{noOf.get(c.code)}</td>
                   <td>
                     <Link href={`/leads/${c.code}`}>
                       <Who name={c.name} />
@@ -219,6 +325,7 @@ function CustomerTable({
                       <i />
                       {c.status}
                     </span>
+                    {/* เหตุผลที่ปฏิเสธดูได้ในหน้ารายละเอียด ไม่แสดงในตาราง (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
                   </td>
                 </tr>
               );
@@ -236,7 +343,7 @@ function CustomerTable({
             </span>
             <Link href={`/leads/${c.code}`} className="block px-5 py-4 max-sm:pr-16 max-sm:pl-4">
               <div className="flex items-start justify-between gap-3 pr-28">
-                <Who name={c.name} sub={c.code} />
+                <Who name={c.name} sub={`#${noOf.get(c.code)}`} />
               </div>
               <p className="mt-2 text-[13px] text-muted-foreground">
                 {c.contact || "ยังไม่ได้กรอกผู้ติดต่อ"}

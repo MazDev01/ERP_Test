@@ -24,10 +24,11 @@ import {
   useCrm,
 } from "@/lib/crm-store";
 import { CURRENT_USER } from "@/lib/mock-data";
+import { useNameOf } from "@/lib/emp-name";
+import { FollowupTrail } from "./followup-trail";
 import { baht, initials, thaiDate, todayIso } from "@/lib/format";
 import {
   BanIcon,
-  ChevronRightIcon,
   ClockIcon,
   DealsIcon,
   HandoverIcon,
@@ -41,7 +42,9 @@ import { ConfirmDialog } from "./confirm-dialog";
 import { ActivityDialog, CloseLeadDialog, TakeOverDialog } from "./lead-dialogs";
 import { ProfileFacts } from "./lead-facts";
 import { ChangeFromTo } from "./sales-ui";
+import { LeadProposalCard } from "./lead-proposal-card";
 import { findLink } from "@/lib/deep-link";
+import { useCrumb } from "@/lib/crumb";
 import "@/styles/mobile/lead-detail.css";
 
 const PANES = [
@@ -75,6 +78,7 @@ export function LeadDetailPage({ code }: { code: string }) {
 
   /* รายการของตัวเองไม่ต้องรับช่วง — ปุ่มจึงขึ้นเฉพาะของคนอื่น */
   const mine = customer?.owner === CURRENT_USER.name;
+  const empName = useNameOf();
 
   const acts = useMemo(
     () =>
@@ -95,6 +99,11 @@ export function LeadDetailPage({ code }: { code: string }) {
     () => crm.deals.filter((d) => d.customerCode === code),
     [crm.deals, code],
   );
+  /* วันปิดการขายครั้งแรก — ปลายช่วงของประวัติแผนติดตาม (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const wonAt = deals
+    .filter((d) => d.status === "ปิดการขาย" && d.closedAt)
+    .map((d) => d.closedAt)
+    .sort()[0];
   const logs = useMemo(
     () =>
       crm.changeLogs
@@ -109,6 +118,11 @@ export function LeadDetailPage({ code }: { code: string }) {
    * เฉพาะตอนยังอยู่หน้านี้ (ย้ายหน้าแล้ว URL เปลี่ยนก่อน จะไม่ไปทับชื่อของหน้าถัดไป)
    */
   const customerName = customer?.name;
+  /* เส้นทางบนแถบบน "ผู้สนใจ / ชื่อ" · ปิดงานแล้วไม่อยู่ในรายชื่อผู้สนใจ — ขึ้นต้นด้วยดีลแทน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb(
+    customer?.status === "ปิดงาน" && { label: "ดีล", href: `/deals?find=${encodeURIComponent(code)}`, root: true },
+    customerName ?? moved?.name ?? "ไม่พบรายการ",
+  );
   useEffect(() => {
     if (!customerName) return;
     const want = `${customerName} — ผู้สนใจ`;
@@ -126,7 +140,7 @@ export function LeadDetailPage({ code }: { code: string }) {
     return (
       <div className="panel glass px-6 py-16 text-center">
         <p className="text-lg font-semibold">
-          {moved ? `${code} เปลี่ยนเป็นรหัสลูกค้า ${moved.code} แล้ว` : `ไม่พบลูกค้ารหัส ${code}`}
+          {moved ? `${moved.name} ปิดการขายแล้ว ย้ายไปเป็นลูกค้า` : "ไม่พบรายการนี้"}
         </p>
         <Link
           href={moved ? `/leads/${encodeURIComponent(moved.code)}` : "/leads"}
@@ -243,19 +257,9 @@ export function LeadDetailPage({ code }: { code: string }) {
         </div>
       </div>
 
-      {/* จอคอม: เส้นทาง · ชื่อ + ป้ายสถานะ + ปุ่มสร้างใบเสนอราคาต่อท้ายแถวเดียวกัน ไม่มีปุ่มอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+      {/* จอคอม: ชื่อ + ป้ายสถานะ + ปุ่มสร้างใบเสนอราคาต่อท้ายแถวเดียวกัน ไม่มีปุ่มอื่น (ผู้ใช้สั่ง 9 ต.ค. 2569)
+          เส้นทาง "ผู้สนใจ › ชื่อ" ย้ายไปแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
       <div className="max-md:hidden">
-        <p className="mb-2 flex min-w-0 items-center gap-[7px] text-[13px] text-muted-foreground">
-          {/* ปิดงานแล้วไม่อยู่ในรายชื่อผู้สนใจ — ย้อนไปหน้าดีลแทน (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-          <Link
-            href={customer.status === "ปิดงาน" ? `/deals?find=${encodeURIComponent(customer.code)}` : "/leads"}
-            className="shrink-0 hover:text-primary"
-          >
-            {customer.status === "ปิดงาน" ? "ดีล" : "ผู้สนใจ"}
-          </Link>
-          <ChevronRightIcon className="size-[13px] shrink-0" strokeWidth={2.4} />
-          <span className="truncate">{customer.name}</span>
-        </p>
         <div className="flex flex-wrap items-center gap-3.5">
           <h1 className="min-w-0 leading-tight" style={{ fontSize: 30, fontWeight: 700 }}>
             {customer.name}
@@ -322,7 +326,7 @@ export function LeadDetailPage({ code }: { code: string }) {
                 onSave={(patch) => updateCustomer(code, patch)}
                 editing={editing}
                 onEditingChange={setEditing}
-                facts={[{ label: "ผู้ดูแล", value: `${customer.owner}${mine ? " (คุณ)" : ""}` }]}
+                facts={[{ label: "ผู้ดูแล", value: `${empName(customer.owner)}${mine ? " (คุณ)" : ""}` }]}
                 editExtra={editExtras}
                 desktopKeys={["contact", "phone", "email", "source", "taxId", "address"]}
               />
@@ -528,12 +532,16 @@ export function LeadDetailPage({ code }: { code: string }) {
             rows={requests.map((r) => ({
               key: r.id,
               href: findLink("/presales", r.no),
-              main: r.no,
+              /* ไม่แสดงเลขที่คำขอ ใช้วันที่ส่งคำขอแทน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+              main: `ส่งคำขอ ${thaiDate(r.createdAt.slice(0, 10))}`,
               sub: `${r.kind} · กำหนดส่ง ${thaiDate(r.due)}`,
               tag: r.status,
               cls: PRESALES_STATUS[r.status],
             }))}
           />
+
+          {/* ฝ่ายขายทำ Proposal เองแล้วแนบไว้ที่นี่ + ดาวน์โหลดแม่แบบ Proposal ของ CEO (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+          <LeadProposalCard code={code} />
 
           {/* หน้าผู้สนใจไม่มีดีล — โชว์การ์ดดีลเฉพาะรายที่มีดีลแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
           {deals.length > 0 && (
@@ -544,12 +552,22 @@ export function LeadDetailPage({ code }: { code: string }) {
             rows={deals.map((d) => ({
               key: d.id,
               href: findLink("/deals", d.no),
-              main: d.no,
-              sub: `${baht(d.total)} บาท · ปิดเมื่อ ${thaiDate(d.closedAt)}`,
+              main: `${baht(d.total)} บาท`,
+              sub: `ปิดเมื่อ ${thaiDate(d.closedAt)}`,
               tag: d.status,
               cls: DEAL_STATUS[d.status],
             }))}
           />
+          )}
+
+          {/* ลูกค้าที่มีดีลแล้ว — ประวัติแผนติดตามนับถึงวันปิดการขายครั้งแรก (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+          {deals.length > 0 && (
+            <section className={CARD}>
+              <h2 className={HEAD}>ประวัติแผนติดตาม</h2>
+              <div className="mt-1 md:mt-2">
+                <FollowupTrail customerCode={code} until={wonAt} card noTitle />
+              </div>
+            </section>
           )}
         </div>
 
@@ -574,7 +592,7 @@ export function LeadDetailPage({ code }: { code: string }) {
       {takeOverOpen && (
         <TakeOverDialog
           customerName={customer.name}
-          currentOwner={customer.owner}
+          currentOwner={empName(customer.owner)}
           onClose={() => setTakeOverOpen(false)}
           onSubmit={(reason) => {
             takeOverLead(code, reason);

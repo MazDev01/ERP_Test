@@ -7,12 +7,12 @@ import { bottomNav, canVisit, canVisitAny, findItem, homeOf, mobileHomeOf, navGr
 import { BillingNavDot } from "./acc-ui";
 import { PmNavDot } from "./pm-nav-dot";
 import { useMyMine, useMyRoles } from "@/lib/hr-link";
-import { thaiDate, todayIso } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { lockScroll } from "@/lib/scroll-lock";
 import { ROLES, roleLabel, setRole, useApprovalRoute, useRole, type Role } from "@/lib/role";
 import {
   AccBoardIcon,
+  LedgerIcon,
   AdsIcon,
   ApproveIcon,
   PinIcon,
@@ -41,6 +41,7 @@ import {
   UserIcon,
 } from "./icons";
 import { NotificationMenu } from "./notification-menu";
+import { Breadcrumb } from "./breadcrumb";
 import { SideSub, SubNav } from "./sub-nav";
 import {
   BOTNAV_EMPTY,
@@ -51,12 +52,6 @@ import {
 } from "@/lib/botnav-prefs";
 import { UserMenu } from "./user-menu";
 import { goLive, settingsId, useLiveSettings } from "@/lib/system-settings";
-
-const DW_FULL = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
-
-function weekdayOf(iso: string) {
-  return `วัน${DW_FULL[new Date(`${iso}T00:00:00`).getDay()]}`;
-}
 
 export const ICONS: Record<IconName, (p: { className?: string; strokeWidth?: number }) => React.ReactNode> = {
   tasks: TasksIcon,
@@ -76,6 +71,7 @@ export const ICONS: Record<IconName, (p: { className?: string; strokeWidth?: num
   team: TeamIcon,
   ads: AdsIcon,
   accboard: AccBoardIcon,
+  ledger: LedgerIcon,
   billing: BillingIcon,
   receipt: ReceiptIcon,
   tax: TaxIcon,
@@ -85,20 +81,8 @@ export const ICONS: Record<IconName, (p: { className?: string; strokeWidth?: num
   home: HomeIcon,
 };
 
-/* เมนูย่อยที่แยกด้วย query (รอบเงินเดือน ?g=) — เช็คแค่ว่าหน้านี้อยู่ใต้เมนูย่อยไหม ไม่สนค่า (ผู้ใช้สั่ง 5 ต.ค. 2569) */
-const NO_QUERY = new URLSearchParams();
-
 /** หน้าที่ยืนเต็มจอเอง ไม่ต้องมีแถบข้าง */
 const BARE_PAGES = ["/login", "/install", "/offline", "/set-password", "/notify-test"];
-
-/* หน้าที่มีเส้นทาง (ใบเสนอราคา > สร้างใหม่) ของตัวเอง — ไม่ต้องมีปุ่มย้อนกลับของเปลือกซ้ำ */
-/* หน้าที่มีทางเดินกลับของตัวเองแล้ว ไม่ต้องมีปุ่มย้อนกลับซ้ำ · หน้าวางแผนงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
-/* หน้าเอกสาร 50 ทวิ และใบแนบ ภ.ง.ด. มีปุ่มกลับของตัวเอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-const OWN_CRUMB = ["/quotations/new", "/presales/new", "/acc/quotations/new", "/pm/plan", "/acc/wht/cert", "/acc/wht/pnd"];
-/* รายละเอียดผู้สนใจ /leads/[code] มีเส้นทาง "ผู้สนใจ › ชื่อ" ของตัวเองแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-/* หน้าเอกสารใบเสนอราคามีลิงก์ "‹ ใบเสนอราคา" ของตัวเองแล้ว (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-const ownCrumb = (p: string) =>
-  OWN_CRUMB.includes(p) || /^\/leads\/[^/]+$/.test(p) || /^\/(acc\/|ceo\/)?quotations\/[^/]+$/.test(p);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -107,7 +91,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const menuRef = useRef<HTMLDivElement>(null);
   /* บทบาทอื่นยังใช้ลิ้นชักด้านซ้ายแบบเดิม ตามที่ผู้ใช้สั่งไว้ */
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const today = todayIso();
 
   /* บทบาทเป็นตัวกำหนดว่าเมนูซ้ายมีอะไรบ้าง — เลือกไว้ตอนเข้าสู่ระบบ */
   const role = useRole();
@@ -124,14 +107,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   /* บทบาทอ่านจาก localStorage ฝั่งเซิร์ฟเวอร์ยังไม่รู้ จึงเช็คสิทธิ์หลัง hydrate เท่านั้น
      ไม่งั้น PM จะเห็นหน้ากันแวบหนึ่งทุกครั้งที่รีเฟรช เพราะค่าเริ่มต้นฝั่งเซิร์ฟเวอร์เป็นฝ่ายขาย */
   const hydrated = useHydrated();
-  const blocked = hydrated && !canVisitAny(pathname, roles, access, route);
-  /*
-   * หน้าที่ "ไปแล้วกลับไม่ได้" — หน้าย่อยที่ไม่มีในเมนูซ้าย เช่น รายละเอียดผู้สนใจ ใบเสนอราคา ใบแจ้งหนี้
-   * บนมือถือมีปุ่มกลับหน้าหลักอยู่แล้ว จอคอมเดิมไม่มีอะไรให้กลับนอกจากปุ่ม back ของเบราว์เซอร์
-   */
-  const onMenuPage =
-    items.some((i) => i.href === pathname) ||
-    items.some((i) => i.sub?.some((x) => x.href === pathname || x.on?.(pathname, NO_QUERY)));
+  /* หน้าที่อยู่ในเมนูของตัวเองเปิดได้เสมอ — เช่น "คำขอทำข้อเสนอ" ที่ขึ้นให้คนที่มีคำขอส่งถึงตัวเอง (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const blocked =
+    hydrated && !canVisitAny(pathname, roles, access, route) && !mine.some((i) => i.href === pathname);
   const router = useRouter();
 
   /* บทบาทที่ไม่มีหน้าตอกบัตร (ผู้ดูแลระบบ) เปิด "/" แล้วพาไปหน้าแรกของตัวเอง ไม่ขึ้นหน้าห้ามเข้า */
@@ -203,8 +181,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const botPrefs = useBotnavPrefs();
   const botSlots = (() => {
     const allow = new Set(botnavChoices(items, role).map((c) => c.href));
+    /* บัญชีใช้แถบล่างตายตัวตามต้นแบบ checkin.html: หน้าหลัก · การลา · ลงเวลา · เบิกค่าใช้จ่าย · โปรไฟล์ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    const fixed = role === "acc" ? [mobileHomeOf(role), "/leave", "/expense", "/profile"] : null;
     const saved = botnavOf(botPrefs, role);
-    const base = saved ?? botnavDefault(items, role);
+    const base = fixed ?? saved ?? botnavDefault(items, role);
     return base.map((href) => (allow.has(href) ? href : BOTNAV_EMPTY));
   })();
 
@@ -247,6 +227,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     goLive();
   }, []);
   const settingsKey = settingsId(liveSettings);
+  /* หน้าลงเวลา "/" บนมือถือเริ่มที่หัวเดือนของแบบ checkin.html เลย — ไม่มีแถบบนและแถบเมนูย่อย (ผู้ใช้สั่ง 13 ต.ค. 2569)
+     กระดิ่งยังเข้าได้จากหน้าอื่น · แถบล่างยังอยู่ */
+  const ckMobile = pathname === "/";
 
   /* /review/<token> = หน้าลูกค้าตรวจงาน เปิดจากลิงก์โดยไม่ล็อกอิน ต้องไม่มีเมนูของระบบ */
   if (BARE_PAGES.includes(pathname) || pathname.startsWith("/review/")) return <Fragment key={settingsKey}>{children}</Fragment>;
@@ -353,7 +336,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* ── ฝั่งเนื้อหา ── */}
       <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
         {/* หน้าหลัก CEO บนมือถือไม่มีแถบบน — มีแต่คำทักทายกับการ์ดเมนู (ต้นแบบ ceo-home.html ซ่อน .tk-head) */}
-        <header className={`app-top glass sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 rounded-none border-x-0 border-t-0 px-4 sm:px-6 ${pathname === tabHome.href ? "max-sm:hidden" : ""}`}>
+        <header className={`app-top glass sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 rounded-none border-x-0 border-t-0 px-4 sm:px-6 ${pathname === tabHome.href ? "max-sm:hidden" : ""} ${ckMobile ? "max-md:hidden" : ""}`}>
           {/* จอใหญ่ — ชื่อหน้าและวันที่วันนี้ ตามดีไซน์ */}
           {!newMobile && (
             <div className="flex min-w-0 items-center gap-2.5 md:hidden">
@@ -369,12 +352,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
+          {/* จอคอม — เส้นทางแบบ "ใบเสนอราคา / สร้างใบเสนอราคา" แทนชื่อหน้ากับวันที่ · ชื่อหน้าย้ายไปเป็นหัวเรื่องในเนื้อหา (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
           <div className="hidden min-w-0 md:block">
-            <p className="truncate text-[19px] leading-tight font-bold">{title}</p>
-            <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-              <b className="font-semibold text-primary">{weekdayOf(today)}</b>{" "}
-              {thaiDate(today)}
-            </p>
+            <Breadcrumb pathname={pathname} role={role} />
           </div>
 
           {/* มือถือ — ชื่อหน้าตัวหนังสือธรรมดา ผู้ใช้สั่ง 22 ก.ย. 2569 เอาปุ่มเมนูกลมสีแดงออก
@@ -412,24 +392,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* แถบชิปเมนูย่อยเหลือเฉพาะมือถือ — จอคอมย้ายไปเป็นเมนูย่อยในแถบข้างแล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569)
             มือถือไม่มีแถบข้าง (newMobile) ชิปนี้จึงเป็นทางเดียวที่สลับหน้าย่อยได้ */}
-        {current?.sub && (
+        {current?.sub && !ckMobile && (
           <div className="app-sub px-4 pt-[18px] sm:px-[30px] md:hidden">
             <SubNav items={current.sub} pathname={pathname} />
           </div>
         )}
 
-        <main id="main" className="w-full min-w-0 flex-1 px-4 pt-[18px] pb-10 max-md:pb-[calc(94px+env(safe-area-inset-bottom))] sm:px-[30px]">
-          {/* จอคอม — ทางกลับของหน้าย่อยที่ไม่มีในเมนู วางเหนือเนื้อหาเป็นลิงก์ข้อความ
-              ไม่เอาไว้บนแถบบน เพราะปุ่มกลมเบียดชื่อหน้าแล้วดูไม่เข้ากับหัวหน้าจอ (เจ้าของทัก 28 ก.ย. 2569) */}
-          {!blocked && !onMenuPage && !ownCrumb(pathname) && (
-            /* .btn ประกาศ display เอง คลาส hidden/md:inline-flex จึงสู้ไม่ได้ ต้องซ่อนที่กล่องนอกแทน */
-            <div className="mb-3 hidden md:block">
-              <button type="button" onClick={() => router.back()} className="btn glass-thin gap-1.5">
-                <ChevronLeftIcon className="size-4" strokeWidth={2.4} />
-                ย้อนกลับ
-              </button>
-            </div>
-          )}
+        <main
+          id="main"
+          className={`w-full min-w-0 flex-1 ${
+            ckMobile
+              ? /* หน้าลงเวลามือถือคุมระยะขอบเอง (18px · เว้นล่าง 130px ให้แถบล่าง) ตามแบบ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+                "md:px-[30px] md:pt-[18px] md:pb-10"
+              : "px-4 pt-[18px] pb-10 max-md:pb-[calc(94px+env(safe-area-inset-bottom))] sm:px-[30px]"
+          }`}
+        >
           {blocked ? (
             /* ทุกบทบาทอยู่ในหน้าของตัวเองเท่านั้น — ลิงก์เก่าหรือพิมพ์ที่อยู่เองก็เข้าหน้าของบทบาทอื่นไม่ได้ */
             <section className="glass mx-auto mt-10 max-w-[520px] rounded-[16px] px-6 py-12 text-center">
@@ -461,6 +438,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav
         className="botnav glass"
         aria-label="เมนูลัด"
+        data-role={role}
         /* บางบทบาทไม่มีแดชบอร์ด ช่องเมนูจึงเหลือสี่ — แบ่งคอลัมน์ตามจำนวนจริง ไม่ให้เหลือช่องว่าง */
         /* ช่องที่ไม่ได้เลือกอะไรไว้จะไม่ขึ้น — แบ่งคอลัมน์ตามจำนวนช่องที่มีจริง ไม่ให้เหลือที่ว่าง */
         style={
@@ -524,6 +502,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
  * หนึ่งช่องในแถบเมนูล่าง — ชื่อกับไอคอนอ่านจากเมนูของบทบาทเอง
  * ช่องว่าง (ยังไม่ได้เลือก) ไม่ขึ้นอะไรเลย
  */
+const ACC_TAB_ICONS: Record<string, React.ReactNode> = {
+  home: (<><path d="M3 11 12 3l9 8" /><path d="M5 10v10h14V10" /></>),
+  "/leave": (<><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></>),
+  "/expense": (<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>),
+  "/profile": (<><circle cx="12" cy="8" r="3.6" /><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" /></>),
+};
+
 function BotTab({
   href,
   items,
@@ -540,9 +525,17 @@ function BotTab({
   if (!found) return null;
   const Icon = ICONS[found.icon] ?? HomeIcon;
   const on = pathname === href;
+  /* บัญชีใช้ไอคอนเส้นเดียวกับต้นแบบ checkin.html (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const accPaths = role === "acc" ? ACC_TAB_ICONS[href === mobileHomeOf(role) ? "home" : href] : undefined;
   return (
     <Link href={href} aria-current={on ? "page" : undefined} className={on ? "on" : undefined}>
-      <Icon className="size-[22px]" />
+      {accPaths ? (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {accPaths}
+        </svg>
+      ) : (
+        <Icon className="size-[22px]" />
+      )}
       <span>{found.label}</span>
     </Link>
   );

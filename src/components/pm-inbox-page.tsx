@@ -22,6 +22,7 @@ import { addDays, daysBetween, thaiDate, todayIso } from "@/lib/format";
 import { isRef, planHref, projectHref, serviceLabel, type InboxJob } from "@/lib/pm-data";
 import { acceptInboxJob, markInboxSeen, usePm } from "@/lib/pm-store";
 import { USERS } from "@/lib/mock-data";
+import { nameOf, useNameOf } from "@/lib/emp-name";
 import { useRole } from "@/lib/role";
 import { Sheet } from "./lead-dialogs";
 import { ProposalPreview, QuotationPreview } from "./pm-docs";
@@ -31,6 +32,7 @@ import { ThaiDatePicker } from "./thai-date-picker";
 import { ConfirmDialog } from "./confirm-dialog";
 import { EyeIcon, FileIcon } from "./icons";
 import "@/styles/mobile/pm-inbox.css";
+import { stackNo } from "@/lib/stack-no";
 
 /** ขั้นของงานตอนนี้ — ลิงก์ที่เจาะมาต้องบอกได้ว่างานนั้นไปถึงไหนแล้ว */
 function stageText(j: InboxJob) {
@@ -39,7 +41,7 @@ function stageText(j: InboxJob) {
 
 /* ป้ายงานที่มีคนรับไปแล้ว — ข้อมูลเก่าที่ไม่มีชื่อคนรับขึ้นแค่ "รับแล้ว" (ผู้ใช้สั่ง 5 ต.ค. 2569) */
 function takenTag(j: InboxJob) {
-  return j.takenBy ? `รับแล้ว · ${j.takenBy}` : "รับแล้ว";
+  return j.takenBy ? `รับแล้ว · ${nameOf(j.takenBy)}` : "รับแล้ว";
 }
 
 export function PmInboxPage() {
@@ -48,6 +50,7 @@ export function PmInboxPage() {
   /* ชื่อคนที่ใช้อยู่ — คนรับงานเองเห็นลิงก์ไปหน้าวางแผน คนอื่นเห็นแค่เอกสาร (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   const role = useRole();
   const me = USERS[role]?.name ?? "";
+  const nameOfEmp = useNameOf();
   /*
    * ลิงก์จากหน้าอื่น ?find=<เลขที่โปรเจค> (ลิงก์เก่าส่งเลขที่ดีล — หาเจอทั้งคู่ · 5 ต.ค. 2569) ต้อง "กรอง" ให้เหลืองานนั้น (ผู้ใช้กำหนด 23 ก.ย. 2569)
    * ส่งเลขเอกสารมากับลิงก์แล้วไม่กรอง เท่ากับให้คนไปหาเองในรายการ
@@ -79,9 +82,14 @@ export function PmInboxPage() {
   const [svc, setSvc] = useState("");
   const [stage, setStage] = useState<"" | "new" | "plan">("");
   const services = [...new Set(board.map((j) => j.service))];
+  /*
+   * ลำดับแบบกองซ้อน — นับจากงานเข้าทั้งหมด (รวมที่ออกไปเป็นโปรเจคแล้ว) ตามวันที่เข้า งานล่าสุดเลขมากสุด (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * ตารางยังแยกงานรอรับขึ้นก่อนตามเดิม
+   */
+  const noOf = stackNo(pm.inbox, (j) => j.sentAt, (j) => j.pj);
   /* งานรอรับขึ้นก่อน งานที่รับแล้วต่อท้าย — ในแต่ละกลุ่มล่าสุดอยู่บน เพราะเป็นกล่องงานเข้า */
   const rows = board
-    .filter((j) => !term || `${j.scope} ${j.cus} ${j.pj} ${j.deal ?? ""} ${j.takenBy ?? ""}`.toLowerCase().includes(term))
+    .filter((j) => !term || `${j.scope} ${j.cus} ${j.pj} ${j.deal ?? ""} ${j.takenBy ?? ""} ${j.takenBy ? nameOfEmp(j.takenBy) : ""}`.toLowerCase().includes(term))
     .filter((j) => (!svc || j.service === svc) && (!stage || j.stage === stage))
     .sort((a, b) => Number(a.stage !== "new") - Number(b.stage !== "new") || b.sentAt.localeCompare(a.sentAt));
   const waitN = rows.filter((j) => j.stage === "new").length;
@@ -133,8 +141,8 @@ export function PmInboxPage() {
   return (
     <div className="ib-m space-y-4">
       {/* มือถือ: ซ่อนหัวหน้าและตัวนับ — ชื่อหน้าอยู่ที่แถบหัวของ shell แล้ว (ต้นแบบ ib-mobile) */}
-      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-      <h1 className="sr-only">งานเข้าใหม่</h1>
+      {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1">งานเข้าใหม่</h1>
       {/* ไม่มีตัวนับรอรับ/รับแล้ว — สถานะอยู่ในตารางแล้ว (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       <ReadOnlyNote />
 
@@ -153,7 +161,7 @@ export function PmInboxPage() {
       {filter && (
         <div className="glass flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[14px] px-4 py-3 text-[13px]">
           <span className="min-w-0">
-            กรองเฉพาะโปรเจค <b className="num">{project?.pj ?? board[0]?.pj ?? filter}</b>
+            กรองเฉพาะโปรเจค <b>{project ? project.name || project.cus : board[0]?.cus ?? "ที่ลิงก์มา"}</b>
             {project && (
               <span className="text-muted-foreground"> · รับงานแล้ว · เปิดเป็นโปรเจคแล้ว</span>
             )}
@@ -235,7 +243,9 @@ export function PmInboxPage() {
                     <path d="M5 5h14l2 8v6H3v-6z" />
                   </svg>
                 </span>
-                <span className="ib-m-cus">{j.cus}</span>
+                <span className="ib-m-cus">
+                  #{noOf.get(j.pj)} · {j.cus}
+                </span>
                 <b className="ib-m-name">
                   {j.scope}
                 </b>
@@ -243,7 +253,7 @@ export function PmInboxPage() {
                 <span className="ib-m-line" aria-hidden="true" />
                 <span className="ib-m-src">
                   <FileIcon strokeWidth={2.2} />
-                  {j.proposal?.no ? `Proposal ${j.proposal.no}` : `ใบเสนอราคา ${j.quo}`}
+                  {j.proposal?.no ? `Proposal รอบที่ ${j.proposal.round}` : `ใบเสนอราคา ${j.quo}`}
                 </span>
                 <span className="ib-m-day num">เข้า {thaiDate(j.sentAt)}</span>
                 {/* ปุ่มตา "ดูรายละเอียด" ทุกการ์ด ก่อนปุ่มรับงาน/ป้ายสถานะ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
@@ -276,11 +286,11 @@ export function PmInboxPage() {
 
       <section className="panel glass flex flex-col max-md:hidden">
         <div className="scroll-stable min-h-0 flex-1 overflow-auto">
-          <table className="data-table cards-sm min-w-[1000px]">
+          <table className="data-table cards-sm min-w-[890px]">
             <thead>
               <tr>
-                {/* คอลัมน์แรกเป็นรหัสโปรเจค — ชื่องานยังไม่มี PM ตั้งเองในหน้าโปรเจค · ไม่มีแหล่งที่มาในตาราง (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-                <th style={{ width: 170 }}>รหัสโปรเจค</th>
+                {/* ไม่มีคอลัมน์รหัสโปรเจค — รหัสอยู่ในฐานข้อมูลเท่านั้น (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th style={{ width: 170 }}>ลูกค้า</th>
                 <th style={{ width: 140 }}>บริการ</th>
                 <th style={{ width: 110 }}>วันที่เข้า</th>
@@ -307,11 +317,7 @@ export function PmInboxPage() {
                       className={waiting ? "cursor-pointer" : "cursor-pointer bg-muted/50 text-muted-foreground"}
                       onClick={() => open(j)}
                     >
-                      <td data-label="รหัสโปรเจค">
-                        <span className="num inline-flex items-center gap-2 font-semibold whitespace-nowrap">
-                          {j.pj}
-                        </span>
-                      </td>
+                      <td data-label="ลำดับ" className="c num muted">{noOf.get(j.pj)}</td>
                       <td data-label="ลูกค้า">{j.cus}</td>
                       <td data-label="บริการ">{serviceLabel(j.service)}</td>
                       <td data-label="วันที่เข้า" className="num muted">
@@ -331,7 +337,7 @@ export function PmInboxPage() {
                         )}
                       </td>
                       <td data-label="ผู้รับผิดชอบ" className={waiting || !j.takenBy ? "muted" : undefined}>
-                        {waiting ? "—" : (j.takenBy ?? "—")}
+                        {waiting ? "—" : j.takenBy ? nameOfEmp(j.takenBy) : "—"}
                       </td>
                       {/* ปุ่มตา "ดูรายละเอียด" ทุกแถวอยู่ก่อนปุ่มรับงาน · แถวที่รับแล้วใช้แทนข้อความ "ดูเอกสาร" (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                       <td className="c">
@@ -369,7 +375,7 @@ export function PmInboxPage() {
             job.stage === "new"
               ? ""
               : job.takenBy
-                ? `งานนี้ถูกรับไปแล้วโดย ${job.takenBy}${job.takenAt ? ` เมื่อ ${thaiDate(job.takenAt)}` : ""}`
+                ? `งานนี้ถูกรับไปแล้วโดย ${nameOfEmp(job.takenBy)}${job.takenAt ? ` เมื่อ ${thaiDate(job.takenAt)}` : ""}`
                 : "งานนี้ถูกรับไปแล้ว"
           }
           onClose={() => setViewing(null)}
@@ -388,7 +394,7 @@ export function PmInboxPage() {
             if (!res.ok) {
               if (res.reason === "taken") {
                 setTaking(null);
-                setNotice(res.takenBy ? `งานนี้ถูกรับไปแล้วโดย ${res.takenBy}` : "งานนี้ถูกรับไปแล้ว");
+                setNotice(res.takenBy ? `งานนี้ถูกรับไปแล้วโดย ${nameOfEmp(res.takenBy)}` : "งานนี้ถูกรับไปแล้ว");
               }
               return;
             }
@@ -427,7 +433,7 @@ function TakeConfirm({
       title="ยืนยันรับงาน"
       description={
         <>
-          รับงาน <b className="num text-foreground">{job.pj}</b> · {job.cus}?
+          รับงาน <b className="text-foreground">{job.cus}</b>?
         </>
       }
       detail={
@@ -496,7 +502,7 @@ function DetailSheet({
     <Sheet
       wide
       className="ib-take-dlg"
-      title={`${job.cus} (${job.pj})`}
+      title={job.cus}
       onClose={onClose}
       footer={
         <button type="button" className="btn glass-thin flex-1 justify-center sm:flex-none" onClick={onClose}>

@@ -18,7 +18,8 @@ import type { PresalesRequest, PresalesRound } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { useAcc } from "@/lib/acc-store";
 import { quotationNoOf } from "@/lib/flow";
-import { addDays, bkkStamp, daysBetween, initials, thaiDate, thaiStamp, todayIso } from "@/lib/format";
+import { addDays, bkkStamp, daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
+import { displayName, initialOf, useNameOf } from "@/lib/emp-name";
 import {
   fileKind,
   isRef,
@@ -59,6 +60,7 @@ import "@/styles/mobile/pm-project.css";
 import { useSearchParams } from "next/navigation";
 import { latestRound, roundStatus, useClientReviews } from "@/lib/client-review-store";
 import { ClientFeedbackSheet, ClientRoundChip, ClientSendSheet } from "./client-review-pm";
+import { useCrumb } from "@/lib/crumb";
 
 /* สีแถบบนการ์ดงานตามสถานะ (ตามต้นแบบ) */
 const STATUS_COLOR: Record<TaskStatus, string> = {
@@ -81,7 +83,7 @@ export function PmProjectPage({ pj }: { pj: string }) {
         <div className="bar">
           <div>
             <h1>ไม่พบโปรเจค</h1>
-            <p>เลขที่โปรเจค {pj} ไม่มีในระบบ</p>
+            <p>ไม่มีโปรเจคนี้ในระบบ</p>
           </div>
         </div>
         <section className="glass rounded-[15px] px-5 py-14 text-center">
@@ -100,6 +102,7 @@ function Detail({ project }: { project: Project }) {
   const today = todayIso();
   /* ร่างแผนของโปรเจคนี้ที่ PM ยังไม่ได้ยืนยัน — คนอื่นที่เปิดโปรเจคต้องเห็นว่ามีร่างค้างอยู่ */
   const draft = usePm().drafts[project.pj];
+  const nameOfEmp = useNameOf();
   const pr = projectProgress(project);
   /* สมาชิกที่กดเลือก — กรองงานในโปรเจคให้เหลือเฉพาะงานของคนนั้น กดซ้ำเพื่อยกเลิก (ผู้ใช้สั่ง 8 ต.ค. 2569) */
   const [who, setWho] = useState<string | null>(null);
@@ -121,6 +124,8 @@ function Detail({ project }: { project: Project }) {
 
   const [renaming, setRenaming] = useState(false);
   const title = projName(project);
+  /* เส้นทางบนแถบบน "โปรเจค / ลูกค้า" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb(project.cus);
   /* GM เปิดดูได้อย่างเดียว — ซ่อนปุ่มแก้ชื่อและช่องแชท (ต้นแบบ pm-project.html?as=gm) */
   const ro = usePmReadOnly();
   const [transferring, setTransferring] = useState(false);
@@ -139,23 +144,11 @@ function Detail({ project }: { project: Project }) {
   return (
     <div className={`pd-m space-y-4 ${ro ? "ro-gm" : ""}`}>
       <div className="bar pd-bar">
+        {/* แถบนี้มีเฉพาะจอคอม — ทางเดิน "โปรเจค / ลูกค้า" กับปุ่มกลับย้ายไปเส้นทางบนแถบบน ชื่อโปรเจคเป็นหัวเรื่องมุมซ้ายบน (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
         <div className="min-w-0">
-          <p className="mb-1 text-xs text-muted-foreground">
-            <Link href="/pm/projects" className="hover:text-primary">
-              โปรเจค
-            </Link>
-            <span className="mx-1.5">/</span>
-            <b className="font-semibold text-foreground">{project.cus}</b>
-          </p>
-          {/* ไม่มีหัวข้อใหญ่ซ้ำกับชื่อในกล่องหัวโปรเจค (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-          <h1 className="sr-only">{title}</h1>
+          <h1>{title}</h1>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
-          {/* มือถือ: สองปุ่มแบ่งครึ่งแถว สูงพอให้นิ้วกด */}
-          <Link href="/pm/projects" className="btn glass-thin max-sm:h-10 max-sm:flex-1 max-sm:justify-center">
-            <ChevronLeftIcon className="size-[15px]" strokeWidth={2.2} />
-            กลับไปหน้าโปรเจค
-          </Link>
           <Link
             href={planHref(project.pj)}
             className="btn solid btn-solid max-sm:h-10 max-sm:flex-1 max-sm:justify-center"
@@ -184,7 +177,7 @@ function Detail({ project }: { project: Project }) {
 
       {draft && (
         <p className="rounded-[10px] bg-[var(--warning-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--warning)]">
-          มีร่างแผนงานที่ยังไม่ยืนยัน · แก้ล่าสุด {thaiStamp(draft.at)} น. โดย {draft.by}
+          มีร่างแผนงานที่ยังไม่ยืนยัน · แก้ล่าสุด {thaiStamp(draft.at)} น. โดย {nameOfEmp(draft.by)}
         </p>
       )}
 
@@ -203,7 +196,7 @@ function Detail({ project }: { project: Project }) {
           {project.status === "cancelled" && (
             /* ดีลถูกยกเลิก — บอกว่าใครยกเลิก เมื่อไร และเพราะอะไร ทีมจะได้ไม่ทำงานต่อ */
             <p className="mt-2 text-[12.5px] text-muted-foreground">
-              ยกเลิกเมื่อ {thaiDate(project.cancelled?.at.slice(0, 10) ?? "")} โดย {project.cancelled?.by || "—"} ·{" "}
+              ยกเลิกเมื่อ {thaiDate(project.cancelled?.at.slice(0, 10) ?? "")} โดย {project.cancelled?.by ? nameOfEmp(project.cancelled.by) : "—"} ·{" "}
               {project.cancelled?.why ?? ""}
             </p>
           )}
@@ -257,6 +250,7 @@ const TRANSFER_POS = ["pm", "sa"];
 
 export function TransferDialog({ project, onClose }: { project: Project; onClose: () => void }) {
   const hr = useHr();
+  const nameOfEmp = useNameOf();
   const people = hr.emp.filter(
     (e) => e.status === "active" && TRANSFER_POS.includes(e.pos) && e.name !== project.pm,
   );
@@ -289,7 +283,7 @@ export function TransferDialog({ project, onClose }: { project: Project; onClose
       }
     >
       <p className="text-[13px] leading-relaxed text-muted-foreground">
-        โอนแล้ว <b className="font-semibold text-foreground">{project.pm}</b>{" "}
+        โอนแล้ว <b className="font-semibold text-foreground">{nameOfEmp(project.pm)}</b>{" "}
         จะไม่ได้เป็นผู้ดูแลโปรเจคนี้อีก · งานย่อยและคนที่ถูกมอบหมายไว้แล้วไม่เปลี่ยน
       </p>
 
@@ -308,7 +302,7 @@ export function TransferDialog({ project, onClose }: { project: Project; onClose
           <option value="">— เลือกผู้ดูแลคนใหม่ —</option>
           {people.map((e) => (
             <option key={e.id} value={e.name}>
-              {e.name} · {hrPos(e.pos).label}
+              {displayName(e)} · {hrPos(e.pos).label}
             </option>
           ))}
         </select>
@@ -677,6 +671,7 @@ const ACT_ICON: Record<string, { i: string; cls: string }> = {
 
 function RecentActs({ project }: { project: Project }) {
   const list = [...project.acts].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
+  const nameOfEmp = useNameOf();
   return (
     <section className="pd-blk">
       <BlockTitle>กิจกรรมล่าสุด</BlockTitle>
@@ -685,7 +680,7 @@ function RecentActs({ project }: { project: Project }) {
           <li className="py-1 text-[12.5px] text-muted-foreground">ยังไม่มีกิจกรรม</li>
         ) : (
           list.map((a, i) => {
-            const name = a.who === "PM" ? project.pm : (memberOf(a.who)?.name ?? a.who);
+            const name = a.who === "PM" ? nameOfEmp(project.pm) : (memberOf(a.who)?.name ?? nameOfEmp(a.who));
             const ic = ACT_ICON[a.kind] ?? ACT_ICON.status;
             return (
               <li key={`${a.at}-${i}`} className="flex gap-2.5 py-1.5">
@@ -852,7 +847,7 @@ function Tasks({ project, today, count, who }: { project: Project; today: string
                           title={first}
                           className="grid size-[22px] flex-none place-items-center rounded-full bg-accent text-[9px] font-bold text-primary"
                         >
-                          {initials(first)}
+                          {initialOf(first)}
                         </span>
                         <span className="truncate">{first}</span>
                       </>
@@ -1011,6 +1006,7 @@ function TaskTalkDialog({
 
 /** สายข้อความของงานใบหนึ่ง — ใช้ทั้งฝั่ง PM และฝั่งผู้รับงาน (my-tasks) */
 export function TalkList({ talks, pmName }: { talks: TaskTalk[]; pmName: string }) {
+  const nameOfEmp = useNameOf();
   if (talks.length === 0) {
     return <p className="mt-4 text-[12.5px] text-muted-foreground">ยังไม่มีข้อความเรื่องงานใบนี้</p>;
   }
@@ -1025,7 +1021,7 @@ export function TalkList({ talks, pmName }: { talks: TaskTalk[]; pmName: string 
         >
           <p className="flex flex-wrap items-baseline gap-x-2 text-[11.5px] text-muted-foreground">
             <b className="font-semibold text-foreground">
-              {m.who === "PM" ? pmName : (memberOf(m.who)?.name ?? m.who)}
+              {m.who === "PM" ? nameOfEmp(pmName) : (memberOf(m.who)?.name ?? nameOfEmp(m.who))}
             </b>
             {m.nudge && <span className="font-semibold text-[var(--warning)]">ทวงงาน</span>}
             <span className="num">{thaiStamp(m.at)} น.</span>

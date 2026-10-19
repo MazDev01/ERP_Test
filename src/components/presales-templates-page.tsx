@@ -29,6 +29,7 @@ import { FileDrop, type PickedFile } from "./file-drop";
 import { PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { SearchBox } from "./sales-ui";
+import { useNameOf } from "@/lib/emp-name";
 
 type Tab = "all" | TemplateKind;
 
@@ -56,6 +57,7 @@ export function TemplateKindTag({ kind }: { kind: TemplateKind }) {
 
 export function PresalesTemplatesPage() {
   const list = useTemplates();
+  const empName = useNameOf();
   const [query, setQuery] = useState("");
   const [service, setService] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -164,7 +166,7 @@ export function PresalesTemplatesPage() {
                     <td data-label="แก้ล่าสุด">
                       <span className="flex flex-col">
                         <span className="num">{thaiDate(t.updatedAt)}</span>
-                        <span className="text-[12px] text-muted-foreground">{t.uploadedBy}</span>
+                        <span className="text-[12px] text-muted-foreground">{empName(t.uploadedBy)}</span>
                       </span>
                     </td>
                     <td className="max-sm:!justify-end">

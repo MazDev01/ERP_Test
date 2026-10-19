@@ -4,6 +4,7 @@ import { useState } from "react";
 import { initials } from "@/lib/format";
 import { CUSTOMER_STATUS, type ChangeLog } from "@/lib/crm-data";
 import { SearchIcon } from "./icons";
+import { useNameOf } from "@/lib/emp-name";
 
 /* ชิ้นส่วนที่ทุกหน้างานขายใช้ร่วมกัน — แถบค้นหา แท็บ ตัวแบ่งหน้า ชื่อลูกค้า */
 
@@ -137,12 +138,13 @@ export function usePaged<T>(items: T[], perPage: number) {
  * เปลี่ยนสถานะขึ้นเป็นป้ายสี ส่วนรับช่วงดูแลเป็นชื่อคน จึงขึ้นเป็นข้อความธรรมดา
  */
 export function ChangeFromTo({ log }: { log: ChangeLog }) {
+  const empName = useNameOf();
   if (log.kind === "owner") {
     return (
       <>
-        <span className="text-sm">{log.from}</span>
+        <span className="text-sm">{empName(log.from)}</span>
         <span className="muted mx-1.5">→</span>
-        <span className="text-sm font-medium">{log.to}</span>
+        <span className="text-sm font-medium">{empName(log.to)}</span>
       </>
     );
   }

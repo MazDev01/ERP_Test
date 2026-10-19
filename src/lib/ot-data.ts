@@ -4,43 +4,52 @@
  */
 
 import { toIsoDate } from "./format";
-import { isHoliday } from "./holidays";
+import { isHoliday, isLabourDay } from "./holidays";
 import { settings } from "./system-settings";
 import type { Role } from "./role";
-import { minutesOfDay, WORK_SCHEDULE } from "./work-schedule";
+import { companySchedule, minutesOfDay, type DaySchedule } from "./work-schedule";
 
 /**
- * ช่วงพักที่ไม่นับเป็นโอที — พักกลางวันและพักเย็น
- * ถ้าช่วงที่ขอคาบเกี่ยว ระบบหักออกให้เอง ไม่ต้องแยกใบ
+ * ช่วงพักที่ไม่นับเป็นโอที — ถ้าช่วงที่ขอคาบเกี่ยว ระบบหักออกให้เอง ไม่ต้องแยกใบ
+ * วันธรรมดา: พักกลางวันตามเวลาทำงาน + เลิกงานถึงเวลาเริ่มนับโอที (เหมือนเดิม)
+ * วันหยุด/วันแรงงาน: พักเที่ยงและพักเย็นที่ตั้งแยกในหน้าการคำนวณเงินเดือน (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * iso ว่าง = ยังไม่เลือกวัน ใช้กติกาวันธรรมดา
  */
-export function otBreaks(): { from: number; to: number; label: string }[] {
+/* sch = เวลาทำงานของคนที่ขอ — แม่บ้านเลิก 17:00 เริ่มโอที 18:00 (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+export function otBreaks(iso = "", sch: DaySchedule = companySchedule()): { from: number; to: number; label: string }[] {
+  if (iso && isOffDayKind(otKindOf(iso))) {
+    const s = settings().schedule;
+    return [
+      { from: minutesOfDay(s.holLunchStart), to: minutesOfDay(s.holLunchEnd), label: "พักเที่ยง" },
+      { from: minutesOfDay(s.holDinnerStart), to: minutesOfDay(s.holDinnerEnd), label: "พักเย็น" },
+    ];
+  }
   return [
-  {
-    from: minutesOfDay(WORK_SCHEDULE.lunchStart),
-    to: minutesOfDay(WORK_SCHEDULE.lunchEnd),
-    label: "พักกลางวัน",
-  },
-  {
-    from: minutesOfDay(WORK_SCHEDULE.end),
-    to: minutesOfDay(WORK_SCHEDULE.otStart),
-    label: "พักเย็น",
-  },
+    {
+      from: minutesOfDay(sch.lunchStart),
+      to: minutesOfDay(sch.lunchEnd),
+      label: "พักกลางวัน",
+    },
+    {
+      from: minutesOfDay(sch.end),
+      to: minutesOfDay(sch.otStart),
+      label: "พักเย็น",
+    },
   ];
 }
 
-/** นาทีที่ตกอยู่ในช่วงพัก ของช่วงเวลาที่ขอ */
-export function breakMinutesIn(startMin: number, endMin: number) {
-  return otBreaks().reduce(
-    (sum, b) =>
-      sum + Math.max(0, Math.min(endMin, b.to) - Math.max(startMin, b.from)),
+/** นาทีที่ตกอยู่ในช่วงพัก ของช่วงเวลาที่ขอ — iso = วันที่ทำโอที (ใช้เลือกช่วงพักวันธรรมดา/วันหยุด) */
+export function breakMinutesIn(startMin: number, endMin: number, iso = "", sch: DaySchedule = companySchedule()) {
+  return otBreaks(iso, sch).reduce(
+    (sum, b) => sum + Math.max(0, Math.min(endMin, b.to) - Math.max(startMin, b.from)),
     0,
   );
 }
 
-/** ชั่วโมงโอทีสุทธิ หักช่วงพักออกแล้ว */
-export function otHours(startMin: number, endMin: number) {
+/** ชั่วโมงโอทีสุทธิ หักช่วงพักของวันนั้นออกแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569 — วันหยุดหักพักเที่ยง/พักเย็นที่ตั้งไว้) */
+export function otHours(startMin: number, endMin: number, iso: string, sch: DaySchedule = companySchedule()) {
   if (endMin <= startMin) return 0;
-  const net = endMin - startMin - breakMinutesIn(startMin, endMin);
+  const net = endMin - startMin - breakMinutesIn(startMin, endMin, iso, sch);
   return Math.max(0, Math.round((net / 60) * 100) / 100);
 }
 
@@ -52,11 +61,13 @@ export type OtKind = "weekday" | "holiday" | "public";
 /* เรตอ่านจากการตั้งค่าทุกครั้ง (ผู้ดูแลระบบแก้ได้ที่ /admin/rates) */
 export const OT_KIND: Record<OtKind, { label: string; rate: number }> = {
   weekday: { label: "วันธรรมดา", get rate() { return settings().rates.otAfterWork; } },
+  /* วันหยุด = เสาร์-อาทิตย์ และวันหยุดบริษัทที่ไม่ใช่วันแรงงาน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
   holiday: { label: "วันหยุด", get rate() { return settings().rates.otHoliday; } },
-  public: { label: "วันหยุดบริษัท", get rate() { return settings().rates.otPublic; } },
+  /* อัตรา 3 เท่าใช้กับวันแรงงานเท่านั้น (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  public: { label: "วันแรงงาน", get rate() { return settings().rates.otPublic; } },
 };
 
-/** วันหยุด (เสาร์-อาทิตย์หรือวันหยุดราชการ) ทำโอทีได้ทั้งวัน */
+/** วันหยุด (เสาร์-อาทิตย์ วันหยุดบริษัท หรือวันแรงงาน) ทำโอทีได้ทั้งวัน */
 export function isOffDayKind(k: OtKind) {
   return k !== "weekday";
 }
@@ -81,11 +92,12 @@ export type OtRecord = {
 };
 
 /**
- * วันที่อยู่ในรายการวันหยุดบริษัท มาก่อนเสาร์-อาทิตย์ ถ้าตรงกันใช้ประเภทวันหยุดบริษัท
+ * วันแรงงาน (1 พ.ค.) = ประเภท public (3 เท่า) · วันหยุดบริษัทอื่นและเสาร์-อาทิตย์ = holiday (ผู้ใช้สั่ง 13 ต.ค. 2569)
  * อัตราของทั้งสามประเภทผู้ดูแลระบบตั้งเองที่ /admin/rates ไม่ได้กำหนดตายในโปรแกรม
  */
 export function otKindOf(iso: string): OtKind {
-  if (isHoliday(iso)) return "public";
+  if (isLabourDay(iso)) return "public";
+  if (isHoliday(iso)) return "holiday";
   const w = new Date(`${iso}T00:00:00`).getDay();
   return w === 0 || w === 6 ? "holiday" : "weekday";
 }

@@ -10,17 +10,17 @@
  * แก้แล้วเอกสารที่เปิดดูหลังจากนี้ใช้ข้อมูลใหม่ รวมถึงเอกสารเก่าที่พิมพ์ซ้ำ
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { bkkNow, thaiDate, todayIso } from "@/lib/format";
-import type { Issuer, IssuerDoc } from "@/lib/system-settings";
+import type { Issuer, IssuerDoc, IssuerImage } from "@/lib/system-settings";
 import { useCrm } from "@/lib/crm-store";
-import { AdminHead, Card, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
-import { FileDrop } from "./file-drop";
+import { AdminHead, Card, IconBtn, Input2, SaveBar, Switch, inputCls, thCls, trCls, useSectionDraft } from "./admin-ui";
+import { ConfirmDialog } from "./confirm-dialog";
 import { Sheet } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
-import { PencilIcon, PlusIcon, PrintIcon, TrashIcon } from "./icons";
+import { ChevronDownIcon, ChevronUpIcon, PencilIcon, PlusIcon, TrashIcon } from "./icons";
 
-type TextKey = "label" | "name" | "taxId" | "address" | "phone" | "email" | "callCenter" | "bankName" | "bankAccountName" | "bankAccountNo" | "prefix";
+type TextKey = "label" | "name" | "taxId" | "address" | "phone" | "email" | "callCenter" | "bankName" | "bankAccountName" | "bankAccountNo" | "prefix" | "signName" | "signTitle";
 
 const LABEL: Record<TextKey, string> = {
   label: "ชื่อในรายการ ‘ออกในนาม’",
@@ -34,7 +34,13 @@ const LABEL: Record<TextKey, string> = {
   bankAccountName: "ชื่อบัญชี",
   bankAccountNo: "เลขที่บัญชี",
   prefix: "ตัวนำหน้าเลขใบเสนอราคา",
+  signName: "ชื่อผู้ลงนาม",
+  signTitle: "ตำแหน่งผู้ลงนาม",
 };
+
+/* รูปลายเซ็น/ตราประทับ — ใช้ในประวัติการตั้งค่าและกล่องยืนยันลบ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+const SIG_LABEL = { sign: "รูปลายเซ็นผู้มีอำนาจลงนาม", stamp: "รูปตราประทับบริษัท" } as const;
+type SigKey = keyof typeof SIG_LABEL;
 
 function describe(a: Issuer[], b: Issuer[]) {
   const out: string[] = [];
@@ -51,12 +57,22 @@ function describe(a: Issuer[], b: Issuer[]) {
     for (const f of x.docs ?? []) if (!had.has(f.id)) out.push(`${x.code} แนบเอกสาร ${f.name}`);
     const now = new Set((x.docs ?? []).map((f) => f.id));
     for (const f of was.docs ?? []) if (!now.has(f.id)) out.push(`${x.code} เอาเอกสารออก ${f.name}`);
+    for (const k of Object.keys(SIG_LABEL) as SigKey[])
+      if ((was[k]?.src ?? "") !== (x[k]?.src ?? ""))
+        out.push(`${x.code} ${!x[k] ? "ลบ" : was[k] ? "เปลี่ยน" : "เพิ่ม"}${SIG_LABEL[k]}${x[k] ? ` (${x[k]!.name})` : ""}`);
   }
   for (const x of a) if (!b.some((y) => y.code === x.code)) out.push(`ลบผู้ออกเอกสาร ${x.code} ${x.name}`);
   return out;
 }
 
 function problemOf(list: Issuer[]) {
+  /* รูปทั้งหมดเก็บในเครื่องพร้อมการตั้งค่า — เกินโควตาเบราว์เซอร์แล้วบันทึกไม่ลงแบบเงียบ ๆ จึงกันไว้ก่อน (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  /* รวมรูปลายเซ็นและตราประทับในงบเดียวกัน (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const total = list.reduce(
+    (n, c) => n + (c.docs ?? []).reduce((m, f) => m + (f.src?.length ?? 0), 0) + (c.sign?.src.length ?? 0) + (c.stamp?.src.length ?? 0),
+    0,
+  );
+  if (total > ALL_IMG_BYTES) return `รูปเอกสารแนบ ลายเซ็น และตราประทับของผู้ออกเอกสารทุกรายรวมกัน ${fileSize(total)} เกิน ${fileSize(ALL_IMG_BYTES)} ที่เครื่องนี้เก็บได้ — ลบรูปที่ไม่จำเป็นออกก่อนบันทึก`;
   const codes = new Set<string>();
   for (const c of list) {
     if (!/^[A-Z0-9]{1,6}$/.test(c.code)) return `รหัสผู้ออกเอกสาร "${c.code || "(ว่าง)"}" ต้องเป็นอังกฤษตัวใหญ่หรือตัวเลข 1–6 ตัว`;
@@ -78,16 +94,84 @@ const ATT_CATS = [
   { k: "commerce", label: "ใบทะเบียนพาณิชย์" },
   { k: "vat20", label: "ใบทะเบียนภาษีมูลค่าเพิ่ม (ภ.พ.20)" },
   { k: "license", label: "ใบประกอบการ / ใบอนุญาตประกอบกิจการ" },
+  { k: "bankbook", label: "หน้าสมุดบัญชีธนาคาร" },
   { k: "idcard", label: "สำเนาบัตรประชาชน" },
   { k: "other", label: "อื่น ๆ" },
 ];
 const ATT_MAX = 10;
-const ATT_MB = 5;
 
-/** แนบไปกับใบเสนอราคาตอนนี้ไหม — เปิดแนบไว้และยังไม่หมดอายุ */
-function attachedNow(f: { attach?: boolean; expires?: string }) {
-  return Boolean(f.attach) && !(f.expires && f.expires < todayIso());
+/*
+ * รับเฉพาะรูป JPG PNG WEBP (ผู้ใช้สั่ง 15 ต.ค. 2569) — รูปต้องเก็บจริงเพื่อพิมพ์ต่อท้ายใบเสนอราคา
+ * ย่อในเบราว์เซอร์ก่อนเก็บ: ด้านยาวไม่เกิน 1600px · บันทึกเป็น JPEG คุณภาพ 0.8
+ * หลังย่อแล้วยังเกิน 1.5 MB ไม่รับ · รวมทุกผู้ออกเอกสารไม่เกิน 3.5 MB (localStorage ทั้งระบบได้ราว 5 MB)
+ */
+const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const IMG_EXT = /\.(jpe?g|png|webp)$/i;
+const IMG_MAX_SIDE = 1600;
+const IMG_QUALITY = 0.8;
+const IMG_MAX_BYTES = 1.5 * 1024 * 1024;
+const ALL_IMG_BYTES = 3.5 * 1024 * 1024;
+
+/* คอลัมน์ตารางเอกสารแนบ — รูปย่อ | ชื่อ | แนบ | ปุ่ม */
+const ATT_COLS = "grid-cols-[52px_minmax(0,1fr)_58px_auto]";
+
+/** แนบไปกับใบเสนอราคาตอนนี้ไหม — มีรูป เปิดแนบไว้ และยังไม่หมดอายุ */
+function attachedNow(f: { attach?: boolean; expires?: string; src?: string }) {
+  return Boolean(f.attach && f.src) && !(f.expires && f.expires < todayIso());
 }
+
+/** ขนาดจริงของ data URL (base64) โดยประมาณ */
+function dataBytes(src: string) {
+  const i = src.indexOf(",");
+  return Math.floor(((src.length - i - 1) * 3) / 4);
+}
+
+/*
+ * ลายเซ็นและตราประทับ (ผู้ใช้สั่ง 16 ต.ค. 2569) — ด้านยาวไม่เกิน 800px · หลังย่อเกิน 400 KB ไม่รับ
+ * PNG/WEBP เก็บเป็น PNG พื้นโปร่งใส ไม่เติมขาว · JPG ไม่มีพื้นโปร่งใสอยู่แล้ว เก็บเป็น JPEG ให้ไฟล์เล็ก
+ */
+const SIG_MAX_SIDE = 800;
+const SIG_MAX_BYTES = 400 * 1024;
+
+/**
+ * อ่านไฟล์รูปเป็น data URL แล้วย่อ/บีบอัดผ่าน canvas — ค่าตั้งต้น (เอกสารแนบ) พื้นโปร่งใสของ PNG เติมขาว
+ * keepAlpha = รูปที่ไม่ใช่ JPG เก็บเป็น PNG คงพื้นโปร่งใส (ลายเซ็น/ตราประทับ)
+ */
+function readImage(
+  file: File,
+  opt: { maxSide?: number; keepAlpha?: boolean } = {},
+): Promise<{ src: string; w: number; h: number }> {
+  const maxSide = opt.maxSide ?? IMG_MAX_SIDE;
+  const alpha = Boolean(opt.keepAlpha) && !/jpe?g/i.test(file.type || file.name.split(".").pop() || "");
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("decode"));
+      img.onload = () => {
+        const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * k));
+        const h = Math.max(1, Math.round(img.naturalHeight * k));
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        const ctx = cv.getContext("2d");
+        if (!ctx) return reject(new Error("canvas"));
+        if (!alpha) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve({ src: alpha ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg", IMG_QUALITY), w, h });
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+let attSeq = 0;
 
 function fileSize(n: number) {
   return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
@@ -98,9 +182,12 @@ export function AdminCompanyPage() {
   const crm = useCrm();
   const list = d.draft;
   const [selCode, setSelCode] = useState(list[0]?.code ?? "");
-  /* กล่องเพิ่มไฟล์ / กล่องแก้รายละเอียดไฟล์แนบ */
-  const [attAdd, setAttAdd] = useState(false);
+  /* กล่องแก้รายละเอียดไฟล์แนบ · ยืนยันลบ · ข้อความผิดพลาดตอนเลือกรูป (ผู้ใช้สั่ง 15 ต.ค. 2569) */
   const [attEdit, setAttEdit] = useState("");
+  const [attDel, setAttDel] = useState("");
+  const [attErr, setAttErr] = useState<string[]>([]);
+  const [attBusy, setAttBusy] = useState(false);
+  const pickRef = useRef<HTMLInputElement>(null);
   const idx = Math.max(0, list.findIndex((x) => x.code === selCode));
   const c = list[idx];
   const isNew = !d.saved.some((x) => x.code === c.code);
@@ -142,6 +229,60 @@ export function AdminCompanyPage() {
   }
 
   const canRemove = list.length > 1 && used === 0;
+  const docs = c.docs ?? [];
+
+  /* เลือกรูปเข้ามา — ตรวจชนิด ย่อ แล้วต่อท้ายรายการ (แนบอัตโนมัติ) */
+  async function addImages(files: File[]) {
+    const errs: string[] = [];
+    const added: IssuerDoc[] = [];
+    setAttBusy(true);
+    for (const file of files) {
+      if (docs.length + added.length >= ATT_MAX) {
+        errs.push(`แนบได้ไม่เกิน ${ATT_MAX} รูป — ข้าม ${file.name}`);
+        continue;
+      }
+      if (!IMG_TYPES.includes(file.type) && !IMG_EXT.test(file.name)) {
+        errs.push(`รับเฉพาะไฟล์รูปภาพ (JPG PNG WEBP) — ${file.name} ไม่ใช่รูป`);
+        continue;
+      }
+      try {
+        const img = await readImage(file);
+        const bytes = dataBytes(img.src);
+        if (bytes > IMG_MAX_BYTES) {
+          errs.push(`${file.name} ย่อแล้วยังใหญ่ ${fileSize(bytes)} เกิน ${fileSize(IMG_MAX_BYTES)} — ลดความละเอียดหรือครอปรูปก่อนแนบ`);
+          continue;
+        }
+        const title = file.name.replace(/\.[^.]+$/, "");
+        added.push({
+          id: `img${++attSeq}-${Date.now()}`,
+          name: file.name,
+          size: bytes,
+          title,
+          cat: /บัญชี|bank|book/i.test(file.name) ? "bankbook" : ATT_CATS[0].k,
+          attach: true,
+          addedAt: todayIso(),
+          src: img.src,
+          w: img.w,
+          h: img.h,
+        });
+      } catch {
+        errs.push(`เปิดรูป ${file.name} ไม่ได้ — ไฟล์อาจเสียหรือไม่ใช่รูปภาพ`);
+      }
+    }
+    setAttBusy(false);
+    setAttErr(errs);
+    if (added.length) update({ docs: [...docs, ...added] });
+  }
+
+  /* เลื่อนลำดับรูป — ลำดับนี้คือลำดับแผ่นท้ายใบเสนอราคา */
+  const move = (id: string, by: -1 | 1) => {
+    const i = docs.findIndex((f) => f.id === id);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= docs.length) return;
+    const next = [...docs];
+    [next[i], next[j]] = [next[j], next[i]];
+    update({ docs: next });
+  };
 
   return (
     <div className="space-y-4">
@@ -150,24 +291,23 @@ export function AdminCompanyPage() {
         desc="ผู้ออกเอกสาร — หัวกระดาษ บัญชีรับเงิน และการจด VAT ของแต่ละรายที่ใบเสนอราคาเลือก ‘ออกในนาม’ ได้"
       />
 
-      {/* ── รายการผู้ออกเอกสาร ── */}
+      {/* ── รายการผู้ออกเอกสาร: ดรอปดาวน์บรรทัดเดียว เพิ่มกี่รายก็ไม่ยาวเป็นหลายบรรทัด (ผู้ใช้สั่ง 15 ต.ค. 2569) ── */}
       <div className="flex flex-wrap items-center gap-2">
-        {list.map((x) => (
-          <button
-            key={x.code}
-            type="button"
-            aria-pressed={x.code === c.code}
-            onClick={() => setSelCode(x.code)}
-            className={`flex h-10 items-center gap-2 rounded-[12px] border px-3.5 text-[13px] font-semibold ${
-              x.code === c.code ? "border-primary bg-primary text-white" : "border-border bg-card hover:border-primary"
-            }`}
-          >
-            <span className="num">{x.code}</span>
-            <span className={`max-w-[220px] truncate font-normal ${x.code === c.code ? "text-white/85" : "text-muted-foreground"}`}>
-              {x.name || "(ยังไม่ตั้งชื่อ)"}
-            </span>
-          </button>
-        ))}
+        <label htmlFor="issuer-pick" className="text-[13px] font-semibold text-muted-foreground">
+          ผู้ออกเอกสาร
+        </label>
+        <select
+          id="issuer-pick"
+          value={c.code}
+          onChange={(e) => setSelCode(e.target.value)}
+          className="field-control h-10 min-w-0 flex-1 cursor-pointer sm:max-w-[420px]"
+        >
+          {list.map((x) => (
+            <option key={x.code} value={x.code}>
+              {x.code} · {x.name || "(ยังไม่ตั้งชื่อ)"}
+            </option>
+          ))}
+        </select>
         <button type="button" className="btn solid btn-solid h-10" onClick={add}>
           <PlusIcon className="size-4" strokeWidth={2.4} />
           เพิ่มผู้ออกเอกสาร
@@ -264,127 +404,137 @@ export function AdminCompanyPage() {
           </Card>
 
           {/*
-            เอกสารแนบใบเสนอราคา (ต้นแบบ HR-18) — ไฟล์ที่แนบไปกับใบเสนอราคาของผู้ออกรายนี้
-            แนบอัตโนมัติได้ · ตั้งวันหมดอายุได้ · หมดอายุแล้วระบบหยุดแนบให้เอง
+            เอกสารแนบใบเสนอราคา (ต้นแบบ HR-18) — รูปที่พิมพ์ต่อท้ายใบเสนอราคาของผู้ออกรายนี้ แผ่นละรูป มีลายน้ำ
+            รับเฉพาะรูป JPG PNG WEBP เช่น หนังสือรับรองบริษัท หน้าสมุดบัญชี (ผู้ใช้สั่ง 15 ต.ค. 2569)
+            แนบอัตโนมัติได้ · ตั้งวันหมดอายุได้ · หมดอายุแล้วระบบหยุดแนบให้เอง · ลำดับในตาราง = ลำดับแผ่น
           */}
           <Card
             title="เอกสารแนบใบเสนอราคา"
-            note={`${(c.docs ?? []).length} / ${ATT_MAX} ไฟล์ · PDF รูปภาพ Word หรือ Excel`}
+            note={`${docs.length} / ${ATT_MAX} รูป · JPG PNG WEBP`}
             aside={
               <button
                 type="button"
                 className="btn solid btn-solid"
-                disabled={(c.docs ?? []).length >= ATT_MAX}
-                title={(c.docs ?? []).length >= ATT_MAX ? `แนบได้ไม่เกิน ${ATT_MAX} ไฟล์` : undefined}
-                onClick={() => setAttAdd(true)}
+                disabled={docs.length >= ATT_MAX || attBusy}
+                title={docs.length >= ATT_MAX ? `แนบได้ไม่เกิน ${ATT_MAX} รูป` : undefined}
+                onClick={() => pickRef.current?.click()}
               >
                 <PlusIcon className="size-4" strokeWidth={2.4} />
-                เพิ่มไฟล์
+                {attBusy ? "กำลังย่อรูป…" : "เพิ่มไฟล์"}
               </button>
             }
           >
+            <input
+              ref={pickRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                if (files.length) void addImages(files);
+              }}
+            />
             <p className="mb-3 rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px] text-muted-foreground">
-              แนบกับใบเสนอราคา{" "}
+              แนบท้ายใบเสนอราคา{" "}
               <b className="font-semibold text-foreground">
-                {(c.docs ?? []).filter(attachedNow).length
-                  ? `${(c.docs ?? []).filter(attachedNow).length} ไฟล์`
-                  : "ไม่มีไฟล์"}
+                {docs.filter(attachedNow).length ? `${docs.filter(attachedNow).length} รูป` : "ไม่มีรูป"}
               </b>
-              {(c.docs ?? []).filter(attachedNow).length > 0 &&
-                ` · ${(c.docs ?? []).filter(attachedNow).map((f) => f.title || f.name).join(" · ")}`}
+              {docs.filter(attachedNow).length > 0 && ` · ${docs.filter(attachedNow).map((f) => f.title || f.name).join(" · ")}`}
+              <span className="mt-0.5 block text-[11.5px]">
+                พิมพ์ต่อจากหน้าใบเสนอราคา แผ่นละรูป มีลายน้ำชื่อบริษัท “ใช้สำหรับใบเสนอราคาเท่านั้น” · รูปถูกย่อให้ด้านยาวไม่เกิน {IMG_MAX_SIDE}px
+              </span>
             </p>
 
-            {(c.docs ?? []).length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-muted-foreground">
-                ยังไม่มีเอกสารแนบ
-              </p>
+            {attErr.length > 0 && (
+              <div role="alert" className="mb-3 rounded-[11px] border border-destructive/30 bg-[var(--destructive-soft)] px-3 py-2.5 text-[12.5px] leading-relaxed text-destructive">
+                {attErr.map((m) => (
+                  <p key={m}>{m}</p>
+                ))}
+              </div>
+            )}
+
+            {docs.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-muted-foreground">ยังไม่มีเอกสารแนบ</p>
             ) : (
-              <ul className="divide-y divide-border rounded-[14px] border border-border bg-card">
-                {(c.docs ?? []).map((f) => {
+              /* ตาราง: รูปย่อ | ชื่อ | แนบ | เลื่อน/ดินสอ/ถังขยะ · ไม่แนบ = จางทั้งแถว */
+              <div>
+                <div className={`grid ${ATT_COLS} ${thCls}`}>
+                  <span>รูป</span>
+                  <span>ชื่อเอกสาร</span>
+                  <span className="text-center">แนบ</span>
+                  <span />
+                </div>
+                {docs.map((f, n) => {
                   const dead = Boolean(f.expires && f.expires < todayIso());
+                  /* ไฟล์เดิมจากก่อนเปลี่ยนเป็นรูปอย่างเดียว — เก็บแค่ชื่อ ไม่มีรูปให้พิมพ์ */
+                  const legacy = !f.src;
                   return (
-                    <li key={f.id} className="grid grid-cols-[minmax(0,1fr)_58px_84px] items-center gap-2 px-3.5 py-2.5 sm:grid-cols-[40px_minmax(0,1fr)_110px_58px_84px]">
-                      <span className="flex size-10 items-center justify-center rounded-[11px] bg-muted text-muted-foreground max-sm:hidden">
-                        <PrintIcon className="size-5" strokeWidth={1.9} />
+                    <div key={f.id} className={`grid ${ATT_COLS} ${trCls} ${attachedNow(f) ? "" : "opacity-50"}`}>
+                      <span className="flex items-center">
+                        {f.src ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={f.src}
+                            alt={f.title || f.name}
+                            className="size-11 rounded-[8px] border border-border bg-white object-cover"
+                          />
+                        ) : (
+                          <span className="grid size-11 place-items-center rounded-[8px] border border-dashed border-border text-[10px] text-muted-foreground">
+                            ไม่มีรูป
+                          </span>
+                        )}
                       </span>
                       <span className="min-w-0">
-                        <b className={`block truncate text-[13.5px] ${attachedNow(f) ? "font-semibold" : "font-medium text-muted-foreground"}`}>
-                          {f.title || f.name}
-                        </b>
-                        <small className="block truncate text-[11.5px] text-muted-foreground">
-                          {[ATT_CATS.find((x) => x.k === f.cat)?.label, f.name, fileSize(f.size)].filter(Boolean).join(" · ")}
-                        </small>
+                        <b className="block truncate text-[13.5px] font-semibold">{f.title || f.name}</b>
+                        {legacy ? (
+                          <small className="block text-[11.5px] font-semibold text-[var(--warning)]">
+                            ไฟล์เดิม (ไม่ใช่รูป) — ไม่แสดงบนเอกสาร
+                          </small>
+                        ) : (
+                          <small className="block truncate text-[11.5px] text-muted-foreground">
+                            {[ATT_CATS.find((x) => x.k === f.cat)?.label, f.w && f.h && `${f.w}×${f.h}px`, fileSize(f.size)].filter(Boolean).join(" · ")}
+                          </small>
+                        )}
                         <small className="block text-[11.5px] text-muted-foreground">
                           {[f.addedAt && `เพิ่มเมื่อ ${thaiDate(f.addedAt)}`, f.expires && `หมดอายุ ${thaiDate(f.expires)}`].filter(Boolean).join(" · ")}
+                          {dead && <b className="ml-1 font-semibold text-destructive">· หมดอายุแล้ว</b>}
                         </small>
-                      </span>
-                      <span className="text-center max-sm:hidden">
-                        {dead ? (
-                          <em className="rounded-full bg-destructive/10 px-2.5 py-1 text-[12px] font-semibold text-destructive not-italic">
-                            หมดอายุ
-                          </em>
-                        ) : f.attach ? (
-                          <em className="rounded-full bg-[#E7F5EE] px-2.5 py-1 text-[12px] font-semibold text-[#14875A] not-italic">
-                            แนบอัตโนมัติ
-                          </em>
-                        ) : (
-                          <em className="rounded-full bg-muted px-2.5 py-1 text-[12px] font-semibold text-muted-foreground not-italic">
-                            ไม่แนบ
-                          </em>
-                        )}
                       </span>
                       <span className="flex justify-center">
                         <Switch
-                          on={Boolean(f.attach) && !dead}
-                          disabled={dead}
-                          title={dead ? "เอกสารหมดอายุแล้ว ระบบไม่แนบให้" : undefined}
-                          onToggle={() => update({ docs: (c.docs ?? []).map((x) => (x.id === f.id ? { ...x, attach: !x.attach } : x)) })}
+                          on={Boolean(f.attach) && !dead && !legacy}
+                          disabled={dead || legacy}
+                          title={legacy ? "ไฟล์เดิมไม่มีรูป ระบบแนบไม่ได้" : dead ? "เอกสารหมดอายุแล้ว ระบบไม่แนบให้" : undefined}
+                          onToggle={() => update({ docs: docs.map((x) => (x.id === f.id ? { ...x, attach: !x.attach } : x)) })}
                           label={`แนบ ${f.title || f.name} ไปกับใบเสนอราคา`}
                         />
                       </span>
-                      <span className="flex justify-end gap-1.5">
-                        <button
-                          type="button"
-                          aria-label={`แก้ไข ${f.title || f.name}`}
-                          className="btn glass-thin btn-mini"
-                          onClick={() => setAttEdit(f.id)}
-                        >
-                          <PencilIcon className="size-4" strokeWidth={2.2} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`ลบ ${f.title || f.name}`}
-                          className="btn glass-thin btn-mini"
-                          onClick={() => update({ docs: (c.docs ?? []).filter((x) => x.id !== f.id) })}
-                        >
-                          <TrashIcon className="size-4" strokeWidth={2.2} />
-                        </button>
+                      <span className="flex flex-wrap justify-end gap-1.5">
+                        <IconBtn label={`เลื่อน ${f.title || f.name} ขึ้น`} title="เลื่อนขึ้น" disabled={n === 0} onClick={() => move(f.id, -1)}>
+                          <ChevronUpIcon className="size-3.5" strokeWidth={2.2} />
+                        </IconBtn>
+                        <IconBtn label={`เลื่อน ${f.title || f.name} ลง`} title="เลื่อนลง" disabled={n === docs.length - 1} onClick={() => move(f.id, 1)}>
+                          <ChevronDownIcon className="size-3.5" strokeWidth={2.2} />
+                        </IconBtn>
+                        {!legacy && (
+                          <IconBtn label={`แก้ไข ${f.title || f.name}`} title="แก้ไข" onClick={() => setAttEdit(f.id)}>
+                            <PencilIcon className="size-3.5" strokeWidth={1.9} />
+                          </IconBtn>
+                        )}
+                        <IconBtn label={`ลบ ${f.title || f.name}`} title="ลบ" danger onClick={() => setAttDel(f.id)}>
+                          <TrashIcon className="size-3.5" strokeWidth={1.9} />
+                        </IconBtn>
                       </span>
-                    </li>
+                    </div>
                   );
                 })}
-              </ul>
-            )}
-
-            {attAdd && (
-              <div className="mt-3">
-                <FileDrop
-                  files={(c.docs ?? []).map((f) => ({ id: f.id, name: f.name, size: f.size }))}
-                  onChange={(picked) => {
-                    /* ไฟล์ที่เพิ่งเลือกเข้ามาให้ตั้งค่าเริ่มต้นเป็นแนบอัตโนมัติ และจำวันที่เพิ่ม */
-                    const had = new Map((c.docs ?? []).map((f) => [f.id, f]));
-                    update({
-                      docs: picked.map((f) => had.get(f.id) ?? { ...f, title: f.name.replace(/\.[^.]+$/, ""), cat: ATT_CATS[0].k, attach: true, addedAt: todayIso() }),
-                    });
-                    setAttAdd(false);
-                  }}
-                  hint={`ไฟล์ละไม่เกิน ${ATT_MB} MB · สูงสุด ${ATT_MAX} ไฟล์`}
-                  accept=".pdf,image/*,.doc,.docx,.xls,.xlsx"
-                  label="เลือกไฟล์แนบ"
-                />
               </div>
             )}
           </Card>
+
+          <SignCard key={c.code} issuer={c} update={update} />
         </div>
 
         {/* ตัวอย่างหัวกระดาษ — วาดจากร่าง จะได้เห็นก่อนบันทึก */}
@@ -413,6 +563,19 @@ export function AdminCompanyPage() {
           </div>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(attDel)}
+        title="ลบรูปเอกสารแนบ"
+        description={`ลบ “${docs.find((f) => f.id === attDel)?.title || docs.find((f) => f.id === attDel)?.name || ""}” ออกจากเอกสารแนบของผู้ออกรายนี้ — มีผลหลังกดบันทึก`}
+        confirmLabel="ลบรูป"
+        tone="destructive"
+        onCancel={() => setAttDel("")}
+        onConfirm={() => {
+          update({ docs: docs.filter((x) => x.id !== attDel) });
+          setAttDel("");
+        }}
+      />
 
       {attEdit && c.docs?.some((f) => f.id === attEdit) && (
         <AttSheet
@@ -510,5 +673,160 @@ function AttSheet({
         )}
       </div>
     </Sheet>
+  );
+}
+
+/*
+ * ลายเซ็นและตราประทับของผู้ออกเอกสาร (ผู้ใช้สั่ง 16 ต.ค. 2569)
+ * ผู้มีอำนาจลงนามหนึ่งคนต่อผู้ออกเอกสาร — รูปลายเซ็น + ชื่อ + ตำแหน่ง · ตราประทับบริษัท (ถ้ามี)
+ * แสดงบนใบเสนอราคา (ช่องผู้เสนอราคา) และหนังสือรับรอง 50 ทวิ (ช่องผู้จ่ายเงิน) อัตโนมัติ
+ * แก้แล้วยังไม่มีผลจนกดบันทึกที่แถบด้านล่าง — ผ่านประวัติการตั้งค่าเหมือนช่องอื่น
+ */
+function SignCard({ issuer: c, update }: { issuer: Issuer; update: (patch: Partial<Issuer>) => void }) {
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState<SigKey | "">("");
+  const [del, setDel] = useState<SigKey | "">("");
+  const signRef = useRef<HTMLInputElement>(null);
+  const stampRef = useRef<HTMLInputElement>(null);
+
+  async function pick(k: SigKey, file: File) {
+    setErr("");
+    if (!IMG_TYPES.includes(file.type) && !IMG_EXT.test(file.name)) {
+      setErr(`รับเฉพาะไฟล์รูปภาพ (PNG JPG WEBP) — ${file.name} ไม่ใช่รูป`);
+      return;
+    }
+    setBusy(k);
+    try {
+      const img = await readImage(file, { maxSide: SIG_MAX_SIDE, keepAlpha: true });
+      const size = dataBytes(img.src);
+      if (size > SIG_MAX_BYTES) {
+        setErr(`${file.name} ย่อแล้วยังใหญ่ ${fileSize(size)} เกิน ${fileSize(SIG_MAX_BYTES)} — ครอปให้เหลือเฉพาะ${k === "sign" ? "ลายเซ็น" : "ตรา"}แล้วลองใหม่`);
+        return;
+      }
+      const next: IssuerImage = { src: img.src, w: img.w, h: img.h, name: file.name, size };
+      update({ [k]: next });
+    } catch {
+      setErr(`เปิดรูป ${file.name} ไม่ได้ — ไฟล์อาจเสียหรือไม่ใช่รูปภาพ`);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const slot = (k: SigKey, ref: React.RefObject<HTMLInputElement | null>, hint: string) => {
+    const img = c[k];
+    return (
+      <div className="rounded-[11px] border border-border bg-card p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <b className="text-[13px] font-semibold">
+            {SIG_LABEL[k]}
+            {k === "stamp" && <span className="ml-1 font-normal text-muted-foreground">(ถ้ามี)</span>}
+          </b>
+        </div>
+        <div className="grid h-[120px] place-items-center rounded-[9px] border border-dashed border-border bg-white">
+          {img ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={img.src} alt={SIG_LABEL[k]} className="max-h-[108px] max-w-[92%] object-contain" />
+          ) : (
+            <span className="text-[12px] text-[#5a6069]">ยังไม่มีรูป</span>
+          )}
+        </div>
+        <p className="mt-1.5 truncate text-[11.5px] text-muted-foreground">
+          {img ? `${img.name} · ${img.w}×${img.h}px · ${fileSize(img.size)}` : hint}
+        </p>
+        <input
+          ref={ref}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void pick(k, f);
+          }}
+        />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button type="button" className="btn glass-thin" disabled={Boolean(busy)} onClick={() => ref.current?.click()}>
+            {busy === k ? "กำลังย่อรูป…" : img ? "เปลี่ยนรูป" : "เลือกรูป"}
+          </button>
+          {img && (
+            <button type="button" className="btn glass-thin text-destructive" onClick={() => setDel(k)}>
+              <TrashIcon className="size-4" strokeWidth={1.9} />
+              ลบรูป
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card title="ลายเซ็นและตราประทับ" note="ผู้มีอำนาจลงนามหนึ่งคน · PNG JPG WEBP">
+      <p className="mb-3 rounded-[11px] border border-border bg-card px-3 py-2.5 text-[12.5px] text-muted-foreground">
+        แสดงบนใบเสนอราคา (ช่องผู้เสนอราคา) และหนังสือรับรองการหักภาษี ณ ที่จ่าย 50 ทวิ (ช่องผู้จ่ายเงิน) ที่ออกในนามผู้ออกรายนี้โดยอัตโนมัติ
+        <span className="mt-0.5 block text-[11.5px]">
+          ใช้ PNG พื้นโปร่งใสจะสวยที่สุด · ย่อให้ด้านยาวไม่เกิน {SIG_MAX_SIDE}px · หลังย่อไม่เกิน {fileSize(SIG_MAX_BYTES)} · ไม่มีรูป = เอกสารไม่มีลายเซ็น
+        </span>
+      </p>
+      {err && (
+        <p role="alert" className="mb-3 rounded-[11px] border border-destructive/30 bg-[var(--destructive-soft)] px-3 py-2.5 text-[12.5px] text-destructive">
+          {err}
+        </p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {slot("sign", signRef, "เซ็นบนกระดาษขาวแล้วถ่าย/สแกน ครอปเฉพาะลายเซ็น")}
+        {slot("stamp", stampRef, "ไม่ใส่ก็ได้ — เอกสารจะไม่มีตรา")}
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Input2 label={LABEL.signName}>
+          <input value={c.signName ?? ""} onChange={(e) => update({ signName: e.target.value })} placeholder="เช่น นายสมชาย ใจดี" className={inputCls} />
+        </Input2>
+        <Input2 label={LABEL.signTitle}>
+          <input value={c.signTitle ?? ""} onChange={(e) => update({ signTitle: e.target.value })} placeholder="เช่น กรรมการผู้จัดการ" className={inputCls} />
+        </Input2>
+      </div>
+
+      {/* ตัวอย่างช่องลงนามบนเอกสาร — วาดจากร่าง */}
+      <p className="mt-4 mb-1.5 text-[12px] font-semibold text-muted-foreground">ตัวอย่างช่องผู้เสนอราคาบนใบเสนอราคา</p>
+      <div className="rounded-[10px] border border-border bg-white px-4 py-3.5 text-[#25292f]">
+        <div className="mx-auto max-w-[240px] text-center">
+          <b className="block text-xs font-semibold">ผู้เสนอราคา</b>
+          <SignPreview issuer={c} />
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(del)}
+        title={del ? `ลบ${SIG_LABEL[del]}` : ""}
+        description={`เอกสารที่เปิดดูหรือพิมพ์หลังบันทึกจะไม่มี${del === "stamp" ? "ตราประทับ" : "ลายเซ็น"}ของ ${c.code} — มีผลหลังกดบันทึก`}
+        confirmLabel="ลบรูป"
+        tone="destructive"
+        onCancel={() => setDel("")}
+        onConfirm={() => {
+          if (del) update({ [del]: undefined });
+          setDel("");
+        }}
+      />
+    </Card>
+  );
+}
+
+/** ตัวอย่างลายเซ็นในหน้าตั้งค่า — หน้าตาเดียวกับช่องผู้เสนอราคาใน quotation-paper.tsx */
+function SignPreview({ issuer: c }: { issuer: Issuer }) {
+  return (
+    <>
+      <div className="relative h-[60px]">
+        {c.stamp && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={c.stamp.src} alt="" className="absolute right-0 bottom-[-18px] h-[72px] w-[72px] object-contain opacity-90 mix-blend-multiply" />
+        )}
+        {c.sign && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={c.sign.src} alt="" className="absolute bottom-0 left-1/2 h-[56px] max-w-[85%] -translate-x-1/2 object-contain mix-blend-multiply" />
+        )}
+      </div>
+      <span className="block h-px bg-[#8a9099]" />
+      {c.signName?.trim() && <p className="mt-1 text-[11.5px]">({c.signName.trim()})</p>}
+      {c.signTitle?.trim() && <p className="text-[11px] text-[#5a6069]">{c.signTitle.trim()}</p>}
+    </>
   );
 }

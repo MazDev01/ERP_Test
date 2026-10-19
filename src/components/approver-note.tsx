@@ -7,12 +7,14 @@
  * ถ้าสายอนุมัติเปลี่ยน ข้อความตรงนี้เปลี่ยนตามเองโดยไม่ต้องแก้หน้า
  */
 
+import { useNameOf } from "@/lib/emp-name";
 import { approverOf, hasNoApprover, useApprovalRoute, useRole, type RequestKind } from "@/lib/role";
 
 export function ApproverNote({ kind }: { kind: RequestKind }) {
   const role = useRole();
   const route = useApprovalRoute();
   const boss = approverOf(role, kind, route);
+  const nameOf = useNameOf();
   /* ผู้อนุมัติที่ตั้งไว้เป็นคนเดียวกับผู้ยื่น — ยื่นไม่ได้ ต้องบอกไปเลย
      ไม่ใช่ปล่อยให้ใบไปนอนอยู่ในคิวของตัวเอง (ผู้ใช้ตัดสิน 24 ก.ย. 2569) */
   if (hasNoApprover(role, kind, route)) {
@@ -25,7 +27,7 @@ export function ApproverNote({ kind }: { kind: RequestKind }) {
   }
   return (
     <p>
-      ยื่นถึง {boss.name} · {boss.title}
+      ยื่นถึง {nameOf(boss.name)} · {boss.title}
       {/* ผู้อนุมัติบางตำแหน่งยังไม่มีบทบาทให้ล็อกอิน ใบจะค้างรอไว้ก่อน
           บอกไว้ตรง ๆ ดีกว่าปล่อยให้ผู้ยื่นสงสัยว่าทำไมไม่มีใครกด */}
     </p>

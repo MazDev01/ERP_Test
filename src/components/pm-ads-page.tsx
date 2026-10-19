@@ -29,6 +29,7 @@ import { currentProfile } from "@/lib/profile-data";
 import { memberOf, usePm } from "@/lib/pm-store";
 import { isRef } from "@/lib/pm-data";
 import { useHr } from "@/lib/hr-store";
+import { displayName, useNameOf } from "@/lib/emp-name";
 import { EyeIcon, PencilIcon, PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { MonthField, ThaiDatePicker } from "./thai-date-picker";
@@ -158,11 +159,14 @@ function Head({ children }: { children?: React.ReactNode }) {
   return (
     <>
       {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-      <h1 className="sr-only">โฆษณาและรายงาน</h1>
-      {children && (
-        <div className="bar" style={{ justifyContent: "flex-end" }}>
+      {/* ชื่อหน้ามุมซ้ายบน ปุ่มอยู่ขวาแถวเดียวกัน · มือถือคงเดิม (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      {children ? (
+        <div className="bar max-md:justify-end!">
+          <h1 className="page-h1">โฆษณาและรายงาน</h1>
           <div className="tools w-full sm:w-auto">{children}</div>
         </div>
+      ) : (
+        <h1 className="page-h1">โฆษณาและรายงาน</h1>
       )}
     </>
   );
@@ -630,11 +634,15 @@ function NewRunSheet({
  */
 function useEmpName() {
   const hr = useHr();
-  return (id: string) => memberOf(id)?.name ?? hr.emp.find((e) => e.id === id)?.name ?? id;
+  return (id: string) => {
+    const e = hr.emp.find((x) => x.id === id);
+    return memberOf(id)?.name ?? (e ? displayName(e) : id);
+  };
 }
 
 function RunSheet({ run, onClose }: { run: AdRun; onClose: () => void }) {
   const nameOf = useEmpName();
+  const empName = useNameOf();
   return (
     <Sheet
       title={`${run.channel} · ${run.tool}`}
@@ -668,7 +676,7 @@ function RunSheet({ run, onClose }: { run: AdRun; onClose: () => void }) {
         <Kv label="งบลูกค้า" value={`${baht(run.budget)} บาท`} />
         <Kv label="สถานะ" value={run.ran ? "รันแล้ว" : "ยังไม่รัน"} />
         {/* ผู้ยืนยันและเวลา — ตรวจย้อนได้ (PM-BR-10) · ใบตั้งต้นไม่มีข้อมูลนี้ */}
-        {run.ranBy && <Kv label="ยืนยันโดย" value={`${run.ranBy} · ${thaiStamp(run.ranAt ?? "")}`} />}
+        {run.ranBy && <Kv label="ยืนยันโดย" value={`${empName(run.ranBy)} · ${thaiStamp(run.ranAt ?? "")}`} />}
         <Kv label="หมายเหตุ" value={run.note || "ไม่มี"} />
       </dl>
     </Sheet>
@@ -856,6 +864,7 @@ function MetricSheet({
   onClose: () => void;
 }) {
   const [form, setForm] = useState(() => blankForm(content.m));
+  const empName = useNameOf();
 
   /* ทุกช่องต้องเป็นตัวเลขไม่ติดลบ ผลจากแพลตฟอร์มไม่มีทางติดลบอยู่แล้ว */
   const parsed = useMemo(() => {
@@ -899,7 +908,7 @@ function MetricSheet({
       {/* ตัวเลขคีย์มือ — บอกว่าใครกรอกล่าสุดเมื่อไร ตรวจย้อนได้ (PM-BR-10) */}
       {content.by && (
         <p className="mt-1 text-[12px] text-muted-foreground">
-          กรอกล่าสุดโดย {content.by} · {thaiStamp(content.at ?? "")}
+          กรอกล่าสุดโดย {empName(content.by)} · {thaiStamp(content.at ?? "")}
         </p>
       )}
 

@@ -25,6 +25,79 @@ export function leaveLabel(type: string) {
 import type { Role } from "./role";
 import { settings } from "./system-settings";
 import { todayIso } from "./format";
+import { companySchedule, minutesOfDay, type DaySchedule } from "./work-schedule";
+
+/*
+ * ─── นับการลาเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) ───
+ * 1 วัน = 8 ชั่วโมงเสมอ (เวลาเข้า–ออกหักพักเที่ยง · แม่บ้าน 08–17 ก็ 8 ชม.)
+ * ใบลายังเก็บ days เป็นหน่วยภายใน (= ชั่วโมง ÷ 8) สิทธิ์และสูตรเดิมทุกตัวจึงไม่ต้องเปลี่ยน
+ * แต่ทุกหน้าที่แสดงจำนวนการลาต้องพิมพ์ผ่าน fmtLeave() ตัวเดียว: "2 วัน" · "4 ชม." · "1 วัน 4 ชม."
+ */
+export const LEAVE_DAY_HOURS = 8;
+
+/** ชั่วโมง → วัน (หน่วยภายในของใบลา) ไม่ปัด — 3 ชม. = 0.375 วัน */
+export function leaveDaysOfHours(h: number) {
+  return Math.round((Math.max(0, h) / LEAVE_DAY_HOURS) * 1e6) / 1e6;
+}
+
+/** วัน (หน่วยภายใน) → ชั่วโมง ปัดเป็นนาที */
+export function leaveHoursOfDays(days: number) {
+  return Math.round(days * LEAVE_DAY_HOURS * 60) / 60;
+}
+
+/** จำนวนชั่วโมงเป็นข้อความ — "4 ชม." · "1 ชม. 30 นาที" · "1 วัน 4 ชม." · "2 วัน" (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+export function fmtLeaveHours(hours: number) {
+  const min = Math.round(Math.abs(hours) * 60);
+  const sign = hours < 0 && min > 0 ? "−" : "";
+  const d = Math.floor(min / (LEAVE_DAY_HOURS * 60));
+  const rest = min - d * LEAVE_DAY_HOURS * 60;
+  const h = Math.floor(rest / 60);
+  const m = rest - h * 60;
+  const parts: string[] = [];
+  if (d) parts.push(`${d} วัน`);
+  if (h) parts.push(`${h} ชม.`);
+  if (m) parts.push(`${m} นาที`);
+  return sign + (parts.length ? parts.join(" ") : "0 ชม.");
+}
+
+/** จำนวนการลา/สิทธิ์ที่เก็บเป็นวัน (หน่วยภายใน) เป็นข้อความชั่วโมง — ตัวพิมพ์ตัวเดียวของทั้งระบบ */
+export function fmtLeave(days: number) {
+  return fmtLeaveHours(leaveHoursOfDays(days));
+}
+
+/** ช่วงลาครึ่งวันตามเวลาทำงานของคนนั้น — เช้า = เข้างาน→เริ่มพัก · บ่าย = เลิกพัก→เลิกงาน (นาทีของวัน) */
+export function halfWindow(half: "morning" | "afternoon", sch: DaySchedule = companySchedule()) {
+  return half === "morning"
+    ? { start: minutesOfDay(sch.start), end: minutesOfDay(sch.lunchStart) }
+    : { start: minutesOfDay(sch.lunchEnd), end: minutesOfDay(sch.end) };
+}
+
+/** ชั่วโมงจริงของลาครึ่งวัน — 09:00–12:00 = 3 ชม. ไม่ใช่ครึ่งวันตายตัว (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+export function halfHours(half: "morning" | "afternoon", sch: DaySchedule = companySchedule()) {
+  const w = halfWindow(half, sch);
+  return Math.max(0, w.end - w.start) / 60;
+}
+
+/** ชั่วโมงของใบลา — ใบใหม่เก็บ hours ไว้แล้ว · ใบเก่าเต็มวันคิด days × 8 */
+export function leaveHoursOf(r: { days: number; hours?: number }) {
+  return r.hours ?? leaveHoursOfDays(r.days);
+}
+
+/**
+ * ใบลาครึ่งวันที่บันทึกไว้ก่อนนับเป็นชั่วโมง (days = 0.5 ตายตัว) → ชั่วโมงจริงของช่วง (ผู้ใช้สั่ง 19 ต.ค. 2569)
+ * ใช้ช่วงเวลาที่ติดมากับใบ (startMin/endMin) ก่อน ไม่มีก็คิดจากเวลาทำงานของบริษัท
+ * ใบที่มีชั่วโมงอยู่แล้ว (ลารายชั่วโมง/ใบใหม่) ไม่ถูกแตะ
+ */
+export function fixHalfLeaveHours<T extends { days: number; hours?: number; half?: "morning" | "afternoon"; startMin?: number; endMin?: number }>(r: T): T {
+  if (!r.half || r.hours != null) return r;
+  const sch = companySchedule();
+  const w = r.startMin != null && r.endMin != null ? { start: r.startMin, end: r.endMin } : halfWindow(r.half, sch);
+  /* ช่วงที่คร่อมพักเที่ยงหักพักออก */
+  const lunch = Math.max(0, Math.min(w.end, minutesOfDay(sch.lunchEnd)) - Math.max(w.start, minutesOfDay(sch.lunchStart)));
+  const h = Math.max(0, w.end - w.start - lunch) / 60;
+  if (!(h > 0)) return r;
+  return { ...r, hours: h, days: leaveDaysOfHours(h) };
+}
 
 /** ชื่อประเภทการลา — ประเภทตั้งต้น หรือประเภทที่ผู้ดูแลระบบเพิ่มเอง */
 export type LeaveType = string;
@@ -115,7 +188,8 @@ export type LeaveStatus = (typeof LEAVE_STATUSES)[number];
 export function fixLeaveStatuses(records: LeaveRecord[]): LeaveRecord[] {
   const old = (r: LeaveRecord) => r.status as string;
   /* ประเภทที่เลิกใช้ย้ายเป็นลากิจ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  const typed = records.map((r) => (RETIRED_LEAVE_TYPES.includes(r.type) ? { ...r, type: "ลากิจ" } : r));
+  /* ครึ่งวันแบบเก่า (0.5 วัน) → ชั่วโมงจริงของช่วงเช้า/บ่าย (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const typed = records.map((r) => fixHalfLeaveHours(RETIRED_LEAVE_TYPES.includes(r.type) ? { ...r, type: "ลากิจ" } : r));
   return typed.map((r) =>
     old(r) === "ตามกำหนดการ" || old(r) === "ใช้ไปแล้ว"
       ? { ...r, status: "อนุมัติแล้ว" }
@@ -202,7 +276,7 @@ const SALES_LEAVE: LeaveRecord[] = [
   { id: "LV-2569-0041", date: "2026-09-15", toDate: "2026-09-17", employee: "ชนัญชิดา ใจดี", type: "ลาพักร้อน", days: 3, status: "รอการอนุมัติ", comment: "พาครอบครัวไปเที่ยว" },
   { id: "LV-2569-0040", date: "2026-09-08", toDate: "2026-09-08", employee: "ชนัญชิดา ใจดี", type: "ลากิจ", days: 1, status: "อนุมัติแล้ว", comment: "ทำธุระที่อำเภอ" },
   { id: "LV-2569-0036", date: "2026-08-19", toDate: "2026-08-19", employee: "ชนัญชิดา ใจดี", type: "ลาป่วย", days: 1, status: "อนุมัติแล้ว", comment: "ไข้หวัดใหญ่" },
-  { id: "LV-2569-0033", date: "2026-08-03", toDate: "2026-08-03", employee: "ชนัญชิดา ใจดี", type: "ลาป่วย", days: 0.5, status: "อนุมัติแล้ว", comment: "พบแพทย์ตามนัด" },
+  { id: "LV-2569-0033", date: "2026-08-03", toDate: "2026-08-03", employee: "ชนัญชิดา ใจดี", type: "ลาป่วย", days: 0.375, half: "morning", hours: 3, status: "อนุมัติแล้ว", comment: "พบแพทย์ตามนัด" },
   { id: "LV-2569-0029", date: "2026-07-22", toDate: "2026-07-23", employee: "ชนัญชิดา ใจดี", type: "ลากิจ", days: 2, status: "อนุมัติแล้ว", comment: "ธุระครอบครัว" },
   { id: "LV-2569-0025", date: "2026-06-10", toDate: "2026-06-14", employee: "ชนัญชิดา ใจดี", type: "ลาพักร้อน", days: 5, status: "ไม่อนุมัติ", comment: "ช่วงงานยุ่ง หัวหน้าขอเลื่อน" },
   { id: "LV-2569-0021", date: "2026-05-06", toDate: "2026-05-07", employee: "ชนัญชิดา ใจดี", type: "ลาพักร้อน", days: 2, status: "อนุมัติแล้ว", comment: "พักผ่อน" },
@@ -226,7 +300,7 @@ const ACC_LEAVE: LeaveRecord[] = [
   { id: "LV-2569-0072", date: "2026-10-19", toDate: "2026-10-19", employee: "อรอนงค์ พรหมมา", type: "ลาพักร้อน", days: 1, status: "รอการอนุมัติ", comment: "ไปงานแต่งงานเพื่อนที่ลำปาง", submittedAt: "2026-10-08 09:20" },
   { id: "LV-2569-0075", date: "2026-09-30", toDate: "2026-09-30", employee: "อรอนงค์ พรหมมา", type: "ลากิจ", days: 1, status: "ไม่อนุมัติ", comment: "ตรงกับวันปิดงบสิ้นเดือน ขอให้เลื่อนเป็นต้นเดือนหน้า", submittedAt: "2026-09-22 10:05", decidedAt: "2026-09-22 14:30" },
   { id: "LV-2569-0073", date: "2026-08-17", toDate: "2026-08-17", employee: "อรอนงค์ พรหมมา", type: "ลาป่วย", days: 1, status: "อนุมัติแล้ว", comment: "เป็นไข้หวัด ไปหาหมอที่คลินิก", submittedAt: "2026-08-17 07:40", decidedAt: "2026-08-17 09:05" },
-  { id: "LV-2569-0076", date: "2026-07-10", toDate: "2026-07-10", employee: "อรอนงค์ พรหมมา", type: "ลากิจ", days: 0.5, half: "morning", status: "ยกเลิก", comment: "ไปทำบัตรประชาชนใหม่ที่อำเภอ", submittedAt: "2026-07-06 16:10", cancelReason: "เปลี่ยนไปทำวันเสาร์แทน", cancelledBy: "อรอนงค์ พรหมมา", cancelledAt: "2026-07-08 08:50" },
+  { id: "LV-2569-0076", date: "2026-07-10", toDate: "2026-07-10", employee: "อรอนงค์ พรหมมา", type: "ลากิจ", days: 0.375, half: "morning", hours: 3, status: "ยกเลิก", comment: "ไปทำบัตรประชาชนใหม่ที่อำเภอ", submittedAt: "2026-07-06 16:10", cancelReason: "เปลี่ยนไปทำวันเสาร์แทน", cancelledBy: "อรอนงค์ พรหมมา", cancelledAt: "2026-07-08 08:50" },
   { id: "LV-2569-0074", date: "2026-06-22", toDate: "2026-06-23", employee: "อรอนงค์ พรหมมา", type: "ลาพักร้อน", days: 2, status: "อนุมัติแล้ว", comment: "พาครอบครัวไปเที่ยวเชียงราย", submittedAt: "2026-06-08 11:15", decidedAt: "2026-06-08 15:40" },
 ];
 
@@ -250,7 +324,7 @@ const GM_LEAVE: LeaveRecord[] = [
  * ฝ่ายบุคคลจะอ่านจากใบจริงแล้วเห็นว่าเขาไม่เคยลาเลย ทั้งที่ทะเบียนเดิมมีวันลาอยู่
  */
 const STAFF_LEAVE: LeaveRecord[] = [
-  { id: "LV-2569-0037", date: "2026-08-21", toDate: "2026-08-21", employee: "กมลชนก พูนสุข", type: "ลากิจ", days: 0.5, half: "afternoon", status: "อนุมัติแล้ว", comment: "พาผู้ปกครองไปโรงพยาบาล" },
+  { id: "LV-2569-0037", date: "2026-08-21", toDate: "2026-08-21", employee: "กมลชนก พูนสุข", type: "ลากิจ", days: 0.625, half: "afternoon", hours: 5, status: "อนุมัติแล้ว", comment: "พาผู้ปกครองไปโรงพยาบาล" },
 ];
 
 /*
@@ -265,7 +339,7 @@ const LEAVE_OCT_2569: Partial<Record<Role, LeaveRecord[]>> = {
   ],
   ps: [
     { id: "LV-2569-0070", date: "2026-10-14", toDate: "2026-10-14", employee: "ปิยะวัฒน์ แก้วใส", type: "ลากิจ", days: 1, status: "รอการอนุมัติ", comment: "ไปติดต่อธนาคารเรื่องสินเชื่อบ้าน", submittedAt: "2026-10-06 17:20" },
-    { id: "LV-2569-0071", date: "2026-09-25", toDate: "2026-09-25", employee: "ปิยะวัฒน์ แก้วใส", type: "ลาป่วย", days: 0.5, half: "morning", status: "อนุมัติแล้ว", comment: "พบแพทย์ตามนัด", submittedAt: "2026-09-24 18:05", decidedAt: "2026-09-25 08:10" },
+    { id: "LV-2569-0071", date: "2026-09-25", toDate: "2026-09-25", employee: "ปิยะวัฒน์ แก้วใส", type: "ลาป่วย", days: 0.375, half: "morning", hours: 3, status: "อนุมัติแล้ว", comment: "พบแพทย์ตามนัด", submittedAt: "2026-09-24 18:05", decidedAt: "2026-09-25 08:10" },
   ],
   pm: [
     { id: "LV-2569-0058", date: "2026-10-09", toDate: "2026-10-09", employee: "ชนิกานต์ วัฒนกุล", type: "ลากิจ", days: 1, status: "รอการอนุมัติ", comment: "ประชุมผู้ปกครองที่โรงเรียนลูก", submittedAt: "2026-10-06 09:05" },
@@ -275,7 +349,7 @@ const LEAVE_OCT_2569: Partial<Record<Role, LeaveRecord[]>> = {
   ],
   staff: [
     { id: "LV-2569-0060", date: "2026-10-20", toDate: "2026-10-21", employee: "กมลชนก พูนสุข", type: "ลาพักร้อน", days: 2, status: "รอการอนุมัติ", comment: "กลับบ้านต่างจังหวัด", submittedAt: "2026-10-07 16:30" },
-    { id: "LV-2569-0061", date: "2026-10-01", toDate: "2026-10-01", employee: "กมลชนก พูนสุข", type: "ลากิจ", days: 0.5, half: "afternoon", status: "ไม่อนุมัติ", comment: "วันนั้นมีนัดส่งงานเว็บไซต์ให้ลูกค้า ขอให้เลื่อนเป็นวันอื่น", submittedAt: "2026-09-29 11:20", decidedAt: "2026-09-29 15:05" },
+    { id: "LV-2569-0061", date: "2026-10-01", toDate: "2026-10-01", employee: "กมลชนก พูนสุข", type: "ลากิจ", days: 0.625, half: "afternoon", hours: 5, status: "ไม่อนุมัติ", comment: "วันนั้นมีนัดส่งงานเว็บไซต์ให้ลูกค้า ขอให้เลื่อนเป็นวันอื่น", submittedAt: "2026-09-29 11:20", decidedAt: "2026-09-29 15:05" },
     { id: "LV-2569-0059", date: "2026-09-29", toDate: "2026-09-29", employee: "กมลชนก พูนสุข", type: "ลาป่วย", days: 1, status: "อนุมัติแล้ว", comment: "เป็นไข้หวัด มีใบรับรองแพทย์", files: ["ใบรับรองแพทย์.jpg"], submittedAt: "2026-09-29 07:50", decidedAt: "2026-09-29 09:15" },
   ],
   gm: [

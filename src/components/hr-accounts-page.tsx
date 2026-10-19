@@ -22,12 +22,14 @@ import {
   type Employee,
 } from "@/lib/hr-data";
 import { createAccount, resetAccount, setAccountRoles, setAccountStatus, useHr } from "@/lib/hr-store";
-import { jobLabel, PassBox, RolePicker, tempPass } from "./account-parts";
+import { JobTags, jobLabel, PassBox, RolePicker, tempPass } from "./account-parts";
 import { roleLabel, type Role } from "@/lib/role";
 import { Sheet } from "./lead-dialogs";
 import { Field, Input, Select } from "./ui";
 import { SearchBox } from "./sales-ui";
+import { Switch } from "./admin-ui";
 import { PhoneCard, PhoneList } from "./acchr-phone";
+import { stackNo } from "@/lib/stack-no";
 
 type Filter = "all" | "active" | "suspended";
 
@@ -48,16 +50,27 @@ export function HrAccountsPage() {
   /** กล่องเมนูที่ใช้ได้ (บทบาทของบัญชี) — ต้นแบบ hr-accounts.html mVeil */
   const [menuOf, setMenuOf] = useState<string | null>(null);
 
+  /* ลำดับแบบกองซ้อน — นับจากบัญชีทั้งหมดก่อนกรองสถานะ/ค้นหา ตามวันที่สร้างบัญชี บัญชีล่าสุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  const noOf = useMemo(
+    () =>
+      stackNo(
+        hr.emp.filter((e) => e.status === "active" && e.account),
+        (e) => e.account?.createdAt ?? "",
+        (e) => e.id,
+      ),
+    [hr.emp],
+  );
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return hr.emp.filter((e) => {
       /* พนักงาน 1 คนมีบัญชี 1 บัญชี สร้างพร้อมข้อมูลพนักงาน — ตารางนี้จึงมีแต่คนที่มีบัญชี */
       if (e.status !== "active" || !e.account) return false;
       if (filter !== "all" && e.account.status !== filter) return false;
-      if (q && !`${e.name} ${e.account?.user ?? ""}`.toLowerCase().includes(q)) return false;
+      if (q && !`${e.name} ${e.nick ?? ""} ${e.account?.user ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
-    });
-  }, [hr.emp, query, filter]);
+    }).sort((a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0));
+  }, [hr.emp, query, filter, noOf]);
 
   const target = editing ? hr.emp.find((e) => e.id === editing.id) : undefined;
 
@@ -90,21 +103,22 @@ export function HrAccountsPage() {
 
       <section className="panel glass flex flex-col">
         <div className="scroll-stable min-h-0 flex-1 overflow-auto max-sm:hidden">
-          <table className="data-table cards-sm min-w-[860px]">
+          <table className="data-table cards-sm min-w-[920px]">
             <thead>
               <tr>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th>พนักงาน</th>
                 <th style={{ width: 150 }}>ชื่อผู้ใช้</th>
                 <th style={{ width: 170 }}>งานที่รับผิดชอบ</th>
-                <th style={{ width: 120 }}>สถานะบัญชี</th>
+                {/* สวิตช์แทนปุ่มระงับ/คืนสิทธิ์ และแทนคอลัมน์สถานะบัญชี (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
                 <th style={{ width: 120 }}>สร้างเมื่อ</th>
-                <th className="c" style={{ width: 330 }} aria-label="จัดการ" />
+                <th className="c" style={{ width: 300 }} aria-label="จัดการ" />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-12 text-center text-muted-foreground">
                     ไม่พบรายการ
                   </td>
                 </tr>
@@ -112,6 +126,7 @@ export function HrAccountsPage() {
                 rows.map((e) => (
                   <AccountRow
                     key={e.id}
+                    no={noOf.get(e.id) ?? 0}
                     emp={e}
                     onMenu={() => setMenuOf(e.id)}
                     onReset={() => setEditing({ id: e.id, reset: true })}
@@ -133,14 +148,19 @@ export function HrAccountsPage() {
             return (
               <PhoneCard
                 key={e.id}
-                title={e.name}
-                sub={e.pos ? hrPos(e.pos).label : "ยังไม่ได้กรอกข้อมูล"}
+                title={e.nick?.trim() || e.name}
+                sub={`#${noOf.get(e.id)} · ${e.pos ? hrPos(e.pos).label : "ยังไม่ได้กรอกข้อมูล"}`}
                 badge={
-                  st ? (
-                    <span className={`tag ${st.cls}`}>
-                      <i />
-                      {st.label}
-                    </span>
+                  a ? (
+                    /* มือถือก็ใช้สวิตช์ เปิด = ใช้งานอยู่ ปิด = ระงับ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+                    <Switch
+                      on={a.status === "active"}
+                      onToggle={() =>
+                        setAccountStatus(e.id, a.status === "active" ? "suspended" : "active")
+                      }
+                      label={`เปิดหรือปิดใช้บัญชี ${e.name}`}
+                      title={st?.label}
+                    />
                   ) : (
                     <span className="tag t-miss">
                       <i />
@@ -152,7 +172,7 @@ export function HrAccountsPage() {
                   a
                     ? [
                         { label: "ชื่อผู้ใช้", value: a.user },
-                        { label: "งานที่รับผิดชอบ", value: roleLine(a.roles) },
+                        { label: "งานที่รับผิดชอบ", value: <JobTags roles={a.roles} /> },
                         { label: "สร้างเมื่อ", value: thaiDate(a.createdAt) },
                       ]
                     : undefined
@@ -169,15 +189,6 @@ export function HrAccountsPage() {
                         onClick={() => setEditing({ id: e.id, reset: true })}
                       >
                         รีเซ็ตรหัสผ่าน
-                      </button>
-                      <button
-                        type="button"
-                        className="btn glass-thin"
-                        onClick={() =>
-                          setAccountStatus(e.id, a.status === "active" ? "suspended" : "active")
-                        }
-                      >
-                        {a.status === "active" ? "ระงับบัญชี" : "คืนสิทธิ์"}
                       </button>
                     </>
                   ) : (
@@ -218,11 +229,13 @@ export function HrAccountsPage() {
 }
 
 function AccountRow({
+  no,
   emp,
   onMenu,
   onReset,
   onToggle,
 }: {
+  no: number;
   emp: Employee;
   onMenu: () => void;
   onReset: () => void;
@@ -232,8 +245,10 @@ function AccountRow({
   const st = a ? HR_ACC_STATUS[a.status] : null;
   return (
     <tr>
+      <td data-label="ลำดับ" className="c num muted">{no}</td>
       <td data-label="พนักงาน">
-        <b className="block text-[13.5px] font-semibold">{emp.name}</b>
+        {/* ชื่อเล่นเป็นชื่อหลัก ไม่มีชื่อเล่นใช้ชื่อจริง (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+        <b className="block text-[13.5px] font-semibold">{emp.nick?.trim() || emp.name}</b>
         {/* ยังไม่มีตำแหน่ง — ข้อความตาม mockup (posLabel) */}
         <span className="why">{emp.pos ? hrPos(emp.pos).label : "ยังไม่ได้กรอกข้อมูล"}</span>
       </td>
@@ -241,41 +256,27 @@ function AccountRow({
         {a ? a.user : <span className="muted">ยังไม่มีบัญชี</span>}
       </td>
       <td data-label="งานที่รับผิดชอบ">
-        {a?.roles?.length ? (
-          a.roles.map((r) => (
-            <span key={r} className="block leading-relaxed whitespace-nowrap">
-              {jobLabel(r)}
-            </span>
-          ))
-        ) : (
-          <span className="muted">—</span>
-        )}
-      </td>
-      <td data-label="สถานะบัญชี">
-        {st ? (
-          <span className={`tag ${st.cls}`}>
-            <i />
-            {st.label}
-          </span>
-        ) : (
-          <span className="muted">—</span>
-        )}
+        <JobTags roles={a?.roles} />
       </td>
       <td data-label="สร้างเมื่อ" className="num muted">
         {a ? thaiDate(a.createdAt) : "—"}
       </td>
       <td data-label="จัดการ" className="c">
         {a ? (
-          <span className="flex flex-wrap justify-end gap-1.5">
+          <span className="flex flex-wrap items-center justify-end gap-1.5">
             <button type="button" className="btn glass-thin btn-mini" onClick={onMenu}>
               งานที่รับผิดชอบ
             </button>
             <button type="button" className="btn glass-thin btn-mini" onClick={onReset}>
               รีเซ็ตรหัสผ่าน
             </button>
-            <button type="button" className="btn glass-thin btn-mini" onClick={onToggle}>
-              {a.status === "active" ? "ระงับบัญชี" : "คืนสิทธิ์"}
-            </button>
+            {/* สวิตช์เปิด/ปิดบัญชีอยู่ตำแหน่งเดิมของปุ่มระงับบัญชี (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+            <Switch
+              on={a.status === "active"}
+              onToggle={onToggle}
+              label={`เปิดหรือปิดใช้บัญชี ${emp.name}`}
+              title={st?.label}
+            />
           </span>
         ) : null}
       </td>

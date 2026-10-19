@@ -9,7 +9,9 @@
 
 import { bkkNow } from "@/lib/format";
 import type { DocPrefixes } from "@/lib/system-settings";
-import { AdminHead, Card, SaveBar, useSectionDraft } from "./admin-ui";
+import { AdminHead, SaveBar, thCls, trCls, useSectionDraft } from "./admin-ui";
+
+const DOC_COLS = "grid-cols-[28px_minmax(0,1fr)_150px_210px]";
 
 type Row = { key: keyof DocPrefixes; label: string; sample: (p: string) => string; who: string };
 
@@ -29,7 +31,7 @@ function rows(): Row[] {
     { key: "receipt", label: "ใบเสร็จ", who: "บัญชี", sample: (p) => `${p}-${be}-0001` },
     /* โปรเจคมีเลขของตัวเอง ผูกกับวางบิลงวดแรก ไม่ใช่เลขดีล (ผู้ใช้สั่ง 5 ต.ค. 2569) */
     { key: "project", label: "โปรเจค", who: "PM", sample: (p) => `${p}-${be}-0001` },
-    /* ไม่มีใบลดหนี้ ใบเพิ่มหนี้ และคืนเงิน — เอกสารสามชนิดนี้พักไว้ (เจ้าของระบบสั่ง 24 ก.ย. 2569) */
+    /* ไม่มีเลขที่ใบลดหนี้/ใบเพิ่มหนี้/คืนเงิน — ระบบไม่มีเอกสารเหล่านี้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
   ];
 }
 
@@ -69,9 +71,9 @@ export function AdminDocNumbersPage() {
     <div className="space-y-4">
       <AdminHead title="เลขที่เอกสาร" desc="ตัวนำหน้าของเลขที่เอกสารแต่ละชนิด ปีและลำดับระบบออกให้เองเพื่อกันเลขซ้ำ" />
 
-      <Card title="ตัวนำหน้า">
+      <section className="glass overflow-hidden rounded-[18px]">
         {/* มือถือ: แถวละเอกสาร ชื่อกับตัวอย่างเลขอยู่ซ้าย ช่องตัวนำหน้าอยู่ขวา */}
-        <ul className="divide-y divide-border rounded-[14px] border border-border bg-card sm:hidden">
+        <ul className="divide-y divide-border sm:hidden">
           {list.map((r) => (
             <li key={r.key} className="flex items-center gap-3 px-3.5 py-3">
               <span className="min-w-0 flex-1">
@@ -84,33 +86,24 @@ export function AdminDocNumbersPage() {
             </li>
           ))}
         </ul>
-        <div className="hidden overflow-x-auto sm:block">
-          <table className="data-table cards-sm min-w-[640px]">
-            <thead>
-              <tr>
-                <th>เอกสาร</th>
-                <th style={{ width: 150 }}>ตัวนำหน้า</th>
-                <th style={{ width: 210 }}>ตัวอย่างเลขถัดไป</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((r) => (
-                <tr key={r.key}>
-                  <td data-label="เอกสาร">
-                    <b className="font-semibold">{r.label}</b>
-                  </td>
-                  <td data-label="ตัวนำหน้า">
-                    {prefixInput(r, "h-9 text-[14px]")}
-                  </td>
-                  <td data-label="ตัวอย่างเลขถัดไป" className="num muted">
-                    {r.sample(d.draft[r.key] || "—")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* ตารางแบบเดียวกับตารางตัวเลือกในรายการ: # | เอกสาร | ตัวนำหน้า | ตัวอย่างเลขถัดไป (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+        <div className="hidden px-4 pt-3.5 pb-4 sm:block sm:px-5">
+          <div className={`grid ${DOC_COLS} ${thCls}`}>
+            <span className="text-center">#</span>
+            <span>เอกสาร</span>
+            <span>ตัวนำหน้า</span>
+            <span>ตัวอย่างเลขถัดไป</span>
+          </div>
+          {list.map((r, n) => (
+            <div key={r.key} className={`grid ${DOC_COLS} ${trCls}`}>
+              <span className="num text-center text-[12px] text-muted-foreground">{n + 1}</span>
+              <b className="min-w-0 truncate text-[13.5px] font-semibold">{r.label}</b>
+              <span>{prefixInput(r, "h-9 text-[14px]")}</span>
+              <span className="num text-[13px] text-muted-foreground">{r.sample(d.draft[r.key] || "—")}</span>
+            </div>
+          ))}
         </div>
-      </Card>
+      </section>
 
       <SaveBar dirty={d.dirty} isDefault={d.isDefault} invalid={problem(d.draft)} onSave={d.save} onCancel={d.cancel} onDefault={d.toDefault} />
     </div>

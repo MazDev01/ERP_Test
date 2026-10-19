@@ -11,10 +11,11 @@
  * ลิงก์อยู่ในเมนูของ GM เท่านั้น — แถวโปรเจคพาไปหน้าโปรเจค ซึ่งอยู่ในเมนู GM อยู่แล้ว (เปิดแบบดูอย่างเดียว)
  */
 
+import { nameOf } from "@/lib/emp-name";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { addDays, daysBetween, parseIsoDate, TH_MONTHS_SHORT, toIsoDate, todayIso } from "@/lib/format";
-import { useApprovedOtHours, useGmPending, useTeamLeave, type TeamLeave } from "@/lib/gm-data";
+import { teamLeaveHoursText, useApprovedOtHours, useGmPending, useTeamLeave, type TeamLeave } from "@/lib/gm-data";
 import { USERS } from "@/lib/mock-data";
 import { projectHref, projectProgress, type Project } from "@/lib/pm-data";
 import { endOf, type PmEvent } from "@/lib/pm-schedule-data";
@@ -70,7 +71,7 @@ export function GmDashboardPage() {
       <div className="bar">
         <div>
           <h1>แดชบอร์ด</h1>
-          <p>{USERS.gm.name} · ผู้จัดการทั่วไป</p>
+          <p>{nameOf(USERS.gm.name)} · ผู้จัดการทั่วไป</p>
         </div>
       </div>
 
@@ -87,7 +88,7 @@ export function GmDashboardPage() {
           <Card title="ลาในสัปดาห์นี้" more={{ href: "/gm/calendar", label: "ดูตารางงาน" }}>
             <CappedList count={week.length} href="/gm/calendar" empty="ไม่มีใครลาในสัปดาห์นี้">
               {week.slice(0, LIST_CAP).map((l) => (
-                <Row key={l.key} href="/gm/calendar" title={l.name} sub={`${l.type} ${range(l.from, l.to)}`}
+                <Row key={l.key} href="/gm/calendar" title={l.name} sub={`${l.type} ${range(l.from, l.to)}${teamLeaveHoursText(l)}`}
                   right={<LeaveState l={l} />} />
               ))}
             </CappedList>

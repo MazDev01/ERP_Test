@@ -10,25 +10,26 @@
  * เพราะใบกำกับภาษีที่ไม่มีฐานภาษีกับยอด VAT ใช้เป็นหลักฐานทางภาษีไม่ได้ และผู้รับก็ตรวจไม่ได้ว่าถูกหักเท่าไร
  * ตัวเลขทั้งสี่บรรทัดมาจากใบแจ้งหนี้ที่แบ่งตามสัดส่วนงวดไว้แล้วตั้งแต่ตอนออกเลข (invoiceAmounts, AC-BR-02)
  * หัวกระดาษตามผู้ออกใบเสนอราคาของดีล (issuerInfo) · ข้อมูลผู้ซื้อตามลูกค้าของดีลฝั่งขาย
+ * พิมพ์ได้ทั้งต้นฉบับ สำเนา หรือต้นฉบับ + สำเนา — ป้ายมุมขวาบนของแผ่น (ผู้ใช้สั่ง 15 ต.ค. 2569)
  */
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
-  creditKind,
-  debitKind,
   INVOICE_STATUS,
   NO_WHT_NOTE,
   seqText,
   WHT_CERT_WAIT,
   type AccDeal,
 } from "@/lib/acc-data";
-import { debitsOfCredit, invoiceStatus, useAcc } from "@/lib/acc-store";
+import { invoiceStatus, useAcc } from "@/lib/acc-store";
 import { taxInvoiceBuyer, type TaxInvoiceBuyer } from "@/lib/crm-data";
 import { customerOfDeal, useCrm, type CrmState } from "@/lib/crm-store";
 import { baht, bahtText, thaiDateLong, thaiStamp } from "@/lib/format";
+import { useCrumb, type Crumb } from "@/lib/crumb";
 import { ChevronLeftIcon, DownloadIcon, PrintIcon } from "./icons";
 import { issuerInfo } from "./quotation-paper";
+import { CopyMark, CopyPicker, copySets, useCopyMode, type CopyKind, type CopyMode } from "./doc-copy";
 
 /**
  * สามบรรทัดภาษีที่อยู่เหนือยอดชำระสุทธิ — ราคาก่อนภาษี · VAT · หักภาษี ณ ที่จ่าย
@@ -69,12 +70,22 @@ function parties(crm: CrmState, deal: AccDeal | undefined, cusName: string) {
   return { info: issuerInfo(quotation?.issuer), buyer: taxInvoiceBuyer(customer) };
 }
 
-export function AccInvoiceView({ no }: { no: string }) {
+/**
+ * เปิดเอกสารจากหน้ารายละเอียดดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) — ฝ่ายขาย/CEO ดูอย่างเดียวผ่านที่อยู่ใต้หน้าดีลของตัวเอง
+ * เปิดได้เฉพาะเอกสารของดีลนั้น · ปุ่มกลับและเส้นทางบนแถบบนพากลับหน้าดีล
+ */
+export type FromDeal = { dealNo: string; back: string; backLabel: string; trail: Crumb[] };
+
+export function AccInvoiceView({ no, from, pdf = false }: { no: string; from?: FromDeal; pdf?: boolean }) {
   const acc = useAcc();
   const crm = useCrm();
-  const v = acc.invoices.find((x) => x.no === no);
+  const found = acc.invoices.find((x) => x.no === no);
+  const v = from && found?.deal !== from.dealNo ? undefined : found;
+  usePrintOnOpen(pdf && Boolean(v));
+  /* พิมพ์ต้นฉบับ/สำเนา — ?copy= ตั้งค่าเริ่มได้ ?pdf=1 พิมพ์ตามค่านี้ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  const [copyMode, setCopyMode] = useCopyMode();
 
-  if (!v) return <NotFound back="/acc/billing" backLabel="กลับไปหน้าวางบิล" no={no} what="ไม่พบใบแจ้งหนี้นี้" />;
+  if (!v) return <NotFound back={from?.back ?? "/acc/billing"} backLabel={from?.backLabel ?? "กลับไปหน้าวางบิล"} no={no} what="ไม่พบใบแจ้งหนี้นี้" trail={from?.trail} />;
 
   const deal = acc.deals.find((d) => d.no === v.deal);
   const seqs = deal?.plan.length ?? 0;
@@ -85,53 +96,67 @@ export function AccInvoiceView({ no }: { no: string }) {
 
   return (
     <DocShell
-      back="/acc/billing"
-      backLabel="กลับไปหน้าวางบิล"
+      back={from?.back ?? "/acc/billing"}
+      backLabel={from?.backLabel ?? "กลับไปหน้าวางบิล"}
+      trail={from?.trail}
       no={v.no}
       cus={v.cus}
-      reference={`${v.deal} งวดที่ ${v.seq}${seqs ? ` จาก ${seqs}` : ""}`}
+      /* อ้างอิงเลขใบเสนอราคาแทนเลขที่ดีล — ไม่โชว์รหัสภายใน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+      reference={`${deal?.quo ? `อ้างอิงใบเสนอราคา ${deal.quo} · ` : ""}งวดที่ ${v.seq}${seqs ? ` จาก ${seqs}` : ""}`}
       tag={status}
+      copyMode={copyMode}
+      onCopyMode={setCopyMode}
     >
-      <Paper
-        title="ใบแจ้งหนี้ / INVOICE"
-        no={v.no}
-        date={`วันที่ ${longDate(v.issue)}`}
-        note={`ครบกำหนดชำระ ${longDate(v.due)}`}
-        info={info}
-        buyer={buyer}
-        fallbackName={v.cus}
-        lines={[
-          `ค่าบริการตามใบเสนอราคา ${deal?.quo}`,
-          `งวดที่ ${v.seq}${seqs ? ` จาก ${seqs} งวด` : ""}${
-            item?.pct && deal ? ` (${item.pct}% ของยอดดีล ${baht(deal.net)} บาท)` : ""
-          }`,
-        ]}
-        /* ช่อง "รวม" ของรายการคือราคาก่อนภาษี ภาษีไปอยู่บรรทัดของมันเองด้านล่าง ยอดจะได้บวกกันครบ */
-        amount={v.base}
-        totals={taxRows(v)}
-        grand={{ label: "ยอดชำระสุทธิ", value: v.total }}
-        /* ใบที่ยกเลิกไปพร้อมดีล — พิมพ์ไว้บนเอกสารว่าใครยกเลิก เมื่อไร และตกลงอะไรกับลูกค้าไว้ */
-        notes={
-          v.cancelled
-            ? [
-                `ยกเลิกเมื่อ ${thaiStamp(v.cancelled.at)} โดย${v.cancelled.by} · ${v.cancelled.why}`,
-                ...(v.cancelled.note ? [v.cancelled.note] : []),
-              ]
-            : []
-        }
-        payTitle="เงื่อนไขการชำระเงิน"
-        signs={["ผู้รับวางบิล", "ผู้วางบิล"]}
-      />
+      {/* ต้นฉบับ + สำเนา = พิมพ์ทั้งใบสองรอบ ใบสำเนาขึ้นกระดาษใหม่ (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+      {copySets(copyMode).map((k, i) => (
+        <Paper
+          key={k}
+          copy={k}
+          breakFirst={i > 0}
+          title="ใบแจ้งหนี้ / INVOICE"
+          no={v.no}
+          date={`วันที่ ${longDate(v.issue)}`}
+          note={`ครบกำหนดชำระ ${longDate(v.due)}`}
+          info={info}
+          buyer={buyer}
+          fallbackName={v.cus}
+          lines={[
+            `ค่าบริการตามใบเสนอราคา ${deal?.quo}`,
+            `งวดที่ ${v.seq}${seqs ? ` จาก ${seqs} งวด` : ""}${
+              item?.pct && deal ? ` (${item.pct}% ของยอดดีล ${baht(deal.net)} บาท)` : ""
+            }`,
+          ]}
+          /* ช่อง "รวม" ของรายการคือราคาก่อนภาษี ภาษีไปอยู่บรรทัดของมันเองด้านล่าง ยอดจะได้บวกกันครบ */
+          amount={v.base}
+          totals={taxRows(v)}
+          grand={{ label: "ยอดชำระสุทธิ", value: v.total }}
+          /* ใบที่ยกเลิกไปพร้อมดีล — พิมพ์ไว้บนเอกสารว่าใครยกเลิก เมื่อไร และตกลงอะไรกับลูกค้าไว้ */
+          notes={
+            v.cancelled
+              ? [
+                  `ยกเลิกเมื่อ ${thaiStamp(v.cancelled.at)} โดย${v.cancelled.by} · ${v.cancelled.why}`,
+                  ...(v.cancelled.note ? [v.cancelled.note] : []),
+                ]
+              : []
+          }
+          payTitle="เงื่อนไขการชำระเงิน"
+          signs={["ผู้รับวางบิล", "ผู้วางบิล"]}
+        />
+      ))}
     </DocShell>
   );
 }
 
-export function AccReceiptView({ no }: { no: string }) {
+export function AccReceiptView({ no, from, pdf = false }: { no: string; from?: FromDeal; pdf?: boolean }) {
   const acc = useAcc();
   const crm = useCrm();
-  const r = acc.receipts.find((x) => x.no === no);
+  const found = acc.receipts.find((x) => x.no === no);
+  const r = from && found?.deal !== from.dealNo ? undefined : found;
+  usePrintOnOpen(pdf && Boolean(r));
+  /* พิมพ์ต้นฉบับ/สำเนา (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  const [copyMode, setCopyMode] = useCopyMode();
 
-  if (!r) return <NotFound back="/acc/billing?tab=rc" backLabel="กลับไปหน้าวางบิล" no={no} what="ไม่พบใบเสร็จนี้" />;
+  if (!r) return <NotFound back={from?.back ?? "/acc/billing?tab=rc"} backLabel={from?.backLabel ?? "กลับไปหน้าวางบิล"} no={no} what="ไม่พบใบเสร็จนี้" trail={from?.trail} />;
 
   const deal = acc.deals.find((d) => d.no === r.deal);
   const seq = seqText(r.seq, deal?.plan.length ?? 0);
@@ -141,170 +166,62 @@ export function AccReceiptView({ no }: { no: string }) {
 
   return (
     <DocShell
-      back="/acc/billing?tab=rc"
-      backLabel="กลับไปหน้าวางบิล"
+      back={from?.back ?? "/acc/billing?tab=rc"}
+      backLabel={from?.backLabel ?? "กลับไปหน้าวางบิล"}
+      trail={from?.trail}
       no={r.no}
       cus={r.cus}
       reference={`อ้างอิงใบแจ้งหนี้ ${r.inv} · ${seq}`}
       tag={{ label: "รับชำระแล้ว", cls: "t-ok" }}
+      copyMode={copyMode}
+      onCopyMode={setCopyMode}
     >
-      <Paper
-        /* ผู้ออกเอกสารจดทะเบียนภาษีมูลค่าเพิ่ม ใบเสร็จจึงเป็นใบกำกับภาษีด้วย */
-        title={r.vat ? "ใบเสร็จรับเงิน / ใบกำกับภาษี" : "ใบเสร็จรับเงิน / RECEIPT"}
-        no={r.no}
-        date={`วันที่ ${longDate(r.date)}`}
-        note={`อ้างอิงใบแจ้งหนี้ ${r.inv}`}
-        info={info}
-        buyer={buyer}
-        fallbackName={r.cus}
-        lines={[`รับชำระค่าบริการตามใบเสนอราคา ${deal?.quo}`, seq]}
-        amount={money.base}
-        totals={taxRows(money)}
-        /* ใบเสร็จบอกเงินที่ได้รับจริง ไม่ใช่ยอดเต็มของงวด — ส่วนที่ลูกค้าหักไว้อยู่บรรทัดภาษีด้านบน */
-        grand={{ label: "ยอดเงินที่ได้รับ", value: money.total }}
-        notes={
-          r.wht > 0 && !r.certReceived
-            ? [`${WHT_CERT_WAIT} จำนวน ${baht(r.wht)} บาท`]
-            : []
-        }
-        payTitle="ชำระโดยโอนเข้าบัญชี"
-        signs={["ผู้รับเงิน", "ผู้ชำระเงิน"]}
-      />
+      {copySets(copyMode).map((k, i) => (
+        <Paper
+          key={k}
+          copy={k}
+          breakFirst={i > 0}
+          /* ผู้ออกเอกสารจดทะเบียนภาษีมูลค่าเพิ่ม ใบเสร็จจึงเป็นใบกำกับภาษีด้วย */
+          title={r.vat ? "ใบเสร็จรับเงิน / ใบกำกับภาษี" : "ใบเสร็จรับเงิน / RECEIPT"}
+          no={r.no}
+          date={`วันที่ ${longDate(r.date)}`}
+          note={`อ้างอิงใบแจ้งหนี้ ${r.inv}`}
+          info={info}
+          buyer={buyer}
+          fallbackName={r.cus}
+          lines={[`รับชำระค่าบริการตามใบเสนอราคา ${deal?.quo}`, seq]}
+          amount={money.base}
+          totals={taxRows(money)}
+          /* ใบเสร็จบอกเงินที่ได้รับจริง ไม่ใช่ยอดเต็มของงวด — ส่วนที่ลูกค้าหักไว้อยู่บรรทัดภาษีด้านบน */
+          grand={{ label: "ยอดเงินที่ได้รับ", value: money.total }}
+          notes={
+            r.wht > 0 && !r.certReceived
+              ? [`${WHT_CERT_WAIT} จำนวน ${baht(r.wht)} บาท`]
+              : []
+          }
+          payTitle="ชำระโดยโอนเข้าบัญชี"
+          signs={["ผู้รับเงิน", "ผู้ชำระเงิน"]}
+        />
+      ))}
     </DocShell>
   );
 }
 
-/*
- * ★ สามคอมโพเนนต์ข้างล่างนี้ "พักไว้" ไม่มี route ไหนเรียกแล้ว
- *   เจ้าของระบบสั่งพักใบลดหนี้ ใบเพิ่มหนี้ และการคืนเงิน (24 ก.ย. 2569)
- *   เก็บโค้ดไว้เผื่อเปิดใช้ใหม่ — วิธีเปิดคืนอยู่ที่หัวข้อเอกสารพักไว้ใน acc-data.ts
- *   ตอนนั้นต้องสร้าง src/app/acc/credits/[no]/page.tsx คืนให้เรียก AccCreditDocView
- *
- * ใบลดหนี้และใบเพิ่มหนี้ — /acc/credits/<เลขที่>
- *
- * ใช้กระดาษชุดเดียวกับใบแจ้งหนี้และใบเสร็จ จึงได้กติกาเดียวกันทั้งหมด
- * ผู้ซื้อต้องครบทั้งชื่อตามหนังสือรับรอง ที่อยู่ เลขประจำตัวผู้เสียภาษี และสำนักงานใหญ่/สาขา
- * ช่องที่ขาดไม่พิมพ์ขีดคั่นแทน · หัวเอกสารเป็นไทยคู่อังกฤษ และขึ้นกับการจดทะเบียน VAT ของผู้ออก
- * ยอดทุกบรรทัดอ่านจากเอกสารที่บันทึกไว้ ไม่คิดใหม่ เอกสารออกเลขแล้วห้ามเปลี่ยน (ข้อ 2)
+/**
+ * ?pdf=1 — เปิดหน้าแล้วเปิดหน้าต่างบันทึก PDF ทันที แบบเดียวกับใบเสนอราคา/ใบสัญญา (ผู้ใช้สั่ง 15 ต.ค. 2569)
+ * เอา ?pdf=1 ออกจากที่อยู่ รีเฟรชแล้วจะไม่เด้งซ้ำ
  */
-export function AccCreditNoteView({ no }: { no: string }) {
-  const acc = useAcc();
-  const crm = useCrm();
-  const c = acc.credits.find((x) => x.no === no && x.status === "issued");
-
-  if (!c)
-    return (
-      <NotFound
-        back="/acc/credits"
-        backLabel="กลับไปหน้าใบลดหนี้"
-        no={no}
-        what="ไม่พบใบลดหนี้นี้"
-      />
-    );
-
-  const deal = acc.deals.find((d) => d.no === c.deal);
-  const inv = acc.invoices.find((v) => v.no === c.inv);
-  const seqs = deal?.plan.length ?? 0;
-  const { info, buyer } = parties(crm, deal, c.cus);
-  /* ใบเพิ่มหนี้ที่ออกมาแก้ใบนี้ ต้องอ้างกลับถึงกันทั้งสองทาง ไม่งั้นคนถือเอกสารใบเดียวไม่รู้ว่ามีอีกใบ */
-  const fixes = debitsOfCredit(acc, c.no);
-
-  return (
-    <DocShell
-      back="/acc/credits"
-      backLabel="กลับไปหน้าใบลดหนี้"
-      no={c.no}
-      cus={c.cus}
-      reference={`อ้างอิงใบแจ้งหนี้ ${c.inv}${inv ? ` งวดที่ ${inv.seq}${seqs ? ` จาก ${seqs}` : ""}` : ""}${
-        c.receipt ? ` · ใบเสร็จ ${c.receipt}` : ""
-      }`}
-      tag={{ label: "ออกเอกสารแล้ว", cls: "t-ok" }}
-    >
-      <Paper
-        title={`${creditKind(c.vatDoc)} / CREDIT NOTE`}
-        no={c.no}
-        date={`วันที่ ${longDate(c.issue)}`}
-        note={`อ้างอิงใบแจ้งหนี้ ${c.inv}`}
-        info={info}
-        buyer={buyer}
-        fallbackName={c.cus}
-        lines={[
-          `ลดหนี้ตามใบแจ้งหนี้ ${c.inv}${inv ? ` งวดที่ ${inv.seq}` : ""}`,
-          ...(deal ? [`ค่าบริการตามใบเสนอราคา ${deal.quo}`] : []),
-          `เหตุผล : ${c.reason}`,
-        ]}
-        amount={c.base}
-        totals={taxRows(c)}
-        grand={{ label: "ยอดลดหนี้สุทธิ", value: c.total }}
-        notes={[
-          `ยอดตามใบแจ้งหนี้เดิม ${baht(inv?.total ?? 0)} บาท — ใบแจ้งหนี้และใบเสร็จเดิมยังมีผลตามเลขที่เดิมทุกประการ`,
-          ...fixes.map(
-            (d) => `แก้ไขด้วยใบเพิ่มหนี้ ${d.no} จำนวน ${baht(d.total)} บาท เมื่อ ${longDate(d.issue)}`,
-          ),
-        ]}
-        payTitle="ติดต่อฝ่ายบัญชี"
-        signs={["ผู้รับใบลดหนี้", "ผู้ออกใบลดหนี้"]}
-      />
-    </DocShell>
-  );
-}
-
-export function AccDebitNoteView({ no }: { no: string }) {
-  const acc = useAcc();
-  const crm = useCrm();
-  /* ใบที่ยังรอผู้บริหารยังไม่มีเลขที่และยังไม่ใช่เอกสาร — เปิดหน้าเอกสารไม่ได้ */
-  const d = acc.debits.find((x) => x.no === no && x.status === "issued");
-
-  if (!d)
-    return <NotFound back="/acc/credits" backLabel="กลับไปหน้าใบลดหนี้" no={no} what="ไม่พบใบเพิ่มหนี้นี้" />;
-
-  const deal = acc.deals.find((x) => x.no === d.deal);
-  const { info, buyer } = parties(crm, deal, d.cus);
-  const credit = acc.credits.find((c) => c.no === d.credit);
-
-  return (
-    <DocShell
-      back="/acc/credits"
-      backLabel="กลับไปหน้าใบลดหนี้"
-      no={d.no}
-      cus={d.cus}
-      reference={`แก้ไขใบลดหนี้ ${d.credit} · อ้างอิงใบแจ้งหนี้ ${d.inv}`}
-      tag={{ label: "ออกเอกสารแล้ว", cls: "t-ok" }}
-    >
-      <Paper
-        title={`${debitKind(d.vatDoc)} / DEBIT NOTE`}
-        no={d.no}
-        date={`วันที่ ${longDate(d.issue)}`}
-        note={`แก้ไขใบลดหนี้ ${d.credit}`}
-        info={info}
-        buyer={buyer}
-        fallbackName={d.cus}
-        lines={[
-          `เพิ่มหนี้เพื่อแก้ไขใบลดหนี้ ${d.credit}`,
-          `อ้างอิงใบแจ้งหนี้ ${d.inv}`,
-          `เหตุผล : ${d.reason}`,
-        ]}
-        amount={d.base}
-        totals={taxRows(d)}
-        grand={{ label: "ยอดเพิ่มหนี้สุทธิ", value: d.total }}
-        notes={[
-          `ใบลดหนี้ ${d.credit}${credit ? ` ลงวันที่ ${longDate(credit.issue)} จำนวน ${baht(credit.total)} บาท` : ""} ยังมีผลตามเลขที่เดิม เอกสารที่ออกเลขแล้วยกเลิกย้อนหลังไม่ได้ ใบนี้จึงเป็นการแก้ด้วยเอกสารใหม่`,
-        ]}
-        payTitle="เงื่อนไขการชำระเงิน"
-        signs={["ผู้รับใบเพิ่มหนี้", "ผู้ออกใบเพิ่มหนี้"]}
-      />
-    </DocShell>
-  );
-}
-
-/** หน้าเอกสารเดียวที่แยกตามชนิดจากเลขที่ — ใบลดหนี้กับใบเพิ่มหนี้อยู่ใต้เมนูเดียวกัน */
-export function AccCreditDocView({ no }: { no: string }) {
-  const acc = useAcc();
-  return acc.debits.some((d) => d.no === no && d.status === "issued") ? (
-    <AccDebitNoteView no={no} />
-  ) : (
-    <AccCreditNoteView no={no} />
-  );
+function usePrintOnOpen(on: boolean) {
+  const printed = useRef(false);
+  useEffect(() => {
+    if (!on || printed.current) return;
+    printed.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("pdf");
+    window.history.replaceState(null, "", url);
+    const t = window.setTimeout(() => window.print(), 400);
+    return () => window.clearTimeout(t);
+  }, [on]);
 }
 
 // ─── ส่วนประกอบร่วม ────────────────────────────────────────────────
@@ -359,7 +276,9 @@ function PaperFit({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-function NotFound({ back, backLabel, no, what }: { back: string; backLabel: string; no: string; what: string }) {
+function NotFound({ back, backLabel, no, what, trail = [] }: { back: string; backLabel: string; no: string; what: string; trail?: Crumb[] }) {
+  /* จอคอมกลับทางเส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) · เปิดจากหน้าดีลมีช่วงดีลนำหน้า (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  useCrumb(...trail, no);
   return (
     <div className="space-y-4">
       <div className="bar">
@@ -375,10 +294,11 @@ function NotFound({ back, backLabel, no, what }: { back: string; backLabel: stri
   );
 }
 
+/* ปุ่มกลับเหลือเฉพาะมือถือ — จอคอมใช้เส้นทางบนแถบบนแทน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
 export function BackLink({ href, label }: { href: string; label: string }) {
   return (
     /* ปุ่มไอคอนล้วน — ต้องมีทั้งชื่อให้โปรแกรมอ่านหน้าจอและคำอธิบายตอนชี้ ไม่งั้นไม่มีใครเดาออกว่ากดแล้วไปไหน */
-    <Link href={href} aria-label={label} title={label} className="mt-0.5 grid size-9 flex-none place-items-center rounded-[10px] border border-border bg-card text-foreground hover:border-primary hover:text-primary">
+    <Link href={href} aria-label={label} title={label} className="mt-0.5 grid size-9 flex-none place-items-center rounded-[10px] border border-border bg-card text-foreground hover:border-primary hover:text-primary md:hidden">
       <ChevronLeftIcon className="size-[17px]" strokeWidth={2.2} />
     </Link>
   );
@@ -392,18 +312,28 @@ function DocShell({
   reference,
   tag,
   actions,
+  trail = [],
+  copyMode,
+  onCopyMode,
   children,
 }: {
+  /** ช่วงนำหน้าเลขที่บนแถบบน — เปิดจากหน้าดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  trail?: Crumb[];
   back: string;
   backLabel: string;
   no: string;
   cus: string;
   reference: string;
   tag: { label: string; cls: string };
-  /** ปุ่มงานของเอกสารใบนี้ วางก่อนปุ่มพิมพ์ — เช่น ออกใบลดหนี้จากใบแจ้งหนี้ที่เรียกเก็บเกิน */
+  /** ปุ่มงานของเอกสารใบนี้ วางก่อนปุ่มพิมพ์ — ไม่มีใบลดหนี้/คืนเงินในระบบ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
   actions?: React.ReactNode;
+  /** พิมพ์ต้นฉบับ/สำเนา (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  copyMode: CopyMode;
+  onCopyMode: (v: CopyMode) => void;
   children: React.ReactNode;
 }) {
+  /* เลขที่เอกสารต่อท้ายเส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  useCrumb(...trail, no);
   return (
     <div className="space-y-4">
       <div className="bar no-print">
@@ -421,6 +351,7 @@ function DocShell({
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           {actions}
+          <CopyPicker value={copyMode} onChange={onCopyMode} />
           <button type="button" className="btn glass-thin" onClick={() => window.print()}>
             <PrintIcon className="size-[15px]" strokeWidth={1.9} />
             พิมพ์
@@ -457,7 +388,12 @@ function Paper({
   payTitle,
   notes = [],
   signs,
+  copy,
+  breakFirst,
 }: {
+  /** ป้ายต้นฉบับ/สำเนามุมขวาบน · breakFirst = ใบสำเนาขึ้นกระดาษใหม่ตอนพิมพ์ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  copy: CopyKind;
+  breakFirst: boolean;
   title: string;
   no: string;
   date: string;
@@ -478,7 +414,7 @@ function Paper({
 }) {
   return (
     <article
-      className="paper flex flex-col group-data-[a4]/doc:min-h-[1123px]! group-data-[a4]/doc:w-[794px]! group-data-[a4]/doc:max-w-none! group-data-[a4]/doc:px-14! group-data-[a4]/doc:pt-[52px]! group-data-[a4]/doc:pb-11!"
+      className={`paper flex flex-col ${breakFirst ? "pg-break " : ""}group-data-[a4]/doc:min-h-[1123px]! group-data-[a4]/doc:w-[794px]! group-data-[a4]/doc:max-w-none! group-data-[a4]/doc:px-14! group-data-[a4]/doc:pt-[52px]! group-data-[a4]/doc:pb-11!`}
     >
       <header className="flex flex-col justify-between gap-7 sm:flex-row sm:items-start group-data-[a4]/doc:flex-row group-data-[a4]/doc:items-start">
         <div className="max-w-[52%]">
@@ -489,6 +425,9 @@ function Paper({
           </p>
         </div>
         <div className="sm:text-right group-data-[a4]/doc:text-right">
+          <div className="mb-2 flex sm:justify-end group-data-[a4]/doc:justify-end">
+            <CopyMark kind={copy} />
+          </div>
           <h2 className="text-[21px] font-bold text-[#25292f]">{title}</h2>
           <p className="num mt-1 text-[13px] font-bold text-primary">{no}</p>
           <p className="mt-2 text-xs text-[#4a5058]">

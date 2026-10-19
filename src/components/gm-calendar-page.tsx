@@ -26,7 +26,8 @@
 
 import { useMemo, useState } from "react";
 import { useHr } from "@/lib/hr-store";
-import { useTeamLeave } from "@/lib/gm-data";
+import { displayName, nameOf as empNameOf } from "@/lib/emp-name";
+import { teamLeaveHoursText, useTeamLeave } from "@/lib/gm-data";
 import { USERS } from "@/lib/mock-data";
 import { endOf, type EventColor, type EventKind, type PmEvent } from "@/lib/pm-schedule-data";
 import { addEvent, cancelEvent, editEvent, useSchedule } from "@/lib/pm-schedule-store";
@@ -46,6 +47,7 @@ import {
 import { ThaiDatePicker } from "./thai-date-picker";
 import { Field, Input } from "./ui";
 import { todayIso } from "@/lib/format";
+import { Time24Input, UI_TIME_CLS } from "./time24-input"; // ช่องเวลา 24 ชม. แทน input[type=time] (ผู้ใช้สั่ง 13 ต.ค. 2569)
 
 const KINDS: BoardKind[] = [
   { key: "due", label: "กำหนดส่งมอบโปรเจค", color: "#D0021B" },
@@ -83,7 +85,10 @@ export function GmCalendarPage() {
   const events = useMemo(() => {
     /* ข้อมูลของแถบ — มีเฉพาะนัดหมายที่กดแล้วเปิดใบได้ นอกนั้นเป็นลิงก์ไปหน้าของจริง */
     const out: BoardEvent<PmEvent | null>[] = [];
-    const nameOf = (id: string) => hr.emp.find((e) => e.id === id)?.name ?? id;
+    const nameOf = (id: string) => {
+      const e = hr.emp.find((x) => x.id === id);
+      return e ? displayName(e) : id;
+    };
 
     for (const l of leaves)
       out.push({
@@ -91,7 +96,7 @@ export function GmCalendarPage() {
         kind: l.pending ? "wait" : "leave",
         start: l.from,
         end: l.to > l.from ? l.to : l.from,
-        title: `${l.name} · ${l.type}`,
+        title: `${l.name} · ${l.type}${teamLeaveHoursText(l)}`, /* ลาไม่เต็มวันบอกชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
         sub: l.pending ? "รออนุมัติ" : "อนุมัติแล้ว",
         /* ใบที่ GM เป็นผู้อนุมัติ กดแล้วไปที่ใบนั้นในหน้ารายการรออนุมัติ */
         href: l.pending && l.mine && l.id ? `/approvals?kind=leave&find=${encodeURIComponent(l.id)}` : undefined,
@@ -109,7 +114,7 @@ export function GmCalendarPage() {
         end: p.due,
         title: `ส่งมอบ · ${name}`,
         bar: `ส่งมอบ ${name}`,
-        sub: `${p.cus} · PM ${p.pm}`,
+        sub: `${p.cus} · PM ${empNameOf(p.pm)}`,
         href: projectHref(p.pj),
         ...paintOf("due"),
         data: null,
@@ -141,7 +146,8 @@ export function GmCalendarPage() {
   return (
     <div className="space-y-4">
       {/* หน้าตาเดียวกับตารางงาน PM — ไม่มีหัวข้อหน้าและปุ่มเพิ่มนัดหมาย ดับเบิลคลิกช่องวันเพื่อเพิ่ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-      <h1 className="sr-only">ตารางงาน</h1>
+      {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+      <h1 className="page-h1">ตารางงาน</h1>
 
       <ScheduleBoard
         nav={nav}
@@ -331,10 +337,10 @@ function GmEventForm({
             />
           </Field>
           <Field label="เวลาเริ่ม">
-            <Input type="time" step={900} value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Time24Input step={900} className={UI_TIME_CLS} value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>
           <Field label="ถึง">
-            <Input type="time" step={900} value={to} onChange={(e) => setTo(e.target.value)} />
+            <Time24Input step={900} className={UI_TIME_CLS} value={to} onChange={(e) => setTo(e.target.value)} />
           </Field>
         </div>
 
@@ -367,7 +373,7 @@ function GmEventForm({
                     }
                     className="size-[15px] flex-none accent-[var(--primary)]"
                   />
-                  <span className="min-w-0 truncate">{m.name}</span>
+                  <span className="min-w-0 truncate">{displayName(m)}</span>
                 </label>
               );
             })}
@@ -385,7 +391,7 @@ function GmEventForm({
         )}
 
         <p className="text-[11.5px] leading-[1.7] text-muted-foreground">
-          ผู้ตั้งนัด {USERS.gm.name}
+          ผู้ตั้งนัด {empNameOf(USERS.gm.name)}
         </p>
       </div>
     </Sheet>

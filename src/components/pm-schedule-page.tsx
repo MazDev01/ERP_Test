@@ -63,6 +63,7 @@ import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { ScheduleBoard, boardOn, useBoardNav, type BoardEvent, type BoardKind, type BoardNav } from "./schedule-board";
 import { ThaiDatePicker } from "./thai-date-picker";
 import { Field, Input, Select } from "./ui";
+import { Time24Input, UI_TIME_CLS } from "./time24-input"; // ช่องเวลา 24 ชม. แทน input[type=time] (ผู้ใช้สั่ง 13 ต.ค. 2569)
 
 /* ประเภทนัดอ่านจากข้อมูลหลักทุกครั้ง — ฝ่ายบุคคลเพิ่ม/แก้ชื่อได้ที่ /admin/options */
 const kindList = () => eventKinds();
@@ -125,14 +126,11 @@ export function PmSchedulePage({ sales = false }: { sales?: boolean }) {
     <div className="space-y-4">
       {/* มือถือ (< md) ใช้ปฏิทินแบบแอป (PmMobileCalendar) แทนหัวเรื่องและกระดานของจอกว้าง
           ซ่อนที่กล่องนอก เพราะ .bar ประกาศ display ไว้ใน globals.css นอก @layer */}
-      {/* ฝ่ายขายไม่มีหัวเรื่องในหน้า — ชื่อหน้าอยู่แถบบนแล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-      {!sales && (
+      {/* ชื่อหน้ามุมซ้ายบนทุกฝ่ายรวมฝ่ายขาย — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569)
+          ไม่มีปุ่มเพิ่มนัดหมาย — ดับเบิลคลิกช่องวันในปฏิทินเพื่อเพิ่ม (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       <div className="max-md:hidden">
-      {/* ไม่มีหัวข้อหน้า — แถบบนบอกชื่อหน้าและวันที่อยู่แล้ว ปุ่มเลื่อนขึ้นชิดขวา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-      <h1 className="sr-only">ตารางงาน</h1>
-      {/* ไม่มีปุ่มเพิ่มนัดหมาย — ดับเบิลคลิกช่องวันในปฏิทินเพื่อเพิ่ม (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+        <h1 className="page-h1">ตารางงาน</h1>
       </div>
-      )}
 
       <ReadOnlyNote />
 
@@ -769,8 +767,8 @@ function EventForm({
                 setPick(null);
               }}
             />
-            <Input
-              type="time"
+            <Time24Input
+              className={UI_TIME_CLS}
               step={900}
               value={form.from}
               aria-label="เวลาเริ่ม"
@@ -789,8 +787,8 @@ function EventForm({
                 setPick(null);
               }}
             />
-            <Input
-              type="time"
+            <Time24Input
+              className={UI_TIME_CLS}
               step={900}
               value={form.to}
               aria-label="เวลาสิ้นสุด"

@@ -6,9 +6,11 @@ import { canBillQuotation, quotationTotals } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { findLink } from "@/lib/deep-link";
 import { todayIso } from "@/lib/format";
+import { useCrumb } from "@/lib/crumb";
 import { ChevronLeftIcon, DownloadIcon, PrintIcon } from "./icons";
 import { BillQuotationDialog } from "./quotation-dialogs";
-import { QuotationPaper } from "./quotation-paper";
+import { QuotationPaper, type PaperDoc } from "./quotation-paper";
+import { CopyPicker, copySets, useCopyMode } from "./doc-copy";
 
 /**
  * ceo = เปิดจากหน้าดีลของ CEO (/ceo/sales/quotations/<เลขที่>) — ลิงก์ทุกตัวพากลับหน้าของ CEO เอง
@@ -43,6 +45,8 @@ export function QuotationDocPage({
       ? crm.quotationRevisions.find((r) => r.quotationId === current.id && r.revision === rev)?.snapshot
       : undefined;
   const q = old ?? current;
+  /* พิมพ์ต้นฉบับ/สำเนา — ?copy= ตั้งค่าเริ่มได้ ?pdf=1 พิมพ์ตามค่านี้ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  const [copyMode, setCopyMode] = useCopyMode();
   const printed = useRef(false);
   useEffect(() => {
     if (!pdf || !q || printed.current) return;
@@ -55,6 +59,8 @@ export function QuotationDocPage({
     return () => window.clearTimeout(t);
   }, [pdf, q]);
   const customer = crm.customers.find((c) => c.code === q?.customerCode);
+  /* ลิงก์ "‹ ใบเสนอราคา" ในหน้าย้ายไปเป็นเส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) · CEO เข้าจากหน้าดีลและใบงาน */
+  useCrumb(ceo && { label: "ดีลและใบงาน", href: back }, q?.no ?? no);
   /* ใบนี้กลายเป็นดีลแล้วหรือยัง — ฝั่ง PM กับบัญชีลิงก์เข้ามาที่หน้านี้
      ถ้าไม่มีทางออกต่อ ก็ต้องถอยกลับไปตั้งต้นค้นใหม่เอง */
   const deal = crm.deals.find((d) => d.quotationNo === no);
@@ -76,21 +82,45 @@ export function QuotationDocPage({
     );
   }
 
+  const paperDoc: PaperDoc = {
+    no: q.no,
+    revision: q.revision,
+    issued: q.issued,
+    validDays: q.validDays,
+    issuer: q.issuer,
+    body: q.body,
+    terms: q.terms,
+    totals: quotationTotals(q),
+    customer: customer
+      ? {
+          name: customer.name,
+          taxId: customer.taxId,
+          address: customer.address,
+          contact: customer.contact,
+          phone: customer.phone,
+          email: customer.email,
+        }
+      : null,
+  };
+
   return (
     <div className="space-y-4">
       <div className="bar no-print">
         <div className="min-w-0">
-          <Link href={back} className="btn glass-thin btn-mini mb-1.5">
-            <ChevronLeftIcon className="size-3.5" strokeWidth={2.4} />
-            {ceo ? "ดีล" : "ใบเสนอราคา"}
-          </Link>
+          {/* จอคอมกลับทางเส้นทางบนแถบบน — ปุ่มนี้เหลือเฉพาะมือถือ (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
+          <span className="md:hidden">
+            <Link href={back} className="btn glass-thin btn-mini mb-1.5">
+              <ChevronLeftIcon className="size-3.5" strokeWidth={2.4} />
+              {ceo ? "ดีล" : "ใบเสนอราคา"}
+            </Link>
+          </span>
           <h1 className="num">{q.no}</h1>
           <p>
             {foreign ? (
-              customer?.name ?? q.customerCode
+              customer?.name ?? "—"
             ) : (
               <Link href={`/leads/${q.customerCode}`} className="lnk-code">
-                {customer?.name ?? q.customerCode}
+                {customer?.name ?? "—"}
               </Link>
             )}
             {old && (
@@ -114,12 +144,12 @@ export function QuotationDocPage({
               {q.ps && (
                 <>
                   {(q.replacedBy || q.replaces) && " · "}
-                  อ้างอิงคำขอ{" "}
+                  อ้างอิง{" "}
                   {foreign ? (
-                    q.ps
+                    "คำขอทำข้อเสนอ"
                   ) : (
                     <Link href={findLink("/presales", q.ps)} className="lnk-code">
-                      {q.ps}
+                      คำขอทำข้อเสนอ
                     </Link>
                   )}
                 </>
@@ -133,7 +163,7 @@ export function QuotationDocPage({
               href={`${ceo ? "/ceo/deals" : "/deals"}?find=${encodeURIComponent(deal.no)}`}
               className="btn glass-thin"
             >
-              ดูดีล {deal.no}
+              ดูดีล
             </Link>
           )}
           {!ceo && !old && q.no && (
@@ -142,6 +172,7 @@ export function QuotationDocPage({
             </Link>
           )}
           {/* ส่งไปวางบิลจากตารางในหน้ารายการเท่านั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
+          <CopyPicker value={copyMode} onChange={setCopyMode} />
           <button type="button" className="btn glass-thin" onClick={() => window.print()}>
             <PrintIcon className="size-[15px]" strokeWidth={1.9} />
             พิมพ์
@@ -160,35 +191,17 @@ export function QuotationDocPage({
       {billing && current && (
         <BillQuotationDialog
           quotation={current}
-          customerName={customer?.name ?? current.customerCode}
+          customerName={customer?.name ?? "—"}
           variant="view"
           onClose={() => setBilling(false)}
         />
       )}
 
       <div className="flex flex-col items-center gap-5">
-        <QuotationPaper
-          doc={{
-            no: q.no,
-            revision: q.revision,
-            issued: q.issued,
-            validDays: q.validDays,
-            issuer: q.issuer,
-            body: q.body,
-            terms: q.terms,
-            totals: quotationTotals(q),
-            customer: customer
-              ? {
-                  name: customer.name,
-                  taxId: customer.taxId,
-                  address: customer.address,
-                  contact: customer.contact,
-                  phone: customer.phone,
-                  email: customer.email,
-                }
-              : null,
-          }}
-        />
+        {/* ต้นฉบับ + สำเนา = ทั้งชุดสองรอบ ชุดสำเนาขึ้นกระดาษใหม่ (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+        {copySets(copyMode).map((k, i) => (
+          <QuotationPaper key={k} copy={k} breakFirst={i > 0} doc={paperDoc} />
+        ))}
       </div>
     </div>
   );

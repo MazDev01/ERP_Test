@@ -29,12 +29,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { decideEmpRequest, empFuelKm, useEmpRequests, type EmpRequest } from "@/lib/emp-requests";
-import { claimTotal, fuelRate, type ExpenseClaim } from "@/lib/expense-data";
+import { claimApproveBlock, claimTotal, fuelRate, type ExpenseClaim } from "@/lib/expense-data";
 import { HR_LEAVE_LABEL, hrPos, type InternLeave } from "@/lib/hr-data";
 import { decideInternLeave, useHr } from "@/lib/hr-store";
 import { approveClaim, rejectClaim, useAllClaims } from "@/lib/expense-store";
 import { baht, bkkStamp, daysBetween, thaiDate, thaiMonth, thaiStamp, todayIso } from "@/lib/format";
-import { type LeaveRecord } from "@/lib/leave-data";
+import { fmtLeave, fmtLeaveHours, leaveHoursOf, type LeaveRecord } from "@/lib/leave-data";
+import { empReqLeaveHours } from "@/lib/emp-requests";
 import {
   approveLeave,
   awaySpans,
@@ -56,6 +57,8 @@ import { Sheet } from "./lead-dialogs";
 import { OT_MIN_HOURS, OtActualFields, useOtDecision, type OtReq } from "./ot-actual-fields";
 import { SearchBox } from "./sales-ui";
 import { EyeIcon } from "./icons";
+import { stackNo } from "@/lib/stack-no";
+import { nameOf } from "@/lib/emp-name";
 
 type Kind = "leave" | "ot" | "expense";
 type Status = "pending" | "approved" | "rejected";
@@ -73,8 +76,10 @@ type Request = {
   role?: Role;
   /** ใบนี้มาถึงเราในฐานะบทบาทไหน — คนหนึ่งควบหลายบทบาทได้ ต้องรู้ว่ากำลังตัดสินในฐานะอะไร */
   as: Role;
-  /** ชื่อผู้ยื่นและตำแหน่ง */
+  /** ชื่อผู้ยื่น (ชื่อเล่น) และตำแหน่ง */
   name: string;
+  /** ชื่อเต็มที่เก็บไว้ — ใช้ค้นหาให้เจอทั้งชื่อเล่นและชื่อจริง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  full?: string;
   sub: string;
   /** id ของใบลา/โอที หรือเดือนของใบเบิก */
   key: string;
@@ -103,8 +108,12 @@ type Request = {
   quota?: number;
   /** เหตุผลที่ผู้ยื่นเขียนมาเอง — คนละช่องกับเหตุผลของผู้อนุมัติ (why) */
   note?: string;
-  /** คนอื่นที่ไม่อยู่ช่วงวันเดียวกัน — เฉพาะใบลา */
+  /** คนอื่นที่ไม่อยู่ช่วงวันเดียวกัน — เฉพาะใบลา (กล่องรายละเอียดไม่แสดงแล้ว ผู้ใช้สั่ง 19 ต.ค. 2569) */
   away?: { name: string; text: string }[];
+  /** วันที่ลา (และช่วงเวลาของลาไม่เต็มวัน) — แถว "วันที่" ในกล่องรายละเอียดของใบลา (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  when?: string;
+  /** เหตุผลที่อนุมัติไม่ได้ (เช่น ใบเบิกมีค่าคอมมิชชั่น/อินเซนทีฟ) — ว่าง = อนุมัติได้ · ไม่อนุมัติยังกดได้ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  block?: string;
 };
 
 /** โอทีที่อนุมัติไม่เท่าที่ขอ — คืนชั่วโมงที่อนุมัติ · เท่ากันหรือยังไม่อนุมัติคืน null */
@@ -310,13 +319,19 @@ export function ApprovalsBoard({
 
   /* ?kind= ชี้ไปแท็บที่บทบาทนี้ไม่มี — กลับไปแท็บทั้งหมด */
   const cur = tabs.some((t) => t.key === tab) ? tab : (tabs[0]?.key ?? "all");
+  /*
+   * ลำดับแบบกองซ้อน — นับจากคำขอทั้งหมดก่อนกรองสถานะ/แท็บ/ค้นหา ตามเวลาที่ส่ง ใบล่าสุดเลขมากสุด (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * คิวยังเรียงเก่าสุดขึ้นก่อนตามเดิม เพราะรอมานานกว่า
+   */
+  const rowKey = (r: Request) => `${r.kind}-${r.src}-${r.role ?? ""}-${r.key}`;
+  const noOf = stackNo(all, (r) => r.at, rowKey);
   const byStatus = all.filter((r) => !status || r.status === status);
   const count = (k: "all" | Kind) => byStatus.filter((r) => k === "all" || r.kind === k).length;
   const term = q.trim().toLowerCase();
   const rows = byStatus.filter(
     (r) =>
       (cur === "all" || r.kind === cur) &&
-      (!term || `${r.no} ${r.name} ${r.topic} ${r.line}`.toLowerCase().includes(term)),
+      (!term || `${r.no} ${r.name} ${r.full ?? ""} ${r.topic} ${r.line}`.toLowerCase().includes(term)),
   );
 
   /* ปุ่มตัดสินในรายการ — ใช้กติกาเดียวกับกล่องรายละเอียด (ผู้ใช้สั่ง 5 ต.ค. 2569)
@@ -332,7 +347,8 @@ export function ApprovalsBoard({
     applyDecision(item, true, "");
   };
   /* ชั่วโมงที่ขอต่ำกว่าขั้นต่ำ — อนุมัติเท่าที่ขอไม่ได้ ต้องไม่อนุมัติ (กติกาเดิมของหน้า CEO) */
-  const cannotApprove = (item: Request) => fixedOt && item.kind === "ot" && (item.hours ?? 0) < OT_MIN_HOURS;
+  const cannotApprove = (item: Request) =>
+    Boolean(item.block) || (fixedOt && item.kind === "ot" && (item.hours ?? 0) < OT_MIN_HOURS);
   const decide = (item: Request, big: boolean) => (
     <>
       <button
@@ -350,7 +366,9 @@ export function ApprovalsBoard({
         className={`btn solid justify-center !bg-[#14875A] !text-white hover:!bg-[#0F7049] disabled:opacity-40 ${big ? "h-10 w-full rounded-[10px]" : "h-[30px] px-3"}`}
         disabled={cannotApprove(item)}
         title={
-          cannotApprove(item)
+          item.block
+            ? item.block
+            : cannotApprove(item)
             ? `ชั่วโมงที่ขอต่ำกว่าขั้นต่ำ ${OT_MIN_HOURS.toFixed(2)} ชม. — อนุมัติไม่ได้`
             : item.kind === "ot" && item.ot && !fixedOt
               ? "เปิดรายละเอียดเพื่อยืนยันชั่วโมงโอทีก่อนอนุมัติ"
@@ -435,9 +453,13 @@ export function ApprovalsBoard({
                             มาถึงคุณในฐานะ {roleLabel(item.as)}
                           </span>
                         )}
+                        {/* ใบเบิกที่มีค่าคอมมิชชั่น/อินเซนทีฟ — บอกเหตุผลที่อนุมัติไม่ได้ (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+                        {item.status === "pending" && item.block && (
+                          <span className="block text-[11.5px] font-medium text-destructive">{item.block}</span>
+                        )}
                         {/* ไม่แสดงรหัสคำขอในรายการ — ดูได้ในรายละเอียด (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                         <span className="num block truncate text-[11.5px] text-muted-foreground">
-                          ส่ง {thaiDate(item.at.split(" ")[0])}
+                          #{noOf.get(rowKey(item))} · ส่ง {thaiDate(item.at.split(" ")[0])}
                         </span>
                       </span>
                     </span>
@@ -465,9 +487,10 @@ export function ApprovalsBoard({
 
       <section className="panel glass flex flex-col max-sm:hidden">
         <div className="scroll-stable min-h-0 flex-1 overflow-auto">
-          <table className="data-table cards-sm min-w-[820px]">
+          <table className="data-table cards-sm min-w-[880px]">
             <thead>
               <tr>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th style={{ width: 210 }}>ผู้ขอ</th>
                 <th>คำขอ</th>
                 {/* วันที่ส่งแยกคอลัมน์ · ไม่แสดงรหัสคำขอ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
@@ -480,7 +503,7 @@ export function ApprovalsBoard({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-[30px] text-center text-muted-foreground">
+                  <td colSpan={6} className="py-[30px] text-center text-muted-foreground">
                     ไม่มีคำขอตามเงื่อนไขที่เลือก
                   </td>
                 </tr>
@@ -505,6 +528,7 @@ export function ApprovalsBoard({
                         }
                       }}
                     >
+                      <td data-label="ลำดับ" className="c num muted">{noOf.get(rowKey(item))}</td>
                       <td data-label="ผู้ขอ">
                         <b className="block font-semibold">{item.name}</b>
                         <span className="why">{item.sub}</span>
@@ -515,6 +539,9 @@ export function ApprovalsBoard({
                           <span className="why block">อนุมัติ {cutHours(item)?.toFixed(2)} ชม.</span>
                         )}
                         {multi && <span className="why block">มาถึงคุณในฐานะ {roleLabel(item.as)}</span>}
+                        {item.status === "pending" && item.block && (
+                          <span className="block text-[12px] font-medium text-destructive">{item.block}</span>
+                        )}
                       </td>
                       <td data-label="วันที่ส่ง" className="num text-[12.5px] whitespace-nowrap text-muted-foreground">
                         {thaiDate(item.at.split(" ")[0])}
@@ -617,6 +644,7 @@ function RequestDialog({
   }
 
   function approve() {
+    if (item.block) return;
     if (item.kind === "ot" && item.ot && fixedOt) {
       if (ot.tooSmall) return;
       applyDecision(item, true, ot.comment.trim(), item.hours ?? ot.asked);
@@ -654,9 +682,9 @@ function RequestDialog({
             ) : (
             <button
               type="button"
-              className="btn solid h-12 w-full justify-center rounded-[12px] !bg-[#14875A] text-[15px] !text-white hover:!bg-[#0F7049]"
+              className="btn solid h-12 w-full justify-center rounded-[12px] !bg-[#14875A] text-[15px] !text-white hover:!bg-[#0F7049] disabled:opacity-40"
               onClick={approve}
-              disabled={item.kind === "ot" && Boolean(item.ot) && (fixedOt ? ot.tooSmall : !ot.ready)}
+              disabled={Boolean(item.block) || (item.kind === "ot" && Boolean(item.ot) && (fixedOt ? ot.tooSmall : !ot.ready))}
             >
               อนุมัติ
             </button>
@@ -666,9 +694,13 @@ function RequestDialog({
       }
     >
       <dl className="mt-1 grid grid-cols-[104px_minmax(0,1fr)] gap-x-3.5 gap-y-2 text-[13.5px]">
-        <Kv label="เลขที่" value={<span className="num font-semibold">{item.no || "—"}</span>} />
         <Kv label="ผู้ยื่น" value={item.name} />
-        <Kv label="ประเภท" value={KIND[item.kind]} />
+        {/* ใบลา: แถว "วันที่" (ช่วงวันลา + ช่วงเวลาของลาไม่เต็มวัน) แทน "ประเภท: การลา" (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+        {item.kind === "leave" && item.when ? (
+          <Kv label="วันที่" value={<span className="num">{item.when}</span>} />
+        ) : (
+          <Kv label="ประเภท" value={KIND[item.kind]} />
+        )}
         <Kv
           label="รายการ"
           value={
@@ -681,15 +713,19 @@ function RequestDialog({
             </span>
           }
         />
+        {/* อนุมัติไม่ได้ — ไม่อนุมัติแล้วให้พนักงานลบรายการออก (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
+        {!done && item.block && (
+          <Kv label="อนุมัติไม่ได้" value={<span className="font-medium text-destructive">{item.block}</span>} />
+        )}
         {/* สิทธิ์คงเหลือหลังลา — ตัวเลขชุดเดียวกับที่ CEO เห็น (quotaAfterLeave) */}
         {item.quota !== undefined && (
           <Kv
             label="เหลือสิทธิ์หลังลา"
             value={
               item.quota >= 0 ? (
-                <span className="num font-semibold">{num2(item.quota)} วัน</span>
+                <span className="num font-semibold">{fmtLeave(item.quota)}</span>
               ) : (
-                <span className="num font-semibold text-destructive">เกินสิทธิ์ {num2(-item.quota)} วัน — ส่วนที่เกินเป็นลาไม่รับค่าจ้าง หักเงินเดือน</span>
+                <span className="num font-semibold text-destructive">เกินสิทธิ์ {fmtLeave(-item.quota)} — ส่วนที่เกินเป็นลาไม่รับค่าจ้าง หักเงินเดือน</span>
               )
             }
           />
@@ -700,8 +736,7 @@ function RequestDialog({
           <Kv label="เหตุผลของผู้ยื่น" value={item.note || "ไม่ได้เขียนเหตุผล"} />
         )}
         <Kv label="ยื่นเมื่อ" value={thaiStamp(item.at)} />
-        {/* คนหนึ่งควบหลายบทบาทได้ — บอกให้ชัดว่ากำลังตัดสินใบนี้ในฐานะอะไร จะได้ไม่สับสน */}
-        <Kv label="ถึงคุณในฐานะ" value={roleLabel(item.as)} />
+        {/* ไม่มีแถว "ถึงคุณในฐานะ" แล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
         {done && (
           <Kv
             label="ผล"
@@ -717,24 +752,7 @@ function RequestDialog({
         {done && item.why && <Kv label="เหตุผล" value={item.why} />}
       </dl>
 
-      {/* ใครไม่อยู่ช่วงเดียวกันบ้าง — ข้อที่การอนุมัติลาตัดสินจากมันจริง ๆ */}
-      {item.away && (
-        <section className="mt-4 border-t border-border pt-3.5">
-          <h3 className="mb-2 text-[12.5px] font-semibold text-muted-foreground">คนอื่นที่ไม่อยู่ช่วงวันเดียวกัน</h3>
-          {item.away.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">ไม่มีใครลาทับช่วงวันนี้</p>
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {item.away.map((a) => (
-                <li key={`${a.name}-${a.text}`} className="rounded-[10px] bg-muted px-3 py-2 text-[13px]">
-                  <b className="font-semibold">{a.name}</b>
-                  <span className="ml-2 text-[12.5px] text-muted-foreground">{a.text}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+      {/* เอากล่อง "คนอื่นที่ไม่อยู่ช่วงวันเดียวกัน" ออก (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
 
       {!done && item.kind === "ot" && item.ot && !rejecting && (
         <div className="mt-4 border-t border-border pt-3.5">
@@ -817,6 +835,17 @@ function Kv({ label, value }: { label: string; value: React.ReactNode }) {
 
 // ─── แปลงคำขอแต่ละประเภทให้อยู่ในรูปเดียวกัน ────────────────────────
 
+/**
+ * วันที่ของใบลาในกล่องรายละเอียด — "15 ต.ค. 2569" · "15 – 16 ต.ค." แบบช่วง
+ * ลาไม่เต็มวันต่อท้ายช่วงเวลา "· 09:00–12:00 น." (ผู้ใช้สั่ง 19 ต.ค. 2569)
+ */
+export function leaveWhen(from: string, to: string, startMin?: number, endMin?: number) {
+  const range = from === to ? thaiDate(from) : `${thaiDate(from)} – ${thaiDate(to)}`;
+  return startMin != null && endMin != null && from === to
+    ? `${range} · ${formatMinutesOfDay(startMin)}–${formatMinutesOfDay(endMin)} น.`
+    : range;
+}
+
 /** ใบลาเก่าที่ยังไม่มีเวลายื่น ใช้วันที่ลาแทน จะได้เรียงคิวและนับวันที่รอได้เหมือนกัน */
 function stampOf(submittedAt: string, fallbackDate: string) {
   return submittedAt || `${fallbackDate} 00:00`;
@@ -828,14 +857,14 @@ function statusOf(s: string): Status {
 
 /** ชื่อและตำแหน่งของบทบาทที่ล็อกอินได้ */
 function who(role: Role) {
-  return { src: "role" as const, role, name: USERS[role].name, sub: roleLabel(role) };
+  return { src: "role" as const, role, name: nameOf(USERS[role].name), full: USERS[role].name, sub: roleLabel(role) };
 }
 
 /** คำขอของทีมงานตามรหัสพนักงาน (emp-requests) — รูปเดียวกับใบของบทบาท */
 /** แปลงช่วงที่ไม่อยู่เป็นบรรทัดอ่านง่าย — ใช้ทั้งใบลาของบทบาทและคำขอลาของทีมงาน */
 function awayList(spans: AwaySpan[], me: { id: string; who: string; date: string; toDate: string }) {
   return othersAway(spans, me).map((x) => ({
-    name: x.who,
+    name: nameOf(x.who),
     text: `${x.type} ${x.date === x.toDate ? thaiDate(x.date) : `${thaiDate(x.date)} – ${thaiDate(x.toDate)}`}${
       x.pending ? " · ยังรออนุมัติ" : ""
     }`,
@@ -843,7 +872,7 @@ function awayList(spans: AwaySpan[], me: { id: string; who: string; date: string
 }
 
 function fromEmp(r: EmpRequest, name: string, sub: string, as: Role, spans: AwaySpan[]): Request {
-  const base = { src: "emp" as const, as, name, sub, key: r.id, no: r.id, status: r.status, at: r.at, why: r.reason ?? "" };
+  const base = { src: "emp" as const, as, name: nameOf(name), full: name, sub, key: r.id, no: r.id, status: r.status, at: r.at, why: r.reason ?? "" };
   if (r.kind === "ot") {
     const lines = [`${thaiDate(r.date ?? "")} เวลา ${r.start}–${r.end}`, `รวม ${(r.hours ?? 0).toFixed(2)} ชม.`];
     const ot: OtReq | undefined =
@@ -857,12 +886,18 @@ function fromEmp(r: EmpRequest, name: string, sub: string, as: Role, spans: Away
   }
   if (r.kind === "leave") {
     const range = r.from === r.toDate ? thaiDate(r.from ?? "") : `${thaiDate(r.from ?? "")} – ${thaiDate(r.toDate ?? "")}`;
-    const lines = [`${r.leaveType} ${range}`, `รวม ${(r.days ?? 0).toFixed(2)} วัน`];
+    const lines = [r.leaveType ?? "การลา", `รวม ${fmtLeaveHours(empReqLeaveHours(r))}`]; // วันที่อยู่แถว "วันที่" แล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569)
     return {
       ...base,
       kind: "leave",
+      when: leaveWhen(
+        r.from ?? "",
+        r.toDate ?? r.from ?? "",
+        r.span === "half" && r.start ? minutesOfDay(r.start) : undefined,
+        r.span === "half" && r.end ? minutesOfDay(r.end) : undefined,
+      ),
       topic: r.leaveType ?? "การลา",
-      line: `${lines.join(" ")} ${r.note}`,
+      line: `${lines.join(" ")} ${range} ${r.note}`,
       lines,
       /* สูตรเดียวกับหน้าของ CEO สำหรับคำขอของทีมงาน (quota − ที่ใช้ไปก่อนใบนี้ − ใบนี้) */
       quota: quotaAfterUsed(r.leaveType ?? "", r.used ?? 0, r.days ?? 0),
@@ -884,19 +919,21 @@ function fromEmp(r: EmpRequest, name: string, sub: string, as: Role, spans: Away
 function fromIntern(r: InternLeave, name: string, sub: string): Request {
   const type = HR_LEAVE_LABEL[r.lt];
   const range = r.from === r.to ? thaiDate(r.from) : `${thaiDate(r.from)} – ${thaiDate(r.to)}`;
-  const lines = [`${type} ${range}`, `รวม ${r.days.toFixed(2)} วัน`];
+  const lines = [type, `รวม ${fmtLeave(r.days)}`];
   return {
     kind: "leave",
+    when: leaveWhen(r.from, r.to),
     src: "intern",
     as: "hr",
-    name,
+    name: nameOf(name),
+    full: name,
     sub,
     key: r.id,
     no: r.id,
     status: r.status,
     at: r.at,
     topic: type,
-    line: `${lines.join(" ")} ${r.note}`,
+    line: `${lines.join(" ")} ${range} ${r.note}`,
     lines,
     note: r.note,
     why: "",
@@ -917,9 +954,10 @@ function fromLeave(
 ): Request {
   const range = v.date === v.toDate ? thaiDate(v.date) : `${thaiDate(v.date)} – ${thaiDate(v.toDate)}`;
   const status = statusOf(v.status);
-  const lines = [`${v.type} ${range}`, `รวม ${v.days.toFixed(2)} วัน`];
+  const lines = [v.type, `รวม ${fmtLeaveHours(leaveHoursOf(v))}`];
   const away = awayList(spans, { id: v.id, who: v.employee, date: v.date, toDate: v.toDate });
   return {
+    when: leaveWhen(v.date, v.toDate, v.half || v.hours != null ? v.startMin : undefined, v.half || v.hours != null ? v.endMin : undefined),
     quota: quotaAfterLeave(records, v),
     /* ไม่อนุมัติแล้ว comment ถูกแทนด้วยเหตุผลของผู้อนุมัติ — ไม่ใช่เหตุผลของผู้ยื่นอีกต่อไป */
     note: status === "rejected" ? "" : v.comment,
@@ -933,7 +971,7 @@ function fromLeave(
     /* ใบใหม่มีเวลายื่นจริง ใบตั้งต้นบางใบไม่มี จึงถอยไปใช้วันลาแทน */
     at: stampOf(v.submittedAt ?? "", v.date),
     topic: v.type,
-    line: `${lines.join(" ")} ${status === "rejected" ? "" : v.comment}`,
+    line: `${lines.join(" ")} ${range} ${status === "rejected" ? "" : v.comment}`,
     lines,
     /* ไม่อนุมัติแล้ว comment ของใบลาถูกแทนด้วยเหตุผลของผู้อนุมัติ */
     why: status === "rejected" ? v.comment : "",
@@ -978,5 +1016,6 @@ function fromClaim(role: Role, v: ExpenseClaim, as: Role): Request {
     line: `${v.no ?? ""} ${lines.join(" ")}`,
     lines,
     why: v.comment,
+    block: v.status === "รออนุมัติ" ? claimApproveBlock(v) : "",
   };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { nameOf } from "@/lib/emp-name";
 import Link from "next/link";
 
 import { useSearchParams } from "next/navigation";
@@ -11,6 +12,9 @@ import {
   periodRange,
   leaveTypes,
   leaveLabel,
+  fmtLeave,
+  fmtLeaveHours,
+  leaveHoursOf,
   type LeaveRecord,
   type LeaveStatus,
 } from "@/lib/leave-data";
@@ -27,6 +31,7 @@ import { LeaveDialog } from "./leave-dialog";
 import { Sheet } from "./lead-dialogs";
 import { CalendarIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, LeaveIcon, PlusIcon } from "./icons";
 import "@/styles/mobile/leave.css";
+import { stackNo } from "@/lib/stack-no";
 
 const PER_PAGE = 10;
 
@@ -109,22 +114,25 @@ export function LeavePage() {
     [records, pFrom, pTo],
   );
 
+  /*
+   * เรียงตามลำดับที่ยื่น — ไม่แสดงเลขที่คำขอ ใช้เลขลำดับแทน (ผู้ใช้สั่ง 9 ต.ค. 2569)
+   * เลขแบบกองซ้อน — ใบแรกที่ยื่นเป็น 1 ใบล่าสุดเลขมากสุดอยู่บนสุด นับจากใบลาทั้งหมดทุกรอบปี เลขจึงไม่เปลี่ยนเมื่อยื่นใบใหม่ (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   */
+  const noOf = useMemo(() => stackNo(records, (r) => r.submittedAt || r.date, (r) => r.id), [records]);
+
   const scoped = useMemo(() => {
     const list = tab === "all" ? inPeriod : inPeriod.filter((r) => r.status === tab);
-    /* เรียงตามลำดับที่ยื่น — ไม่แสดงเลขที่คำขอ ใช้ลำดับที่ 1 2 3… แทน (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-    const sub = (r: LeaveRecord) => r.submittedAt || r.date;
-    /* ใบที่ยื่นล่าสุดอยู่บนสุด เป็นลำดับที่ 1 (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-    return [...list].sort((a, b) => sub(b).localeCompare(sub(a)) || b.id.localeCompare(a.id));
-  }, [inPeriod, tab]);
+    return [...list].sort((a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0));
+  }, [inPeriod, tab, noOf]);
 
   const maxPage = Math.max(1, Math.ceil(scoped.length / PER_PAGE));
   const safePage = Math.min(page, maxPage);
   const from = (safePage - 1) * PER_PAGE;
   const list = scoped.slice(from, from + PER_PAGE);
 
-  const approvedDays = inPeriod
+  const approvedHours = inPeriod
     .filter((r) => r.status === "อนุมัติแล้ว")
-    .reduce((sum, r) => sum + r.days, 0);
+    .reduce((sum, r) => sum + leaveHoursOf(r), 0); /* รวมเป็นชั่วโมง (ผู้ใช้สั่ง 19 ต.ค. 2569) */
 
   return (
     <div className="space-y-4">
@@ -179,7 +187,7 @@ export function LeavePage() {
       {flash !== null && (
         <p className="flex items-center gap-2.5 rounded-xl border border-[var(--success)]/20 bg-[var(--success-soft)] px-4 py-3 text-sm font-medium text-[var(--success)]">
           <CheckIcon className="size-4 shrink-0" strokeWidth={2.4} />
-          ส่งใบลา {flash} วันเรียบร้อย — รอหัวหน้าอนุมัติ
+          ส่งใบลา {fmtLeave(flash)} เรียบร้อย — รอหัวหน้าอนุมัติ
         </p>
       )}
 
@@ -239,12 +247,13 @@ export function LeavePage() {
                 </em>
               </div>
               {/* ตัวเลขวันคงเหลือ ใต้ตัวเลขเป็นแค่ลักษณนาม แบบแดชบอร์ด PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
-              <p className="num mt-2 text-[24px] leading-tight font-bold sm:text-[27px]">{round1(left)}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">วัน</p>
+              {/* ลาเกินโควต้า ตัวเลขเป็นสีแดง (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
+              <p className={`num mt-2 text-[24px] leading-tight font-bold sm:text-[27px] ${q.over > 0 ? "text-destructive" : ""}`}><LeaveAmount days={left} /></p>
+              <p className="mt-0.5 text-xs text-muted-foreground">คงเหลือ</p>
               {/* ลาเกินสิทธิ์ไปแล้ว — ส่วนที่เกินเป็นลาไม่รับค่าจ้าง พูดให้ตรงกับกล่องยื่นใบลา */}
               {q.over > 0 && (
                 <p className="num mt-0.5 text-xs font-medium text-destructive">
-                  ลาเกินสิทธิ์ {round1(q.over)} วัน — ส่วนที่เกินถูกหักจากเงินเดือน
+                  ลาเกินสิทธิ์ {fmtLeave(q.over)} — ส่วนที่เกินถูกหักจากเงินเดือน
                 </p>
               )}
             </div>
@@ -293,7 +302,7 @@ export function LeavePage() {
                 <th className="c" style={{ width: 70 }}>ลำดับ</th>
                 <th style={{ width: 118 }}>ประเภท</th>
                 <th style={{ width: 196 }}>ช่วงวันลา</th>
-                <th className="c" style={{ width: 104 }}>จำนวนวัน</th>
+                <th className="c" style={{ width: 104 }}>จำนวน</th>
                 <th>เหตุผล</th>
                 <th style={{ width: 132 }}>สถานะ</th>
                 <th className="c" style={{ width: 96 }}>จัดการ</th>
@@ -307,8 +316,8 @@ export function LeavePage() {
                   </td>
                 </tr>
               ) : (
-                list.map((r, i) => (
-                  <LeaveRow key={r.id} no={from + i + 1} row={r} hit={r.id === findId} onCancel={() => setCancelling(r)} />
+                list.map((r) => (
+                  <LeaveRow key={r.id} no={noOf.get(r.id) ?? 0} row={r} hit={r.id === findId} onCancel={() => setCancelling(r)} />
                 ))
               )}
             </tbody>
@@ -322,7 +331,7 @@ export function LeavePage() {
               : `แสดง ${from + 1}–${from + list.length} จาก ${scoped.length} รายการ`}
           </span>
           <span className="sum">
-            วันลาที่อนุมัติแล้วรวม<b>{round1(approvedDays)}</b> วัน
+            วันลาที่อนุมัติแล้วรวม<b>{fmtLeaveHours(approvedHours)}</b>
           </span>
           <div className="pages justify-center sm:justify-start">
             <button
@@ -387,7 +396,7 @@ function LeaveRow({ no, row, hit, onCancel }: { no: number; row: LeaveRecord; hi
     row.startMin != null && row.endMin != null
       ? row.hours
         ? /* ลาด่วนรายชั่วโมง — บอกชั่วโมงที่ลา ไม่ใช่ครึ่งวันเช้า/บ่าย */
-          `ลาด่วน ${row.hours} ชม. ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
+          `ลาด่วน ${fmtLeaveHours(row.hours)} ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
         : `ครึ่งวัน${row.half === "afternoon" ? "บ่าย" : "เช้า"} ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
       : null;
 
@@ -406,7 +415,7 @@ function LeaveRow({ no, row, hit, onCancel }: { no: number; row: LeaveRecord; hi
         {partial && <span className="why">{partial}</span>}
       </td>
       <td className="c num">
-        <b className="font-semibold">{round1(row.days)}</b>
+        <b className="font-semibold">{fmtLeaveHours(leaveHoursOf(row))}</b>
       </td>
       <td>
         <span className="clip">{row.comment || "—"}</span>
@@ -414,7 +423,7 @@ function LeaveRow({ no, row, hit, onCancel }: { no: number; row: LeaveRecord; hi
         {row.status === "ยกเลิก" && (
           <span className="why">
             ยกเลิก: {row.cancelReason || "—"}
-            {row.cancelledBy ? ` · โดย ${row.cancelledBy}` : ""}
+            {row.cancelledBy ? ` · โดย ${nameOf(row.cancelledBy)}` : ""}
           </span>
         )}
       </td>
@@ -510,9 +519,8 @@ function MobileLeave({
           .filter((t) => entitlementDays(t, period) > 0)
           .map((t) => (
             <div key={t}>
-              <b className="num">
-                {round1(leaveUsage(records, t, period).remaining)}
-                <small>วัน</small>
+              <b className={`num ${leaveUsage(records, t, period).over > 0 ? "text-destructive" : ""}`}>
+                <LeaveAmount days={leaveUsage(records, t, period).remaining} />
               </b>
               <span>{leaveLabel(t)}คงเหลือ</span>
             </div>
@@ -572,7 +580,7 @@ function MobileLeaveCard({ row, hit, onCancel }: { row: LeaveRecord; hit?: boole
     row.startMin != null && row.endMin != null
       ? row.hours
         ? /* ลาด่วนรายชั่วโมง — บอกชั่วโมงที่ลา ไม่ใช่ครึ่งวันเช้า/บ่าย */
-          `ลาด่วน ${row.hours} ชม. ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
+          `ลาด่วน ${fmtLeaveHours(row.hours)} ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
         : `ครึ่งวัน${row.half === "afternoon" ? "บ่าย" : "เช้า"} ${formatMinutesOfDay(row.startMin)}–${formatMinutesOfDay(row.endMin)}`
       : null;
 
@@ -582,14 +590,14 @@ function MobileLeaveCard({ row, hit, onCancel }: { row: LeaveRecord; hit?: boole
         <CalendarIcon strokeWidth={2} />
       </i>
       <b className="ty">{leaveLabel(row.type)}</b>
-      <span className="dy num">{round1(row.days)} วัน</span>
+      <span className="dy num">{fmtLeaveHours(leaveHoursOf(row))}</span>
       <div className="rs">
         {row.comment || "—"}
         {/* ใบที่ยกเลิกแล้ว — เหตุผลและผู้ยกเลิกต้องตามรอยย้อนหลังได้ */}
         {row.status === "ยกเลิก" ? (
           <span className="why">
             ยกเลิก: {row.cancelReason || "—"}
-            {row.cancelledBy ? ` · โดย ${row.cancelledBy}` : ""}
+            {row.cancelledBy ? ` · โดย ${nameOf(row.cancelledBy)}` : ""}
           </span>
         ) : row.files && row.files.length > 0 ? (
           <span className="why">แนบ {row.files.length} ไฟล์</span>
@@ -631,7 +639,7 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
 
   return (
     <Sheet
-      title={`ยกเลิกใบลา ${shortId(row.id)}`}
+      title={`ยกเลิกใบลา${row.type}`}
       onClose={onClose}
       footer={
         <>
@@ -651,7 +659,7 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
     >
       <div className="m-lv-cancel">
       <p className="text-[13.5px] leading-[1.7] text-muted-foreground">
-        {leaveLabel(row.type)} {thaiRange(row.date, row.toDate)} รวม {round1(row.days)} วัน
+        {leaveLabel(row.type)} {thaiRange(row.date, row.toDate)} รวม {fmtLeaveHours(leaveHoursOf(row))}
         <span className="mt-1 block">
           ใบลานี้จะไม่ถูกลบ แต่เปลี่ยนเป็นสถานะ “ยกเลิก”
         </span>
@@ -680,14 +688,23 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
   );
 }
 
-function round1(n: number) {
-  /* ลาด่วนรายชั่วโมงได้วันเป็นเศษสองตำแหน่ง (0.25 วัน) ปัดทศนิยมเดียวแล้วเลขจะเพี้ยน */
-  return Math.round(n * 100) / 100;
-}
-
-/** เลขที่คำขอ — รหัสใบลามี "LV-" นำหน้าอยู่แล้ว ห้ามเติมซ้ำ (เคยขึ้นเป็น LV-LV-2569-0041) */
-function shortId(id: string) {
-  return id.startsWith("LV-") ? id.toUpperCase() : `LV-${id.slice(-6).toUpperCase()}`;
+/**
+ * จำนวนการลาแบบตัวเลขใหญ่ หน่วยตัวเล็ก — "29 วัน 4 ชม." (ผู้ใช้สั่ง 19 ต.ค. 2569)
+ * ข้อความมาจาก fmtLeave() ตัวเดียวของระบบ แค่แยกตัวเลขกับหน่วยออกมาจัดขนาด
+ */
+function LeaveAmount({ days }: { days: number }) {
+  const parts = [...fmtLeave(days).matchAll(/(−?\d+)\s(\S+)/g)];
+  return (
+    <>
+      {parts.map((m, i) => (
+        <span key={i} className="whitespace-nowrap">
+          {i > 0 && " "}
+          {m[1]}
+          <small className="ml-0.5 text-[0.5em] font-semibold">{m[2]}</small>
+        </span>
+      ))}
+    </>
+  );
 }
 
 function thaiDate(iso: string) {

@@ -10,16 +10,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/* แท็บของหน้าเดิม → แท็บใหม่ */
-const OLD_TAB: Record<string, string> = { menu: "menu", route: "approval", dual: "accounts" };
-const NEW_TABS = ["positions", "approval", "menu", "accounts"];
-
 export default function Page() {
   const router = useRouter();
   useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("t") ?? "";
-    const tab = OLD_TAB[t] ?? (NEW_TABS.includes(t) ? t : "menu");
-    router.replace(`/admin/settings?s=positions&t=${tab}`);
+    /* แท็บเดิมของบทบาทและสิทธิ์ไม่มีแล้ว — พาไปแท็บตำแหน่งและสายอนุมัติ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    router.replace("/admin/settings?s=staff&t=positions");
   }, [router]);
   return <p className="py-10 text-center text-[13px] text-muted-foreground">กำลังเปิดตำแหน่งและสายอนุมัติ…</p>;
 }

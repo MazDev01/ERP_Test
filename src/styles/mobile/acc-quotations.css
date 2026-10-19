@@ -1,0 +1,128 @@
+/*
+ * ใบเสนอราคาของฝ่ายบัญชีบนมือถือ — ค่าทุกตัวคัดจากต้นแบบ quotations-mobile-ref.html (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * (:root · .head/.bar/.icb · .tabs · .qc · .clay · .meta · .chip · .acts · .empty · qm-search · qm-lead-link)
+ * ทุก selector ขึ้นต้นด้วย .aq-m และใช้ชื่อคลาส aq-* เพื่อไม่ชนกับ .bar/.tabs/.chip ของ quotations.css
+ * มือถือ = แคบกว่า md (768px) รวมช่วง 640–768 ด้วย · จอคอมไม่ถูกแตะ
+ */
+.aq-m { display: none; }
+
+@media (max-width: 767.98px) {
+  /* หน้านี้มีหัวของตัวเอง — ซ่อนแถบบนและชิปเมนูย่อยของ shell · พื้น #FBF5F4 (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  body:has(.aq-m) { background: #fbf5f4; }
+  body:has(.aq-m) .app-top,
+  body:has(.aq-m) .app-sub { display: none; }
+  body:has(.aq-m) #main {
+    padding: env(safe-area-inset-top, 0px) 0 calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .aq-m {
+    --red: #d0021b; --ink: #2a1f22; --ink-2: #6e6164; --ink-3: #a3979a; --page: #fbf5f4; --line: #f2e7e8;
+    --shadow: 0 1px 2px rgba(120, 20, 35, 0.05), 0 12px 28px -18px rgba(120, 20, 35, 0.3);
+    display: block; max-width: 560px; margin: 0 auto; padding: 0 18px; color: var(--ink);
+  }
+  .aq-m *, .aq-m *::before, .aq-m *::after { box-sizing: border-box; }
+  .aq-m a { color: inherit; text-decoration: none; }
+  .aq-m button { font-family: inherit; }
+  .aq-m :focus-visible { outline: 2.5px solid var(--red); outline-offset: 3px; }
+
+  /* ป้ายดินเหนียว (ตัวย่อชื่อลูกค้า / ไอคอนว่าง) */
+  .aq-m .aq-clay {
+    --c: #fde8eb; --g: #c0121f;
+    flex: none; display: flex; align-items: center; justify-content: center; border-radius: 30%; color: var(--g);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%), var(--c);
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+  .aq-m .c-rose { --c: #fce3e7; --g: #c0121f; }
+  .aq-m .c-sky { --c: #e3eefc; --g: #1f6fd0; }
+  .aq-m .c-mint { --c: #ddf2e6; --g: #14875a; }
+  .aq-m .c-peach { --c: #fdedd6; --g: #b4630b; }
+  .aq-m .c-lilac { --c: #ece6fa; --g: #5b3fbf; }
+  .aq-m .c-grey { --c: #efebec; --g: #6e6164; }
+
+  /* หัว: กลับ · ชื่อหน้า · สร้าง */
+  .aq-head { position: sticky; top: 0; z-index: 20; background: var(--page); padding: 12px 0 0; }
+  .aq-bar { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; }
+  .aq-bar h1 { margin: 0; text-align: center; font-size: 17px; font-weight: 700; line-height: 1.3; }
+  .aq-icb {
+    width: 44px; height: 44px; border-radius: 50%; border: 0; background: #fff; box-shadow: var(--shadow);
+    display: flex; align-items: center; justify-content: center; color: var(--ink); cursor: pointer;
+  }
+  .aq-icb.add { background: var(--red); color: #fff; box-shadow: 0 10px 18px -10px rgba(208, 2, 27, 0.9); }
+
+  /* ช่องค้นหา (qm-search) */
+  .aq-find {
+    display: flex; align-items: center; gap: 8px; margin: 10px 16px 2px; height: 44px; padding: 0 14px;
+    border-radius: 999px; background: #fff; border: 1px solid #efe6e8;
+  }
+  .aq-find input {
+    flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none;
+    font: inherit; font-size: 14.5px; color: #2a1f22;
+  }
+  .aq-find input::-webkit-search-cancel-button { display: none; }
+  .aq-find button {
+    width: 26px; height: 26px; border-radius: 50%; border: 0; background: #f3eef0; color: #6e6164;
+    display: none; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+  }
+  .aq-find.has button { display: flex; }
+  .aq-none { margin: 28px 16px; text-align: center; color: #9a8e91; font-size: 14px; }
+
+  /* แท็บขีดเส้นใต้ — 4 สถานะของบัญชี */
+  .aq-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; border-bottom: 1.5px solid var(--line); }
+  .aq-tabs button {
+    position: relative; border: 0; background: none; height: 46px; padding: 0; white-space: nowrap;
+    font-size: 14.5px; font-weight: 600; color: var(--ink-3); cursor: pointer;
+  }
+  .aq-tabs button .n {
+    display: inline-flex; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px;
+    align-items: center; justify-content: center; font-size: 11px; background: #f1e8ea; color: var(--ink-2); vertical-align: 1px;
+  }
+  .aq-tabs button.on { color: var(--red); }
+  .aq-tabs button.on .n { background: var(--red); color: #fff; }
+  .aq-tabs button.on::after {
+    content: ""; position: absolute; left: 18%; right: 18%; bottom: -1.5px; height: 3px;
+    border-radius: 3px 3px 0 0; background: var(--red);
+  }
+
+  /* การ์ด */
+  .aq-list { display: flex; flex-direction: column; gap: 14px; padding: 16px 0; }
+  .aq-qc { background: #fff; border-radius: 22px; box-shadow: var(--shadow); padding: 14px; }
+  .aq-qtop { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 14px; cursor: pointer; position: relative; }
+  .aq-qtop .aq-qgo { position: absolute; right: 0; top: 2px; color: #b3a7aa; }
+  .aq-ini { width: 78px; height: 78px; border-radius: 20px; font-size: 22px; font-weight: 700; }
+  .aq-qh { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding-right: 18px; }
+  .aq-qh b {
+    font-size: 15.5px; font-weight: 700; line-height: 1.35; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .aq-amt { flex: none; text-align: right; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .aq-amt small { display: block; font-size: 10.5px; font-weight: 500; color: var(--ink-3); }
+  .aq-meta { display: flex; align-items: center; gap: 6px; margin: 5px 0 0; font-size: 12.5px; color: var(--ink-2); min-width: 0; }
+  .aq-meta svg { flex: none; color: var(--red); }
+  .aq-meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aq-meta i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); flex: none; }
+  .aq-chip { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 8px; margin-top: 6px; }
+  .aq-m .ch-rose { background: #fce3e7; color: #c0121f; }
+  .aq-m .ch-peach { background: #fdedd6; color: #b4630b; }
+  .aq-m .ch-mint { background: #ddf2e6; color: #14875a; }
+  .aq-m .ch-grey { background: #f1eced; color: #6e6164; }
+
+  /* ปุ่มบนการ์ด — ขนาดเล็กกลางการ์ด ตาม qm-search */
+  .aq-acts { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+  .aq-acts > a {
+    flex: none; height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .aq-acts > .sec { background: #f7eff1; color: var(--ink); }
+  .aq-acts > .pri { background: var(--red); color: #fff; }
+  .aq-acts > button { border: 0; font-family: inherit; cursor: pointer; }
+  .aq-acts > a:active { transform: scale(0.98); }
+
+  .aq-empty { margin: 0; text-align: center; color: var(--ink-3); font-size: 13.5px; padding: 48px 0; }
+  .aq-empty .aq-clay { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 18px; }
+}
+
+/* จอแคบ (≤400px) — 4 แท็บไม่พอที่ 14.5px ย่อตัวอักษร/ป้ายจำนวนลง ยังคง 4 ช่อง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+@media (max-width: 400px) {
+  .aq-tabs button { font-size: 12.5px; letter-spacing: -0.1px; }
+  .aq-tabs button .n { min-width: 18px; height: 18px; padding: 0 5px; margin-left: 3px; font-size: 10.5px; }
+}

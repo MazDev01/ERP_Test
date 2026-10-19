@@ -360,6 +360,15 @@ body {
 .bar h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .bar p { margin-top: 4px; font-size: 13.5px; color: var(--muted-foreground); }
 .tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ชื่อหน้าในเนื้อหามุมซ้ายบน หน้าตาเดียวกับ .bar h1 — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   มือถือ (<md) ชื่อหน้าอยู่บนแถบบนของมือถือ จึงซ่อนไว้ให้โปรแกรมอ่านหน้าจออย่างเดียวเหมือนเดิม */
+.page-h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; }
+@media (max-width: 767px) {
+  .page-h1 {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0;
+  }
+}
 
 /* ---------- ตัวเลื่อนเดือน/ปี ---------- */
 .mo {
@@ -661,6 +670,11 @@ body {
 .tick { stroke-dasharray: 58; stroke-dashoffset: 58; animation: drawTick 0.5s ease 0.2s forwards; }
 @keyframes popIn { from { opacity: 0; transform: scale(0.84) translateY(22px); } to { opacity: 1; transform: none; } }
 .pop-in { animation: popIn 0.45s cubic-bezier(0.34, 1.4, 0.5, 1) both; }
+/* สลับขั้นในฟอร์มหลายขั้น: ไปข้างหน้าเลื่อนเข้าจากขวา ย้อนกลับเลื่อนเข้าจากซ้าย */
+@keyframes stepInNext { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes stepInBack { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.step-in-next { animation: stepInNext 0.26s ease-out both; }
+.step-in-back { animation: stepInBack 0.26s ease-out both; }
 
 /* แท็บบนจอแคบ: แถวเดียวเลื่อนข้างได้ ไม่ตัดบรรทัด */
 .tabs::-webkit-scrollbar { display: none; }
@@ -942,6 +956,24 @@ table.sheet .del:hover { color: var(--destructive); background: var(--destructiv
 .rich-out u { text-decoration: underline; }
 .rich-out hr { display: none; }
 
+/* ตารางในรายละเอียด — ช่องกรอก กระดาษ และตอนพิมพ์ (ผู้ใช้สั่ง 14 ต.ค. 2569)
+   selector ยาวเพื่อชนะ .paper table.items td ที่ไม่มีเส้นขอบ */
+.rich table, .paper table.items td.rich-out table {
+  width: 100%; border-collapse: collapse; margin: 4px 0 8px; table-layout: fixed;
+}
+.rich td, .rich th,
+.paper table.items td.rich-out td, .paper table.items td.rich-out th {
+  border: 1px solid #b9bfc8; padding: 4px 8px; vertical-align: top;
+  font-size: inherit; text-align: left; overflow-wrap: anywhere; background: none;
+}
+.rich th, .paper table.items td.rich-out th {
+  background: #edeef1; font-weight: 600; color: #25292f;
+}
+.rich td p, .rich th p, .rich-out td p, .rich-out th p { margin: 0; }
+/* ช่องที่เคอร์เซอร์อยู่ — เห็นว่ากำลังแก้ช่องไหน */
+.rich td:focus-within, .rich th:focus-within { outline: 2px solid var(--ring); outline-offset: -2px; }
+.paper table.items td.rich-out tr { break-inside: avoid; page-break-inside: avoid; }
+
 /* เลขหน้าใต้กระดาษแต่ละแผ่น */
 .sheet-no { display: block; margin-top: 18px; text-align: center; font-size: 11px; color: #8a9099; }
 
@@ -949,6 +981,24 @@ table.sheet .del:hover { color: var(--destructive); background: var(--destructiv
   /* แผ่นที่สองเป็นต้นไปเริ่มกระดาษใหม่จริง */
   .paper + .paper { break-before: page; page-break-before: always; }
   .sheet-no { display: none; }
+  /* ความสูง A4 บนจอใส่ไว้แบบ inline — ตอนพิมพ์ให้ @page คุมเอง (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  .paper.q-sheet { min-height: 0 !important; }
+}
+
+/* ── ต้นฉบับ / สำเนา และรูปเอกสารแนบท้ายใบเสนอราคา (ผู้ใช้สั่ง 15 ต.ค. 2569) ── */
+.copy-mark {
+  display: inline-block; padding: 2px 14px; border: 1.5px solid #25292f; border-radius: 4px;
+  font-size: 13px; font-weight: 700; line-height: 1.5; color: #25292f; white-space: nowrap;
+}
+.copy-row { margin-bottom: 8px; }
+/* กล่องรูป: สัดส่วนตามรูป (--ar = กว้าง/สูง) กว้างไม่เกินขอบกระดาษ สูงไม่เกินพื้นที่ที่เหลือ (--att-h) */
+.att-box { aspect-ratio: var(--ar); width: min(100%, calc(var(--att-h, 70vh) * var(--ar))); }
+@media print {
+  /* ชุดสำเนาและแผ่นรูปแนบขึ้นกระดาษใหม่ — แผ่นวัดความสูงที่ซ่อนอยู่คั่นไว้ .paper + .paper จึงจับไม่ได้ */
+  .pg-break { break-before: page; page-break-before: always; }
+  /* พื้นที่พิมพ์ A4 ขอบ 14mm สูง 269mm — หักแถวหัวแผ่นแล้วเหลือราว 240mm */
+  .att-box { width: min(100%, calc(240mm * var(--ar))); }
+  .q-att { break-inside: avoid; page-break-inside: avoid; }
 }
 
 /* แถวที่กรอกไม่ครบ ตอนกดยื่นแล้วยังไม่ผ่าน */
@@ -1586,3 +1636,26 @@ table.sheet tr.bad td { background: var(--destructive-soft); }
   .rd-form { padding: 0 !important; width: auto !important; min-height: auto !important; }
   .rd-form input, .rd-form textarea, .rd-form select, .rd-form button.ck { background: none; }
 }
+
+/* ── พิมพ์เฉพาะกระดาษสลิปเงินเดือนในกล่อง (components/payslip-paper.tsx · ผู้ใช้สั่ง 16 ต.ค. 2569) ──
+   ใส่คลาส print-slip ที่ body เฉพาะตอนสั่งพิมพ์ · พื้นฟ้าหัวตารางต้องพิมพ์ออกด้วย */
+@media print {
+  body.print-slip * { visibility: hidden !important; }
+  body.print-slip .ps-paper, body.print-slip .ps-paper * { visibility: visible !important; }
+  body.print-slip .ps-paper { position: absolute; left: 0; top: 0; width: 100% !important; padding: 0 !important; box-shadow: none !important; }
+  .ps-paper, .ps-paper * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ── พิมพ์เฉพาะตารางสรุปเงินเดือน A4 แนวนอน (components/payroll-summary-sheet.tsx · ผู้ใช้สั่ง 16 ต.ค. 2569) ──
+   ใส่คลาส print-sum ที่ body เฉพาะตอนสั่งพิมพ์ · @page แนวนอนใส่ตอนกดพิมพ์ (printSummary) · สีแถวรวมย่อยต้องพิมพ์ออก */
+@media print {
+  /* พิมพ์จากสำเนาใต้ body (printSummary) — ซ่อนทั้งแอป เหลือแต่สำเนา เต็ม A4 แนวนอน ไม่โดนย่อแบบบนจอ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  body.print-sum > *:not(.pr-sum-host) { display: none !important; }
+  body.print-sum .pr-sum-host { display: block !important; }
+  body.print-sum .pr-sum { width: 100% !important; padding: 0 !important; box-shadow: none !important; }
+  .pr-sum-fit { height: auto !important; overflow: visible !important; }
+  .pr-sum-fit > div { transform: none !important; }
+  .pr-sum, .pr-sum * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+/* สำเนาสำหรับพิมพ์ไม่ขึ้นบนจอ */
+.pr-sum-host { display: none; }

@@ -12,6 +12,7 @@ import { bkkStamp, thaiStamp } from "@/lib/format";
 import type { ProjectDoc } from "@/lib/pm-data";
 import { addProjectDocs, removeProjectDoc, renameProject } from "@/lib/pm-store";
 import { useProfile } from "@/lib/profile-data";
+import { nameOf } from "@/lib/emp-name";
 import { ConfirmDialog } from "./confirm-dialog";
 import { FileDrop, fileSize, type PickedFile } from "./file-drop";
 import { CloseIcon, FileIcon, LinkIcon, PencilIcon, PlusIcon } from "./icons";
@@ -190,7 +191,7 @@ export function RemoveDocDialog({
 
 /** คำอธิบายใต้ชื่อเอกสาร — ขนาด · ใครแนบ · เมื่อไร */
 export function docSub(d: ProjectDoc) {
-  return `${d.sz} · แนบโดย ${d.by || "—"} · ${thaiStamp(d.at)} น.`;
+  return `${d.sz} · แนบโดย ${d.by ? nameOf(d.by) : "—"} · ${thaiStamp(d.at)} น.`;
 }
 
 /*

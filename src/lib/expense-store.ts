@@ -6,7 +6,7 @@ import {
   type FuelRow,
   type OtherRow,
 } from "./expense-data";
-import { addMissingClaims, checkClaim, isLocked } from "./expense-data";
+import { addMissingClaims, checkClaim, claimApproveBlock, isLocked } from "./expense-data";
 import { bkkNow, nextDocNo, pad2 } from "./format";
 import type { Role } from "./role";
 import { empRequestIds } from "./emp-requests";
@@ -177,6 +177,8 @@ export function useAllClaims() {
 export function approveClaim(role: Role, month: string, comment: string) {
   /* ใบที่ตัดสินไปแล้วไม่ส่งแจ้งเตือนซ้ำ — เช็คก่อนส่ง เหมือนใบลาและโอที */
   if (!store.ofRole(role).some((c) => c.month === month && c.status === "รออนุมัติ")) return;
+  /* ใบที่มีค่าคอมมิชชั่น/อินเซนทีฟอนุมัติไม่ได้ — กันที่สโตร์ด้วย ไม่ใช่แค่ปุ่มบนหน้าจอ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  if (store.ofRole(role).some((c) => c.month === month && c.status === "รออนุมัติ" && claimApproveBlock(c))) return;
   store.updateRole(role, (claims) =>
     claims.map((c) =>
       c.month === month && c.status === "รออนุมัติ"

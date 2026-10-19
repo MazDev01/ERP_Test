@@ -9,44 +9,32 @@
 import { settings } from "./system-settings";
 import { useSyncExternalStore } from "react";
 import {
-  ACC_CREDIT_NOTES,
   ACC_DEALS,
-  ACC_DEBIT_NOTES,
   ACC_INVOICES,
   ACC_PAYMENTS,
   ACC_RECEIPTS,
-  ACC_REFUNDS,
   ACC_WHT,
   invoiceAmounts,
+  payeeOfKind,
   ISSUER_VAT,
-  nextAccDocNo,
   type AccDeal,
   type Collection,
-  type CreditNote,
-  type CreditReason,
-  type DebitNote,
   type Installment,
   type Invoice,
   type Payment,
   type Receipt,
-  type Refund,
   type WhtRow,
 } from "./acc-data";
-import { bkkNow, bkkStamp, nextDocNo, pad2, round2, toIsoDate } from "./format";
+import { bkkNow, daysBetween, nextDocNo, round2, toIsoDate } from "./format";
 import { createPersistedStore } from "./persisted-store";
 
+/* ระบบไม่มีใบลดหนี้ ใบเพิ่มหนี้ และคืนเงิน — ถอดช่อง credits/debits/refunds ออกจากสโตร์ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
 export type AccState = {
   deals: AccDeal[];
   invoices: Invoice[];
   payments: Payment[];
   receipts: Receipt[];
   wht: WhtRow[];
-  /** ใบลดหนี้ — รวมใบที่ยังรอผู้บริหารอนุมัติ (ยังไม่มีเลขที่) */
-  credits: CreditNote[];
-  /** ใบเพิ่มหนี้ที่ออกเพื่อแก้ใบลดหนี้ที่ออกผิด */
-  debits: DebitNote[];
-  /** การคืนเงินลูกค้าจริง — คนละระเบียนกับใบลดหนี้ */
-  refunds: Refund[];
 };
 
 const INITIAL: AccState = {
@@ -55,17 +43,27 @@ const INITIAL: AccState = {
   payments: ACC_PAYMENTS,
   receipts: ACC_RECEIPTS,
   wht: ACC_WHT,
-  credits: ACC_CREDIT_NOTES,
-  debits: ACC_DEBIT_NOTES,
-  refunds: ACC_REFUNDS,
 };
 
+/* ข้อมูลเก่าในเครื่องยังมีช่อง credits/debits/refunds ค้างอยู่ — ไม่ใช้ตรวจแล้ว โหลดได้ตามเดิม แล้ว migrate ทิ้งช่องให้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
 function isAccState(value: unknown): value is AccState {
   if (typeof value !== "object" || value === null) return false;
   const s = value as Record<string, unknown>;
-  return (["deals", "invoices", "payments", "receipts", "wht", "credits", "debits", "refunds"] as const).every(
+  return (["deals", "invoices", "payments", "receipts", "wht"] as const).every(
     (k) => Array.isArray(s[k]),
   );
+}
+
+/**
+ * ทิ้งระเบียนใบลดหนี้/ใบเพิ่มหนี้/คืนเงินที่ค้างใน localStorage (ผู้ใช้สั่ง 14 ต.ค. 2569)
+ * ไม่ขยับยอดค้างของใบแจ้งหนี้ — ตั้งแต่ v9 (24 ก.ย. 2569) ไม่มีหน้าจอออกเอกสารพวกนี้และชุดตั้งต้นว่าง
+ * จึงไม่มีใบไหนเคยลดยอดค้างในคีย์นี้ ยอดคงเดิมถูกต้องแล้ว
+ */
+function dropCreditRecords(v: AccState): AccState {
+  const raw = v as AccState & Record<string, unknown>;
+  if (!("credits" in raw) && !("debits" in raw) && !("refunds" in raw)) return v;
+  const { deals, invoices, payments, receipts, wht } = raw;
+  return { deals, invoices, payments, receipts, wht };
 }
 
 /*
@@ -75,18 +73,8 @@ function isAccState(value: unknown): value is AccState {
  *                     ของเก่าคนละรูปแบบ แปลงแล้วได้ตัวเลขที่เดาเอาเอง จึงเริ่มจากชุดตั้งต้นใหม่
  */
 /*
- * v6 (24 ก.ย. 2569) — ใบลดหนี้ ใบเพิ่มหนี้ และการคืนเงิน
- *                     ของเก่าเก็บใบแจ้งหนี้ที่ยกเลิกไว้เฉย ๆ โดยไม่มีเอกสารกลับรายการ (ขัด AC-BR-10)
- *                     เติมย้อนหลังให้เองไม่ได้ เพราะใบลดหนี้ต้องผ่านผู้บริหารและต้องมีวันที่ออกจริง
- * v7 (24 ก.ย. 2569) — ใบเพิ่มหนี้ต้องผ่านผู้บริหารเหมือนกัน (เจ้าของระบบขยายข้อ 4)
- *                     ของเก่าเก็บใบเพิ่มหนี้ที่ออกเลขไปแล้วโดยไม่มีคนอนุมัติ ย้อนไปหาคนเซ็นไม่ได้
- * v8 (24 ก.ย. 2569) — การคืนเงินเรียงใหม่เป็น ขอ → อนุมัติ → โอน → บันทึกหลักฐาน
- *                     ของเก่าเก็บวันที่โอนไว้ตั้งแต่ตอนขอ แยกไม่ออกว่ารายการไหนโอนจริงไปแล้ว
- *                     และรายการไหนแค่กรอกวันที่ล่วงหน้าไว้ เดาแทนคนที่โอนไม่ได้
- * v9 (24 ก.ย. 2569) — เจ้าของระบบสั่งพักใบลดหนี้ ใบเพิ่มหนี้ และการคืนเงินทั้งหมด
- *                     กลับไปยกเลิกใบแจ้งหนี้ที่ยังไม่ชำระพร้อมดีลเหมือนเดิม และใบแจ้งหนี้เก็บ
- *                     ชื่อคนยกเลิกกับเวลาเพิ่มขึ้นมา · ของเก่า v6–v8 ค้างคำขอที่ไม่มีหน้าจอรับแล้ว
- *                     และใบที่รอใบลดหนี้อนุมัติยังไม่เคยถูกยกเลิกจริง เดาแทนคนยกเลิกไม่ได้
+ * v6–v9 (24 ก.ย. 2569) — เปลี่ยนรูปแบบข้อมูลหลายรอบ ของเก่าก่อน v9 ใช้ต่อไม่ได้ จึงเริ่มจากชุดตั้งต้นใหม่
+ *                     ใบแจ้งหนี้ที่ยกเลิกพร้อมดีลเก็บชื่อคนยกเลิกกับเวลา (ประวัติเอกสารที่ถอดแล้วลบออก — ผู้ใช้สั่ง 14 ต.ค. 2569)
  */
 /*
  * เติมวางบิลงวดแรกของโปรเจคตั้งต้นที่เพิ่มเข้าชุดตั้งต้นทีหลัง (ผู้ใช้สั่ง 5 ต.ค. 2569)
@@ -97,7 +85,13 @@ function isAccState(value: unknown): value is AccState {
 const SAMPLE_FROM = "2026-09-20";
 
 function migrateAcc(v: AccState): AccState {
-  return addSampleDocs(addSeedDeals(v));
+  return addPayeeType(addSampleDocs(addSeedDeals(dropCreditRecords(v))));
+}
+
+/* รายการหัก ณ ที่จ่ายเก่าไม่มี payeeType — เติมจากแบบที่เคยเลือก 53 = นิติบุคคล · 3 = บุคคลธรรมดา (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+function addPayeeType(v: AccState): AccState {
+  if (v.wht.every((w) => w.payeeType)) return v;
+  return { ...v, wht: v.wht.map((w) => (w.payeeType ? w : { ...w, payeeType: payeeOfKind(w.kind) })) };
 }
 
 function addSeedDeals(v: AccState): AccState {
@@ -219,7 +213,7 @@ export function dealPaid(s: AccState, deal: string) {
  *
  * ใบแจ้งหนี้ที่ยัง "ไม่ได้รับชำระ" ถูกยกเลิกไปพร้อมดีล พร้อมบันทึกว่าใครยกเลิกและเมื่อไร
  * ยอดค้างเป็นศูนย์ทันทีตรงนี้ ไม่มีขั้นรออนุมัติคั่น
- * ใบเสร็จที่ออกไปแล้วและเงินที่รับมาแล้วไม่แตะ และระบบไม่คืนเงินให้เอง (ผู้ใช้กำหนด 21 ก.ย. 2569)
+ * ใบเสร็จที่ออกไปแล้วและเงินที่รับมาแล้วไม่แตะ (ผู้ใช้กำหนด 21 ก.ย. 2569)
  * เรียกผ่าน cancelDealFlow เท่านั้น
  */
 export function cancelDealBilling(
@@ -238,609 +232,11 @@ export function cancelDealBilling(
   }));
 }
 
-// ─── ใบลดหนี้ · ใบเพิ่มหนี้ · คืนเงิน — พักไว้ ไม่ได้ใช้งาน ─────────
-/*
- * ★ ส่วนนี้พักไว้ทั้งก้อน (เจ้าของระบบสั่ง 24 ก.ย. 2569 — ดูเหตุผลและวิธีเปิดใช้ใหม่ที่ acc-data.ts)
- *   ไม่มีหน้าจอไหนเรียกฟังก์ชันในส่วนนี้แล้ว และ s.credits / s.debits / s.refunds ว่างเสมอ
- *   ช่องทั้งสามยังอยู่ในสโตร์เพื่อให้ acc-credits-page.tsx ที่พักไว้ยังคอมไพล์ผ่าน
- *   ตัวนำหน้าเลขที่ใช้ CN/DN/RF ตรง ๆ เพราะถอดออกจากหน้าตั้งค่าแล้ว
- *
- * สายเดินเอกสารเดิม (ไว้อ่านตอนเปิดใช้ใหม่)
- *   ฝ่ายบัญชีขอออกใบลดหนี้ → ผู้บริหารอนุมัติ → ระบบออกเลขที่ ลดยอดค้าง แล้วพิมพ์เอกสารได้
- *   ออกผิด → ขอออกใบเพิ่มหนี้อ้างใบลดหนี้ใบนั้น ผู้บริหารอนุมัติแล้วจึงออกเลขที่ ห้ามลบและห้ามแก้ใบเดิม
- *   คืนเงิน → คนละระเบียน ผู้บริหารอนุมัติแยกอีกใบ และไม่ไปแตะใบเสร็จหรือเงินที่รับมาแล้ว
- */
-
-export function creditsOf(s: AccState, invoiceNo: string) {
-  return s.credits.filter((c) => c.inv === invoiceNo);
-}
-
-/** ใบเพิ่มหนี้ที่ออกเลขแล้วของใบลดหนี้ใบนี้ — ใบที่ยังรออนุมัติยังไม่ถือว่าแก้อะไร */
-export function debitsOfCredit(s: AccState, creditNo: string) {
-  return s.debits.filter((d) => d.credit === creditNo && d.status === "issued");
-}
-
-/** ยอดที่ใบลดหนี้ใบหนึ่งลดจริงตอนนี้ = ยอดในใบ − ใบเพิ่มหนี้ที่ออกมาแก้ */
-export function creditNet(s: AccState, c: CreditNote) {
-  return round2(c.total - debitsOfCredit(s, c.no).reduce((a, d) => a + d.total, 0));
-}
-
-/**
- * ยอดที่ยังเพิ่มหนี้กลับได้ของใบลดหนี้ใบหนึ่ง — เกินกว่านี้คือสร้างหนี้ใหม่ ไม่ใช่การแก้
- * ใบที่ออกแล้วและใบที่รอผู้บริหารอนุมัติกันยอดไว้ทั้งคู่ ใบที่ถูกตีกลับไม่กันยอด
- * (หลักเดียวกับ creditRoom ของใบลดหนี้)
- */
-export function debitRoom(s: AccState, c: CreditNote) {
-  const waiting = s.debits
-    .filter((d) => d.credit === c.no && d.status === "waiting")
-    .reduce((a, d) => a + d.total, 0);
-  return Math.max(0, round2(creditNet(s, c) - waiting));
-}
-
-/** ยอดลดหนี้สุทธิของใบแจ้งหนี้ใบหนึ่ง — นับเฉพาะใบลดหนี้ที่ออกเลขแล้ว */
-export function creditedTotal(s: AccState, invoiceNo: string) {
-  return round2(
-    creditsOf(s, invoiceNo)
-      .filter((c) => c.status === "issued")
-      .reduce((a, c) => a + creditNet(s, c), 0),
-  );
-}
-
-/**
- * ยอดที่ยังลดหนี้ได้ของใบแจ้งหนี้ใบหนึ่ง (ข้อ 1 — ห้ามเกินยอดตามใบแจ้งหนี้)
- * ใบที่ออกแล้วและใบที่รอผู้บริหารอนุมัติกันยอดไว้ทั้งคู่ ใบที่ถูกตีกลับไม่กันยอด
- */
-export function creditRoom(s: AccState, invoiceNo: string) {
-  const v = s.invoices.find((x) => x.no === invoiceNo);
-  if (!v) return 0;
-  const waiting = creditsOf(s, invoiceNo)
-    .filter((c) => c.status === "waiting")
-    .reduce((a, c) => a + c.total, 0);
-  return Math.max(0, round2(v.total - creditedTotal(s, invoiceNo) - waiting));
-}
-
-/** ใบแจ้งหนี้ใบนี้ถูกลดหนี้เต็มยอดแล้ว (หรือขอไว้เต็มแล้ว) — ไม่ต้องตามเก็บและไม่ต้องออกใบเสร็จอีก */
-export function creditCovered(s: AccState, invoiceNo: string) {
-  return creditsOf(s, invoiceNo).length > 0 && creditRoom(s, invoiceNo) <= 0;
-}
-
-/**
- * ยอดคืนเงินของใบลดหนี้ใบหนึ่งที่กันยอดไว้แล้ว — กันคืนซ้ำเกินยอดที่ลดหนี้ไว้ (ข้อ 1 ฝั่งคืนเงิน)
- * นับทั้งใบที่รออนุมัติ ใบที่อนุมัติแล้วรอโอน และใบที่คืนไปแล้ว · ใบที่ถูกตีกลับไม่กันยอด
- */
-export function refundedOf(s: AccState, creditNo: string) {
-  return round2(
-    s.refunds
-      .filter((r) => r.credit === creditNo && r.status !== "returned")
-      .reduce((a, r) => a + r.amount, 0),
-  );
-}
-
-/**
- * ยอดที่ยังคืนเงินได้ของใบลดหนี้ใบหนึ่ง = ยอดที่ใบนั้นลดจริง (หักใบเพิ่มหนี้แล้ว) − ที่กันไว้แล้ว
- *
- * ใบเพิ่มหนี้ที่ออกมาแก้ดึงยอดกลับไป ช่องที่เหลือให้คืนจึงเล็กลงด้วย ไม่ใช่ยอดหน้าใบลดหนี้
- * เพดานนี้เป็น "บันทึกไม่ได้" ทุกขั้น ไม่ใช่แค่ตอนกรอก เพราะใบเพิ่มหนี้ออกทีหลังคำขอคืนเงินได้
- * skip = รายการที่กำลังตรวจตัวเอง (ตอนแก้ส่งใหม่หรือตอนอนุมัติ) ไม่ต้องกันยอดซ้อนตัวเอง
- */
-export function refundRoom(s: AccState, creditNo: string, skip = "") {
-  const c = s.credits.find((x) => x.no === creditNo && x.status === "issued");
-  if (!c) return 0;
-  const held = s.refunds
-    .filter((r) => r.credit === creditNo && r.status !== "returned" && r.id !== skip)
-    .reduce((a, r) => a + r.amount, 0);
-  return Math.max(0, round2(creditNet(s, c) - held));
-}
-
-/* ★ ใช้เฉพาะโค้ดใบลดหนี้/ใบเพิ่มหนี้/คืนเงินที่พักไว้ (24 ก.ย. 2569) — เอกสารที่ใช้งานจริงออกเลขด้วย nextDocNo */
-function docStamp() {
-  const now = bkkNow();
-  return { yy: String(now.getFullYear()).slice(-2), mm: pad2(now.getMonth() + 1) };
-}
-
-function newId(prefix: string) {
-  return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
-}
-
-/** ปั้นคำขอใบลดหนี้หนึ่งใบ — ยังไม่มีเลขที่ เลขออกตอนผู้บริหารอนุมัติ */
-function draftCredit(
-  s: AccState,
-  v: Invoice,
-  amount: number,
-  reasonCode: CreditReason,
-  reason: string,
-  at: string,
-  by: string,
-): CreditNote {
-  const deal = s.deals.find((d) => d.no === v.deal);
-  /* ยอดแยกบรรทัดถอดตามสัดส่วนของใบแจ้งหนี้ต้นทาง ไม่คิดภาษีใหม่ */
-  const money = deal
-    ? invoiceAmounts(deal, amount)
-    : { base: round2(amount), vat: 0, wht: 0, total: round2(amount) };
-  return {
-    id: newId("CR"),
-    no: "",
-    inv: v.no,
-    receipt: s.receipts.find((r) => r.inv === v.no)?.no ?? "",
-    deal: v.deal,
-    cus: v.cus,
-    reasonCode,
-    reason,
-    issue: "",
-    reqAt: at,
-    reqBy: by,
-    status: "waiting",
-    decidedAt: "",
-    decidedBy: "",
-    comment: "",
-    base: money.base,
-    vat: money.vat,
-    wht: money.wht,
-    total: money.total,
-    vatDoc: ISSUER_VAT,
-  };
-}
-
-/**
- * ฝ่ายบัญชีขอออกใบลดหนี้ — คืนรหัสคำขอ หรือค่าว่างถ้าขอไม่ได้
- *
- * ปฏิเสธเมื่อ: ไม่มีใบแจ้งหนี้ · ไม่ได้ใส่เหตุผล · ยอดไม่เป็นบวก
- * หรือยอดเกินที่ยังลดได้ของใบนั้น (ข้อ 1 — บันทึกไม่ได้จริง ไม่ใช่แค่เตือน)
- */
-export function requestCreditNote(input: {
-  inv: string;
-  amount: number;
-  reasonCode: CreditReason;
-  reason: string;
-  by: string;
-}) {
-  let id = "";
-  store.update((s) => {
-    const v = s.invoices.find((x) => x.no === input.inv);
-    const reason = input.reason.trim();
-    const amount = round2(input.amount);
-    if (!v || !reason || amount <= 0 || amount > creditRoom(s, input.inv)) return s;
-    const draft = draftCredit(s, v, amount, input.reasonCode, reason, bkkStamp(), input.by);
-    id = draft.id;
-    return { ...s, credits: [...s.credits, draft] };
-  });
-  return id;
-}
-
-/** ฝ่ายบัญชีแก้ยอด/เหตุผลของใบที่ถูกตีกลับแล้วส่งใหม่ — ใบที่ออกเลขแล้วแตะไม่ได้ */
-export function resubmitCreditNote(id: string, amount: number, reason: string, by: string) {
-  let ok = false;
-  store.update((s) => {
-    const c = s.credits.find((x) => x.id === id);
-    const v = c && s.invoices.find((x) => x.no === c.inv);
-    const why = reason.trim();
-    const next = round2(amount);
-    if (!c || !v || c.status !== "returned" || !why || next <= 0) return s;
-    if (next > creditRoom(s, c.inv)) return s;
-    const deal = s.deals.find((d) => d.no === c.deal);
-    const money = deal
-      ? invoiceAmounts(deal, next)
-      : { base: next, vat: 0, wht: 0, total: next };
-    ok = true;
-    return {
-      ...s,
-      credits: s.credits.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              ...money,
-              reason: why,
-              status: "waiting" as const,
-              reqAt: bkkStamp(),
-              reqBy: by,
-              comment: "",
-            }
-          : x,
-      ),
-    };
-  });
-  return ok;
-}
-
-/**
- * ผู้บริหารตัดสินใบลดหนี้ (ข้อ 4)
- *
- * อนุมัติ → ออกเลขที่ ณ ตอนนั้น วันที่ออกคือวันที่อนุมัติ และลดยอดค้างของใบแจ้งหนี้ทันที
- * ยอดค้างคิดก่อนหักภาษี ณ ที่จ่าย (ฐาน + VAT) จึงลดด้วยยอดชุดเดียวกัน ไม่ใช่ยอดที่ลูกค้าโอน
- * ใบที่รับชำระไปแล้วยอดค้างเป็นศูนย์อยู่แล้ว ส่วนที่เหลือไปที่การคืนเงิน ซึ่งเป็นคนละระเบียน (ข้อ 3)
- * ตีกลับ → ต้องมีเหตุผล ฝ่ายบัญชีเห็นแล้วแก้ส่งใหม่ · เอกสารยังไม่เคยมีเลข จึงไม่มีเลขที่เสียไป
- */
-export function decideCreditNote(id: string, ok: boolean, by: string, comment = "") {
-  let issued = "";
-  store.update((s) => {
-    const c = s.credits.find((x) => x.id === id);
-    if (!c || c.status !== "waiting") return s;
-    const stamp = bkkStamp();
-    if (!ok) {
-      const why = comment.trim();
-      if (!why) return s;
-      return {
-        ...s,
-        credits: s.credits.map((x) =>
-          x.id === id
-            ? { ...x, status: "returned" as const, decidedAt: stamp, decidedBy: by, comment: why }
-            : x,
-        ),
-      };
-    }
-    const { yy, mm } = docStamp();
-    const no = nextAccDocNo(
-      "CN",
-      yy,
-      mm,
-      s.credits.map((x) => x.no),
-    );
-    issued = no;
-    const cut = round2(c.base + c.vat);
-    return {
-      ...s,
-      credits: s.credits.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              no,
-              issue: toIsoDate(bkkNow()),
-              status: "issued" as const,
-              decidedAt: stamp,
-              decidedBy: by,
-            }
-          : x,
-      ),
-      invoices: s.invoices.map((v) =>
-        v.no === c.inv ? { ...v, outstanding: Math.max(0, round2(v.outstanding - cut)) } : v,
-      ),
-    };
-  });
-  return issued;
-}
-
-/**
- * ฝ่ายบัญชีขอออกใบเพิ่มหนี้แก้ใบลดหนี้ที่ออกผิด (ข้อ 2 + ข้อ 4) — คืนรหัสคำขอ หรือค่าว่างถ้าขอไม่ได้
- *
- * ใบลดหนี้ใบเดิมยังอยู่ครบพร้อมเลขที่เดิม ไม่ถูกลบและไม่ถูกแก้
- * ยอดเพิ่มหนี้รวมของใบลดหนี้ใบหนึ่งต้องไม่เกินยอดที่ใบนั้นลดไว้ — เพิ่มเกินคือสร้างหนี้ใหม่ ไม่ใช่การแก้
- * ตอนขอยังไม่มีเลขที่และยังไม่ขยับยอดค้างของใบแจ้งหนี้ ทั้งสองอย่างเกิดตอนผู้บริหารอนุมัติ
- */
-export function requestDebitNote(input: {
-  credit: string;
-  amount: number;
-  reason: string;
-  by: string;
-}) {
-  let id = "";
-  store.update((s) => {
-    const c = s.credits.find((x) => x.no === input.credit && x.status === "issued");
-    const v = c && s.invoices.find((x) => x.no === c.inv);
-    const reason = input.reason.trim();
-    const amount = round2(input.amount);
-    if (!c || !v || !reason || amount <= 0 || amount > debitRoom(s, c)) return s;
-    const draft = draftDebit(s, c, amount, reason, bkkStamp(), input.by);
-    id = draft.id;
-    return { ...s, debits: [...s.debits, draft] };
-  });
-  return id;
-}
-
-/** ปั้นคำขอใบเพิ่มหนี้หนึ่งใบ — ยังไม่มีเลขที่ เลขออกตอนผู้บริหารอนุมัติ */
-function draftDebit(
-  s: AccState,
-  c: CreditNote,
-  amount: number,
-  reason: string,
-  at: string,
-  by: string,
-): DebitNote {
-  const deal = s.deals.find((d) => d.no === c.deal);
-  /* ยอดแยกบรรทัดถอดตามสัดส่วนของใบแจ้งหนี้ต้นทาง ชุดเดียวกับใบลดหนี้ที่ใบนี้แก้ */
-  const money = deal
-    ? invoiceAmounts(deal, amount)
-    : { base: amount, vat: 0, wht: 0, total: amount };
-  return {
-    id: newId("DB"),
-    no: "",
-    credit: c.no,
-    inv: c.inv,
-    deal: c.deal,
-    cus: c.cus,
-    reason,
-    issue: "",
-    reqAt: at,
-    reqBy: by,
-    status: "waiting",
-    decidedAt: "",
-    decidedBy: "",
-    comment: "",
-    vatDoc: ISSUER_VAT,
-    ...money,
-  };
-}
-
-/** ฝ่ายบัญชีแก้ยอด/เหตุผลของใบเพิ่มหนี้ที่ถูกตีกลับแล้วส่งใหม่ — ใบที่ออกเลขแล้วแตะไม่ได้ */
-export function resubmitDebitNote(id: string, amount: number, reason: string, by: string) {
-  let ok = false;
-  store.update((s) => {
-    const d = s.debits.find((x) => x.id === id);
-    const c = d && s.credits.find((x) => x.no === d.credit);
-    const why = reason.trim();
-    const next = round2(amount);
-    if (!d || !c || d.status !== "returned" || !why || next <= 0) return s;
-    if (next > debitRoom(s, c)) return s;
-    const deal = s.deals.find((x) => x.no === d.deal);
-    const money = deal
-      ? invoiceAmounts(deal, next)
-      : { base: next, vat: 0, wht: 0, total: next };
-    ok = true;
-    return {
-      ...s,
-      debits: s.debits.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              ...money,
-              reason: why,
-              status: "waiting" as const,
-              reqAt: bkkStamp(),
-              reqBy: by,
-              comment: "",
-            }
-          : x,
-      ),
-    };
-  });
-  return ok;
-}
-
-/**
- * ผู้บริหารตัดสินใบเพิ่มหนี้ (ข้อ 4 ที่ขยายให้ครอบคลุมใบเพิ่มหนี้)
- *
- * อนุมัติ → ออกเลขที่ ณ ตอนนั้น วันที่ออกคือวันที่อนุมัติ และยอดค้างของใบแจ้งหนี้กลับคืนมาเท่าที่เพิ่มหนี้
- * แต่ไม่เกินยอดเต็มของใบแจ้งหนี้ · ตีกลับ → ต้องมีเหตุผล และเอกสารยังไม่เคยมีเลข จึงไม่มีเลขที่เสียไป
- */
-export function decideDebitNote(id: string, ok: boolean, by: string, comment = "") {
-  let issued = "";
-  store.update((s) => {
-    const d = s.debits.find((x) => x.id === id);
-    if (!d || d.status !== "waiting") return s;
-    const stamp = bkkStamp();
-    if (!ok) {
-      const why = comment.trim();
-      if (!why) return s;
-      return {
-        ...s,
-        debits: s.debits.map((x) =>
-          x.id === id
-            ? { ...x, status: "returned" as const, decidedAt: stamp, decidedBy: by, comment: why }
-            : x,
-        ),
-      };
-    }
-    const { yy, mm } = docStamp();
-    const no = nextAccDocNo(
-      "DN",
-      yy,
-      mm,
-      s.debits.map((x) => x.no),
-    );
-    issued = no;
-    const back = round2(d.base + d.vat);
-    return {
-      ...s,
-      debits: s.debits.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              no,
-              issue: toIsoDate(bkkNow()),
-              status: "issued" as const,
-              decidedAt: stamp,
-              decidedBy: by,
-            }
-          : x,
-      ),
-      invoices: s.invoices.map((v) =>
-        v.no === d.inv
-          ? { ...v, outstanding: Math.min(round2(v.base + v.vat), round2(v.outstanding + back)) }
-          : v,
-      ),
-    };
-  });
-  return issued;
-}
-
-/**
- * ฝ่ายบัญชีขอคืนเงินลูกค้า (ข้อ 3) — คืนรหัสคำขอ หรือค่าว่างถ้าขอไม่ได้
- *
- * คืนได้เฉพาะใบลดหนี้ที่ออกเลขแล้วและใบแจ้งหนี้นั้นรับเงินมาแล้วจริง (มีใบเสร็จ)
- * เงินที่ยังไม่เคยเข้าไม่มีอะไรให้คืน — ใบลดหนี้ใบนั้นไปหักกับยอดค้างแทน
- * ยอดคืนรวมของใบลดหนี้ใบหนึ่งต้องไม่เกินยอดที่ใบนั้นลดจริง
- *
- * ตอนขอยังไม่มีวันที่โอนและหลักฐาน เพราะเงินยังไม่ได้ออก — สองช่องนั้นมาที่ recordRefundTransfer
- */
-export function requestRefund(input: {
-  credit: string;
-  amount: number;
-  reason: string;
-  bank: string;
-  by: string;
-}) {
-  let id = "";
-  store.update((s) => {
-    const c = s.credits.find((x) => x.no === input.credit && x.status === "issued");
-    if (!c) return s;
-    const amount = round2(input.amount);
-    const reason = input.reason.trim();
-    const bank = input.bank.trim();
-    if (!reason || !bank || amount <= 0) return s;
-    if (!s.receipts.some((r) => r.inv === c.inv)) return s;
-    if (amount > refundRoom(s, c.no)) return s;
-    const draft: Refund = {
-      id: newId("RF"),
-      no: "",
-      credit: c.no,
-      inv: c.inv,
-      deal: c.deal,
-      cus: c.cus,
-      amount,
-      reason,
-      bank,
-      paidDate: "",
-      method: "",
-      evidence: "",
-      paidBy: "",
-      paidAt: "",
-      reqAt: bkkStamp(),
-      reqBy: input.by,
-      status: "waiting",
-      decidedAt: "",
-      decidedBy: "",
-      comment: "",
-    };
-    id = draft.id;
-    return { ...s, refunds: [...s.refunds, draft] };
-  });
-  return id;
-}
-
-/** ฝ่ายบัญชีแก้คำขอคืนเงินที่ถูกตีกลับแล้วส่งใหม่ — สายเดียวกับใบลดหนี้และใบเพิ่มหนี้ */
-export function resubmitRefund(
-  id: string,
-  amount: number,
-  reason: string,
-  bank: string,
-  by: string,
-) {
-  let ok = false;
-  store.update((s) => {
-    const r = s.refunds.find((x) => x.id === id);
-    const c = r && s.credits.find((x) => x.no === r.credit && x.status === "issued");
-    const why = reason.trim();
-    const acct = bank.trim();
-    const next = round2(amount);
-    if (!r || !c || r.status !== "returned" || !why || !acct || next <= 0) return s;
-    /* ใบที่ถูกตีกลับไม่กันยอดไว้ เพดานจึงคิดจากยอดที่ใบลดหนี้ยังเหลือให้คืนตอนนี้ */
-    if (next > refundRoom(s, c.no, r.id)) return s;
-    ok = true;
-    return {
-      ...s,
-      refunds: s.refunds.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              amount: next,
-              reason: why,
-              bank: acct,
-              status: "waiting" as const,
-              reqAt: bkkStamp(),
-              reqBy: by,
-              comment: "",
-            }
-          : x,
-      ),
-    };
-  });
-  return ok;
-}
-
-/**
- * ผู้บริหารตัดสินการคืนเงิน (ข้อ 4) — เงินออกจากบริษัทจริง จึงต้องผ่านเหมือนใบลดหนี้
- *
- * อนุมัติแล้วได้เลขที่รายการ แต่ยังไม่ถือว่าเงินออก — สถานะเป็น approved รอคนโอนมาบันทึกหลักฐาน
- * ใบเสร็จและเงินที่รับมาแล้วไม่ถูกแก้ (AC-BR-18)
- *
- * เพดานยอดคืนตรวจซ้ำตรงนี้ด้วย เพราะใบเพิ่มหนี้ที่ออกหลังวันที่ขอดึงยอดที่ลดไว้กลับไปได้
- * อนุมัติไม่ได้แล้วต้องตีกลับให้ฝ่ายบัญชีแก้ยอด ไม่ใช่ปล่อยเงินออกเกินที่ลดหนี้ไว้จริง
- */
-export function decideRefund(id: string, ok: boolean, by: string, comment = "") {
-  let issued = "";
-  store.update((s) => {
-    const r = s.refunds.find((x) => x.id === id);
-    if (!r || r.status !== "waiting") return s;
-    const stamp = bkkStamp();
-    if (!ok) {
-      const why = comment.trim();
-      if (!why) return s;
-      return {
-        ...s,
-        refunds: s.refunds.map((x) =>
-          x.id === id
-            ? { ...x, status: "returned" as const, decidedAt: stamp, decidedBy: by, comment: why }
-            : x,
-        ),
-      };
-    }
-    if (r.amount > refundRoom(s, r.credit, r.id)) return s;
-    const { yy, mm } = docStamp();
-    const no = nextAccDocNo(
-      "RF",
-      yy,
-      mm,
-      s.refunds.map((x) => x.no),
-    );
-    issued = no;
-    return {
-      ...s,
-      refunds: s.refunds.map((x) =>
-        x.id === id ? { ...x, no, status: "approved" as const, decidedAt: stamp, decidedBy: by } : x,
-      ),
-    };
-  });
-  return issued;
-}
-
-/**
- * คนที่โอนเงินจริงกลับมาบันทึกวันที่โอนและหลักฐาน — ขั้นสุดท้ายของสายคืนเงิน
- * ทำได้เฉพาะรายการที่ผู้บริหารอนุมัติแล้ว และต้องมีหลักฐานเสมอ ถึงตรงนี้สถานะจึงเป็น "คืนเงินแล้ว"
- */
-export function recordRefundTransfer(
-  id: string,
-  input: { paidDate: string; method: string; evidence: string; by: string },
-) {
-  let ok = false;
-  store.update((s) => {
-    const r = s.refunds.find((x) => x.id === id);
-    const evidence = input.evidence.trim();
-    if (!r || r.status !== "approved" || !input.paidDate || !evidence) return s;
-    /* ใบเพิ่มหนี้ที่ออกหลังวันอนุมัติดึงยอดกลับไปแล้ว — โอนตามยอดเดิมไม่ได้ ต้องกลับไปแก้คำขอ */
-    if (r.amount > refundRoom(s, r.credit, r.id)) return s;
-    ok = true;
-    return {
-      ...s,
-      refunds: s.refunds.map((x) =>
-        x.id === id
-          ? {
-              ...x,
-              status: "paid" as const,
-              paidDate: input.paidDate,
-              method: input.method.trim() || "โอนเงิน",
-              evidence,
-              paidBy: input.by,
-              paidAt: bkkStamp(),
-            }
-          : x,
-      ),
-    };
-  });
-  return ok;
-}
-
-/**
- * การคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกการโอน — งานค้างของฝ่ายบัญชี
- * ต้องขึ้นให้เห็นทั้งบนหน้าจอและในกระดิ่ง ไม่ใช่เงียบหายไปหลังผู้บริหารกดอนุมัติ
- */
-export function refundsToPay(s: AccState) {
-  return s.refunds.filter((r) => r.status === "approved");
-}
-
 // ─── ยอดลูกหนี้ของใบแจ้งหนี้หนึ่งใบ ────────────────────────────────
 /**
  * ยอดที่ยังต้องเก็บจากลูกค้าของใบแจ้งหนี้ใบหนึ่ง — ทุกหน้าที่พูดถึงลูกหนี้ต้องอ่านค่านี้ค่าเดียว
  *
- * คิดก่อนหักภาษี ณ ที่จ่าย (ฐาน + VAT) และขยับตามใบเสร็จ ใบลดหนี้ และใบเพิ่มหนี้ไปแล้ว
+ * คิดก่อนหักภาษี ณ ที่จ่าย (ฐาน + VAT) และขยับตามใบเสร็จเท่านั้น (ไม่มีใบลดหนี้ — ผู้ใช้สั่ง 14 ต.ค. 2569)
  * ห้ามหน้าไหนเอา "ยอดตามใบแจ้งหนี้" (v.total) มาแสดงเป็นยอดที่ต้องเก็บ
  * เพราะใบที่รับชำระไปบางส่วนแล้วจะโชว์ยอดเต็มค้างอยู่ทั้งที่เงินเข้ามาแล้ว (สองหน้าจะไม่ตรงกัน)
  */
@@ -859,6 +255,22 @@ export function invoiceStatus(s: AccState, v: Invoice): Invoice["status"] {
   if (v.status === "cancelled") return "cancelled";
   if (invoiceDue(v) > 0) return receiptsOf(s, v.no).length > 0 ? "partial" : "pending";
   return "paid";
+}
+
+/** ใบแจ้งหนี้ลงวันที่ล่วงหน้าและยังไม่ถึงวันออก — ลูกค้ายังไม่ได้รับ จึงไม่นับว่าค้าง/ใกล้ครบกำหนด (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function invoiceNotYet(v: Invoice, today: string) {
+  return v.issue > today;
+}
+
+/** เลยวันครบกำหนดมากี่วัน (0 = ยังไม่เลย) — ใบที่ยังไม่ถึงวันออกเป็น 0 เสมอ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function invoiceLateDays(v: Invoice, today: string) {
+  if (invoiceNotYet(v, today)) return 0;
+  return Math.max(0, daysBetween(v.due, today));
+}
+
+/** แก้วันที่ออก/วันครบกำหนดได้เฉพาะใบที่ยังไม่รับเงินเลยและไม่ถูกยกเลิก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function canEditInvoiceDates(s: AccState, v: Invoice) {
+  return invoiceStatus(s, v) === "pending" && receiptsOf(s, v.no).length === 0;
 }
 
 export function invoiceOf(s: AccState, deal: string, seq: number) {
@@ -943,14 +355,15 @@ export function savePlan(dealNo: string, plan: Installment[]) {
  * เลขที่รูปแบบ INV + ปี ค.ศ. สองหลัก + ขีด + เดือนสองหลัก + ลำดับสี่หลัก
  * ยอดที่ต้องชำระ = ยอดงวดพอดี ไม่คิด VAT หรือหัก ณ ที่จ่ายซ้ำ (AC-BR-02)
  */
-export function issueInvoice(dealNo: string, seq: number, due: string) {
+export function issueInvoice(dealNo: string, seq: number, issue: string, due: string) {
+  /* ฝ่ายบัญชีเลือกวันที่ออกเองได้ (ย้อนหลังหรือล่วงหน้า) · ครบกำหนดต้องไม่ก่อนวันออก (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  if (!issue || !due || due < issue) return;
   store.update((s) => {
     const deal = s.deals.find((d) => d.no === dealNo);
     const item = deal?.plan.find((p) => p.seq === seq);
     if (!deal || !item || !canBill(s, deal, deal.plan.indexOf(item))) return s;
 
     const money = invoiceAmounts(deal, item.amount);
-    const today = bkkNow();
     const invoice: Invoice = {
       /* รูปแบบเลขเดียวกับเอกสารอื่นทั้งระบบ: คำนำหน้า-ปีไทย-ลำดับ 4 หลัก (ผู้ใช้สั่ง 25 ก.ย. 2569)
          เดิมใบแจ้งหนี้กับใบเสร็จใช้ปี ค.ศ. สองหลักต่อเดือน (INV-2569-0014) ซึ่งอ่านคนละแบบกับใบอื่น */
@@ -958,7 +371,8 @@ export function issueInvoice(dealNo: string, seq: number, due: string) {
       deal: deal.no,
       cus: deal.cus,
       seq,
-      issue: toIsoDate(today),
+      /* วันที่บนเอกสารตามที่ฝ่ายบัญชีเลือก · เลขที่ยังเรียงตามลำดับที่กดออก (ปีของวันที่กด) (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+      issue,
       due,
       base: money.base,
       vat: money.vat,
@@ -975,6 +389,24 @@ export function issueInvoice(dealNo: string, seq: number, due: string) {
       deals: s.deals.map((d) =>
         d.no === dealNo
           ? { ...d, plan: d.plan.map((p) => (p.seq === seq ? { ...p, due } : p)) }
+          : d,
+      ),
+    };
+  });
+}
+
+/** แก้วันที่ออกและวันครบกำหนดของใบที่ยังไม่รับชำระ — งวดในดีลขยับวันครบกำหนดตาม (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+export function updateInvoiceDates(invoiceNo: string, issue: string, due: string) {
+  if (!issue || !due || due < issue) return;
+  store.update((s) => {
+    const v = s.invoices.find((x) => x.no === invoiceNo);
+    if (!v || !canEditInvoiceDates(s, v)) return s;
+    return {
+      ...s,
+      invoices: s.invoices.map((x) => (x.no === invoiceNo ? { ...x, issue, due } : x)),
+      deals: s.deals.map((d) =>
+        d.no === v.deal
+          ? { ...d, plan: d.plan.map((p) => (p.seq === v.seq ? { ...p, due } : p)) }
           : d,
       ),
     };

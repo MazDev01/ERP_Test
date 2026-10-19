@@ -3,21 +3,24 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { WHT_KIND, whtAmount, whtType, type WhtKind, type WhtRow } from "@/lib/acc-data";
+import { WHT_PAYEE, whtAmount, whtType, type WhtPayee, type WhtRow } from "@/lib/acc-data";
 import { useAcc } from "@/lib/acc-store";
-import { TH_MONTHS_FULL, baht, bkkNow, pad2, parseIsoDate, thaiDate } from "@/lib/format";
+import { TH_MONTHS_FULL, baht, bkkNow, parseIsoDate, thaiDate } from "@/lib/format";
 import { useRole } from "@/lib/role";
 import { MonthNav } from "./acc-ui";
 import { FileIcon, PlusIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { PhoneCard, PhoneList } from "./acchr-phone";
+import { stackNo } from "@/lib/stack-no";
 
-type TabKey = "all" | WhtKind;
+type TabKey = "all" | WhtPayee;
 
 /*
  * ภาษีที่บริษัทเราหักผู้ให้บริการภายนอกแล้วนำส่งกรมสรรพากร (ไม่ใช่ภาษีที่ลูกค้าหักเรา)
  * เพิ่มรายการ = เลือกแบบฟอร์มของกรมสรรพากรแล้วกรอกลงแบบ (ผู้ใช้สั่ง 9 ต.ค. 2569)
- *   50 ทวิ → /acc/wht/cert · ใบแนบ ภ.ง.ด.3/53 → /acc/wht/pnd
+ *   50 ทวิ → /acc/wht/cert
+ * บริษัทไม่ใช้ใบแนบ ภ.ง.ด.3/53 — เอกสารมีแค่หนังสือรับรอง 50 ทวิ แยกตามประเภทผู้ถูกหักภาษี
+ * "+ ยื่นภาษี" เลือก นิติบุคคล / บุคคลธรรมดา → /acc/wht/cert?type=juristic|individual (ผู้ใช้สั่ง 16 ต.ค. 2569)
  */
 export function AccWhtPage() {
   const acc = useAcc();
@@ -30,7 +33,6 @@ export function AccWhtPage() {
     /^\d{4}-\d{2}$/.test(wanted) ? parseIsoDate(`${wanted}-01`) : bkkNow(),
   );
   const [choosing, setChoosing] = useState(false);
-  const ym = `${view.getFullYear()}-${pad2(view.getMonth() + 1)}`;
   const open = (r: WhtRow) => router.push(`/acc/wht/cert?id=${encodeURIComponent(r.id)}`);
 
   /* r.date เป็น yyyy-mm-dd — ต้องอ่านผ่าน parseIsoDate ไม่ใช่ new Date(iso)
@@ -39,12 +41,14 @@ export function AccWhtPage() {
     const d = parseIsoDate(r.date);
     return d.getFullYear() === view.getFullYear() && d.getMonth() === view.getMonth();
   });
-  const rows = (tab === "all" ? inMonth : inMonth.filter((r) => r.kind === tab)).sort((a, b) =>
-    b.date.localeCompare(a.date),
+  /* ลำดับแบบกองซ้อน — นับจากรายการทั้งหมดทุกเดือนตามวันที่จ่าย ใหม่สุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  const noOf = stackNo(acc.wht, (r) => r.date, (r) => r.id);
+  const rows = (tab === "all" ? inMonth : inMonth.filter((r) => r.payeeType === tab)).sort(
+    (a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0),
   );
 
-  const k53 = inMonth.filter((r) => r.kind === "53");
-  const k3 = inMonth.filter((r) => r.kind === "3");
+  const jur = inMonth.filter((r) => r.payeeType === "juristic");
+  const ind = inMonth.filter((r) => r.payeeType === "individual");
   const noCert = inMonth.filter((r) => !r.no);
   const sum = (list: WhtRow[]) => list.reduce((a, r) => a + whtAmount(r), 0);
   const base = (list: WhtRow[]) => list.reduce((a, r) => a + r.base, 0);
@@ -61,19 +65,14 @@ export function AccWhtPage() {
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <MonthNav view={view} onChange={setView} />
-          {readOnly ? (
-            <Link href={`/acc/wht/pnd?kind=53&month=${ym}`} className="btn glass-thin shrink-0">
-              <FileIcon className="size-[15px]" strokeWidth={1.9} />
-              ใบแนบ ภ.ง.ด.
-            </Link>
-          ) : (
+          {!readOnly && (
             <button
               type="button"
               className="btn solid btn-solid btn-block-mobile shrink-0"
               onClick={() => setChoosing(true)}
             >
               <PlusIcon className="size-[15px]" strokeWidth={2.2} />
-              เพิ่มรายการ
+              ยื่นภาษี
             </button>
           )}
         </div>
@@ -90,16 +89,14 @@ export function AccWhtPage() {
         {/* มือถือ: สรุปสี่ช่องวางสองคอลัมน์ ไม่ต้องปัดผ่านกล่องใหญ่สี่กล่อง */}
         <div className="mt-3.5 grid grid-cols-2 gap-3 max-sm:gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           <Sum
-            title="ภ.ง.ด.53 · นิติบุคคล"
-            value={baht(sum(k53))}
-            meta={`${k53.length} ราย · ยอดจ่าย ${baht(base(k53))}`}
-            href={`/acc/wht/pnd?kind=53&month=${ym}`}
+            title={WHT_PAYEE.juristic}
+            value={baht(sum(jur))}
+            meta={`${jur.length} ราย · ยอดจ่าย ${baht(base(jur))}`}
           />
           <Sum
-            title="ภ.ง.ด.3 · บุคคลธรรมดา"
-            value={baht(sum(k3))}
-            meta={`${k3.length} ราย · ยอดจ่าย ${baht(base(k3))}`}
-            href={`/acc/wht/pnd?kind=3&month=${ym}`}
+            title={WHT_PAYEE.individual}
+            value={baht(sum(ind))}
+            meta={`${ind.length} ราย · ยอดจ่าย ${baht(base(ind))}`}
           />
           <Sum
             title="รวมต้องนำส่ง"
@@ -122,19 +119,20 @@ export function AccWhtPage() {
             <button type="button" className={tab === "all" ? "on" : ""} onClick={() => setTab("all")}>
               ทั้งหมด <b>{inMonth.length}</b>
             </button>
-            <button type="button" className={tab === "53" ? "on" : ""} onClick={() => setTab("53")}>
-              ภ.ง.ด.53 <b>{k53.length}</b>
+            <button type="button" className={tab === "juristic" ? "on" : ""} onClick={() => setTab("juristic")}>
+              {WHT_PAYEE.juristic} <b>{jur.length}</b>
             </button>
-            <button type="button" className={tab === "3" ? "on" : ""} onClick={() => setTab("3")}>
-              ภ.ง.ด.3 <b>{k3.length}</b>
+            <button type="button" className={tab === "individual" ? "on" : ""} onClick={() => setTab("individual")}>
+              {WHT_PAYEE.individual} <b>{ind.length}</b>
             </button>
           </div>
         </div>
 
         <div className="scroll-stable min-h-0 flex-1 overflow-auto max-sm:hidden">
-          <table className="data-table cards-sm min-w-[980px]">
+          <table className="data-table cards-sm min-w-[1040px]">
             <thead>
               <tr>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th style={{ width: 120 }}>วันที่จ่าย</th>
                 <th style={{ width: 230 }}>ผู้ให้บริการ (ผู้ถูกหักภาษี)</th>
                 <th style={{ width: 200 }}>ประเภทเงินได้</th>
@@ -146,23 +144,24 @@ export function AccWhtPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-10 text-center text-muted-foreground">
                     ไม่มีรายการในเดือนนี้
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => (
                   <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => open(r)}>
+                    <td data-label="ลำดับ" className="c num muted">{noOf.get(r.id)}</td>
                     <td data-label="วันที่จ่าย" className="num muted">{thaiDate(r.date)}</td>
                     <td data-label="ผู้ให้บริการ">
                       <b className="font-semibold">{r.name}</b>
                       <span className="why num">{r.tax}</span>
+                      <PayeeTag p={r.payeeType} />
                     </td>
                     <td data-label="ประเภทเงินได้" className="muted">
                       <span className="clip">
                         {whtType(r.type).label} · {r.rate}%
                       </span>
-                      <span className="why">{WHT_KIND[r.kind]}</span>
                     </td>
                     <td data-label="ยอดก่อนภาษี" className="r num">{baht(r.base)}</td>
                     <td data-label="ภาษีที่หัก" className="r num font-semibold">{baht(whtAmount(r))}</td>
@@ -202,7 +201,7 @@ export function AccWhtPage() {
             <PhoneCard
               key={r.id}
               title={r.name}
-              sub={<span className="num">{r.tax}</span>}
+              sub={<span className="num">#{noOf.get(r.id)} · {r.tax}</span>}
               amount={baht(whtAmount(r))}
               amountNote="ภาษีที่หัก (บาท)"
               onOpen={() => open(r)}
@@ -224,7 +223,7 @@ export function AccWhtPage() {
                 { label: "วันที่จ่าย", value: thaiDate(r.date) },
                 { label: "ยอดก่อนภาษี", value: baht(r.base) },
                 { label: "ประเภทเงินได้", value: `${whtType(r.type).label} · ${r.rate}%` },
-                { label: "แบบยื่น", value: WHT_KIND[r.kind] },
+                { label: "ประเภทผู้ถูกหักภาษี", value: WHT_PAYEE[r.payeeType] },
               ]}
             />
           ))}
@@ -241,7 +240,7 @@ export function AccWhtPage() {
       {/* เลือกแบบฟอร์มของกรมสรรพากรก่อนกรอก — แบบเดียวกับการสร้างใบเสนอราคา (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
       {choosing && (
         <Sheet
-          title="เลือกแบบฟอร์ม"
+          title="ยื่นภาษี · เลือกประเภทผู้ถูกหักภาษี"
           narrow
           onClose={() => setChoosing(false)}
           footer={
@@ -251,20 +250,16 @@ export function AccWhtPage() {
           }
         >
           <div className="grid gap-2.5">
+            {/* สองตัวเลือกตามประเภทผู้ถูกหักภาษี เปิดหนังสือรับรอง 50 ทวิ ที่ตั้งค่าตามประเภทไว้แล้ว (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
             <FormChoice
-              href="/acc/wht/cert"
-              title="หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)"
-              meta="ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร"
+              href="/acc/wht/cert?type=juristic"
+              title={WHT_PAYEE.juristic}
+              meta="บริษัท ห้างหุ้นส่วน · หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)"
             />
             <FormChoice
-              href={`/acc/wht/pnd?kind=53&month=${ym}`}
-              title="ใบแนบ ภ.ง.ด.53 · นิติบุคคล"
-              meta={`${monthText} · ${k53.length} ราย`}
-            />
-            <FormChoice
-              href={`/acc/wht/pnd?kind=3&month=${ym}`}
-              title="ใบแนบ ภ.ง.ด.3 · บุคคลธรรมดา"
-              meta={`${monthText} · ${k3.length} ราย`}
+              href="/acc/wht/cert?type=individual"
+              title={WHT_PAYEE.individual}
+              meta="ผู้รับจ้างรายบุคคล · หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)"
             />
           </div>
         </Sheet>
@@ -288,19 +283,26 @@ function FormChoice({ href, title, meta }: { href: string; title: string; meta: 
   );
 }
 
+function PayeeTag({ p }: { p: WhtPayee }) {
+  return (
+    <span className={`tag mt-1 ${p === "juristic" ? "t-info" : "t-early"}`}>
+      <i />
+      {WHT_PAYEE[p]}
+    </span>
+  );
+}
+
+/* การ์ดสรุปไม่ลิงก์ไปใบแนบแล้ว — บริษัทไม่ใช้ใบแนบ ภ.ง.ด. (ผู้ใช้สั่ง 16 ต.ค. 2569) */
 function Sum({
   title,
   value,
   meta,
   tone,
-  href,
 }: {
   title: string;
   value: string;
   meta: string;
   tone?: "ok" | "bad";
-  /** การ์ดของแบบ ภ.ง.ด. เปิดใบแนบของเดือนนั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  href?: string;
 }) {
   const skin =
     tone === "ok"
@@ -318,11 +320,5 @@ function Sum({
       <span className="mt-1 block text-[11.5px] leading-[1.5] text-muted-foreground">{meta}</span>
     </>
   );
-  return href ? (
-    <Link href={href} className={`${box} block hover:border-primary`}>
-      {body}
-    </Link>
-  ) : (
-    <div className={box}>{body}</div>
-  );
+  return <div className={box}>{body}</div>;
 }

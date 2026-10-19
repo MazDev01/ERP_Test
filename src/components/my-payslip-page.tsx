@@ -16,29 +16,20 @@
 import { useState } from "react";
 import { baht, thaiDate, thaiMonth } from "@/lib/format";
 import {
-  cutOf,
   dailyRoundRange,
-  dailyRateIn,
-  extraOf,
   hrCycle,
-  hrPos,
-  inRange,
-  inPeriod,
   isDaily,
   isDailyRoundKey,
   payKeyLabel,
-  payOf,
-  workedDaysIn,
-  type ComSource,
   type CycleLine,
   type Employee,
 } from "@/lib/hr-data";
 import { countDailyDownload, countDailyView, countDownload, countView, useHr } from "@/lib/hr-store";
 import { ROLE_EMPLOYEE, useComSource, useHrTime } from "@/lib/hr-link";
-import { downloadCsv, toCsv } from "@/lib/report-export";
+import { inputOfLine, PayslipPaper, printSlip, publishedSlips, slipModel, slipYtd, useAutoPrint } from "./payslip-paper";
 import { useRole } from "@/lib/role";
 import { Sheet } from "./lead-dialogs";
-import { DownloadIcon, EyeIcon } from "./icons";
+import { DownloadIcon, EyeIcon, PrintIcon } from "./icons";
 import { DateField } from "./thai-date-picker";
 import "@/styles/mobile/payslip.css";
 
@@ -62,6 +53,8 @@ export function MyPayslipPage() {
   const src = useComSource();
   const role = useRole();
   const [open, setOpen] = useState<string | null>(null);
+  /* เปิดจากปุ่มดาวน์โหลดบนการ์ดมือถือ = สั่งพิมพ์เป็น PDF ทันที */
+  const [autoPrint, setAutoPrint] = useState(false);
   /* ตัวกรองช่วงวันที่ของมือถือ (ต้นแบบ myslip-filter) — ว่าง = ไม่กรอง */
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
@@ -72,32 +65,10 @@ export function MyPayslipPage() {
   /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) — ไม่ต้องมีช่องนี้ */
   const noSs = Boolean(me && isDaily(me));
 
-  const rows: Row[] = [];
-  if (me && me.type !== "intern") {
-    const day = isDaily(me);
-    /* ทดลองงานรับสลิปตามรอบจ่ายรายช่วง (ผู้ใช้สั่ง 6 ต.ค. 2569) — ยอดอ่านจากที่บันทึกไว้ตอนปิดรอบ */
-    if (day) {
-      for (const r of hr.dailyRounds) {
-        if (!r.published || !inRange(me, r)) continue;
-        const line = r.sum?.lines.find((x) => x.id === me.id);
-        if (!line) continue;
-        rows.push({ month: r.id, line, day, at: r.publishedAt });
-      }
-    }
-    for (const sp of day ? [] : hr.slips) {
-      const published = day ? sp.dayPublished : sp.published;
-      if (!published || !inPeriod(me, sp.month)) continue;
-      const line = lineOf(hr, me, sp.month, day, time, src);
-      if (!line) continue;
-      rows.push({
-        month: sp.month,
-        line,
-        day,
-        at: day ? sp.dayPublishedAt : sp.publishedAt,
-      });
-    }
-    rows.sort((a, b) => rangeOf(b.month).to.localeCompare(rangeOf(a.month).to));
-  }
+  /* สลิปที่เผยแพร่แล้วของเรา — ตัวเลือกรอบย้ายไปอยู่ payslip-paper.tsx ใช้ร่วมกับยอดสะสมต่อปี (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const rows: Row[] = me
+    ? publishedSlips(hr, me, time, src).map((x) => ({ month: x.key, line: x.line, day: x.day, at: x.at }))
+    : [];
 
   const picked = rows.find((r) => r.month === open);
 
@@ -199,7 +170,7 @@ export function MyPayslipPage() {
                           type="button"
                           aria-label={`ดาวน์โหลดสลิป ${mon}`}
                           title="ดาวน์โหลด"
-                          onClick={() => me && downloadSlip(me, r)}
+                          onClick={() => openSlip(r.month, true)}
                         >
                           <DownloadIcon strokeWidth={2.1} />
                         </button>
@@ -294,13 +265,20 @@ export function MyPayslipPage() {
       </div>
 
       {me && picked && (
-        <SlipDialog emp={me} row={picked} onClose={() => setOpen(null)} />
+        <SlipDialog
+          key={`${picked.month}-${autoPrint}`}
+          emp={me}
+          row={picked}
+          autoPrint={autoPrint}
+          onClose={() => setOpen(null)}
+        />
       )}
     </div>
   );
 
-  function openSlip(month: string) {
+  function openSlip(month: string, print = false) {
     setOpen(month);
+    setAutoPrint(print);
     /* เปิดดูรอบไหนก็นับครั้งของรอบนั้น — ฝ่ายบุคคลใช้ยืนยันว่าพนักงานได้รับสลิปแล้ว (BR-05) */
     if (myId) (isDailyRoundKey(month) ? countDailyView : countView)(month, myId);
   }
@@ -334,145 +312,39 @@ function CutRow({ label, v }: { label: string; v: number }) {
 }
 
 /**
- * บรรทัดของเราในรอบหนึ่ง — ใช้ยอดที่บันทึกไว้ตอนปิดรอบก่อน
- * ไม่มี snapshot (รอบที่ปิดไว้ก่อนระบบเก็บยอด) จึงคิดสดด้วยสูตรเดียวกับฝ่ายบุคคล
- */
-function lineOf(
-  hr: ReturnType<typeof useHr>,
-  me: Employee,
-  month: string,
-  day: boolean,
-  time: ReturnType<typeof useHrTime>,
-  src: ComSource,
-): CycleLine | null {
-  const run = hr.payruns.find((p) => p.month === month);
-  const sum = day ? run?.daySum : run?.sum;
-  const saved = sum?.lines.find((x) => x.id === me.id);
-  /* snapshot รุ่นเก่าไม่ได้เก็บค่าคอม/ค่าตอบแทนพิเศษ/เบี้ยเลี้ยง ทำให้รวมรายได้ไม่ครบแต่ยอดสุทธิรวมไว้แล้ว
-     เติมเฉพาะช่องที่ขาดจากสูตรเดียวกับฝ่ายบุคคล ตัวเลขที่บันทึกไว้แล้วไม่แตะ */
-  if (saved && saved.gross !== undefined) return saved;
-  if (saved) {
-    const c = payOf(me, month, time, hr.extras, src);
-    return {
-      ...saved,
-      com: saved.com ?? c.com,
-      inc: saved.inc ?? c.inc,
-      allow: saved.allow ?? c.allow,
-      adjust: saved.adjust ?? extraOf(hr.extras, me.id, month).adjust,
-    };
-  }
-
-  if (!run || !(day ? run.dayClosed : run.closed)) return null;
-  const c = payOf(me, month, time, hr.extras, src);
-  return {
-    id: me.id,
-    name: me.name,
-    pos: me.pos,
-    base: c.base,
-    ot: c.ot,
-    com: c.com,
-    inc: c.inc,
-    allow: c.allow,
-    gross: c.gross,
-    adjust: extraOf(hr.extras, me.id, month).adjust,
-    adj: c.adj,
-    ss: c.ss,
-    late: c.late,
-    reimb: c.reimb,
-    net: c.net,
-    /* จ่ายรายวันต้องมีวันและอัตรา สลิปจึงขึ้น "ค่าจ้าง N วัน (อัตรา บาทต่อวัน)" ได้ (ต้นแบบ hr-payslip) */
-    days: day ? workedDaysIn(me, hrCycle(month), time) : 0,
-    rate: day ? dailyRateIn(me, hrCycle(month)) : 0,
-  };
-}
-
-/**
- * ตัวเลขบนสลิปหนึ่งรอบ — ใช้ร่วมกันระหว่างกล่องสลิปกับปุ่มดาวน์โหลดบนการ์ดมือถือ
- * จะได้ไม่มีสองที่คิดรายได้/รายการหักคนละแบบ
- */
-function slipParts(row: Row) {
-  const c = rangeOf(row.month);
-  const x = row.line;
-  const earn: [string, number][] = [
-    [
-      row.day && x.days
-        ? `ค่าจ้าง ${x.days} วัน (${baht(x.rate)} บาทต่อวัน)`
-        : "เงินเดือน",
-      x.base,
-    ],
-    ["ค่าล่วงเวลา", x.ot],
-    /* ชื่อบรรทัดเดียวกับสลิปฝั่งฝ่ายบุคคล (hr-payslip) */
-    ["ค่าคอมมิชชั่น", x.com ?? 0],
-    ["Incentive", x.inc ?? 0],
-    ["ค่าตำแหน่ง", x.allow ?? 0],
-  ];
-  /* รวมรายได้ = ผลรวมของบรรทัดที่แสดงจริง ตัวเลขบนสลิปจะบวกกันได้เสมอ
-     รายการปรับปรุงไม่อยู่ในนี้แล้ว ย้ายไปอยู่รายการหักเหมือนสลิปฝั่งฝ่ายบุคคล */
-  const gross = earn.reduce((a, [, v]) => a + v, 0);
-  /*
-   * รายการหักสามกลุ่ม ขึ้นครบทุกบรรทัดแม้เป็นศูนย์ (ผู้ใช้กำหนด 24 ก.ย. 2569)
-   * สลิปคือเอกสารที่พนักงานใช้ตรวจว่าถูกหักอะไรไปบ้าง ยอดรวมช่องเดียวต้องไปถามฝ่ายบุคคลทุกครั้ง
-   * รายการปรับปรุงลงเป็นยอดที่ถูกหักไป (-amt) ติดลบคือรายการที่คืนกลับเข้ายอด
-   */
-  const cuts: [string, number][] = [
-    /* ทดลองงานไม่หักประกันสังคม (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-    ...(row.day ? [] : [["ประกันสังคม", x.ss] as [string, number]]),
-    ["หักมาสาย", x.late],
-    ...(x.adjust && x.adjust.length
-      ? x.adjust.map((a): [string, number] => [`รายการปรับปรุงอื่น · ${a.why}`, -a.amt || 0])
-      /* -0 ไม่ใช่ตัวเลขที่คนอ่านออก บังคับให้เป็น 0 ก่อนพิมพ์ */
-      : [["รายการปรับปรุงอื่น", -x.adj || 0] as [string, number]]),
-  ];
-  const cut = cutOf(x);
-  return { c, x, earn, gross, cuts, cut };
-}
-
-/** ดาวน์โหลดสลิปหนึ่งรอบเป็น CSV และนับครั้งที่ดาวน์โหลด (BR-05) */
-function downloadSlip(emp: Employee, row: Row) {
-  const { c, x, earn, gross, cuts, cut } = slipParts(row);
-  (row.day ? countDailyDownload : countDownload)(row.month, emp.id);
-  downloadCsv(
-    `สลิปเงินเดือน-${row.month}-${emp.id}.csv`,
-    toCsv([
-      ["สลิปเงินเดือน", labelOf(row.month)],
-      ["ชื่อ", emp.name],
-      ["รหัสพนักงาน", emp.id],
-      ["ตำแหน่ง", hrPos(emp.pos).label],
-      ["ช่วงรอบ", `${thaiDate(c.from)} – ${thaiDate(c.to)}`],
-      [],
-      ["รายได้", "บาท"],
-      ...earn.filter(([, v]) => v !== 0),
-      ["รวมรายได้", gross],
-      [],
-      ["รายการหัก", "บาท"],
-      ...cuts,
-      ["รวมรายการหัก", cut],
-      [],
-      ...((x.reimb ?? 0) > 0 ? [["ค่าใช้จ่ายคืน", x.reimb ?? 0], []] : []),
-      ["รับสุทธิ", x.net],
-    ]),
-  );
-}
-
-/**
- * สลิปของรอบหนึ่ง — สี่ส่วนตามต้นแบบ ข้อมูลพนักงาน รายได้ รายการหัก ยอดสุทธิ
- * มือถือเป็นแผ่นจากล่างจอ: ยอดสุทธิขึ้นก่อน ตามด้วยตารางรายได้/รายการหัก ซ่อนข้อมูลพนักงานและหมายเหตุท้าย
- * (ต้นแบบ myslip-mobile · ตัวยึด .m-ps-dlg (กล่อง) และ .m-ps-slip (เนื้อหา) ใช้แต่งกล่องนี้ใน styles/mobile/payslip.css)
+ * สลิปของรอบหนึ่ง — กระดาษ A4 แบบเดียวกับฝั่งฝ่ายบุคคล (PayslipPaper · ผู้ใช้สั่ง 16 ต.ค. 2569)
+ * มือถือยังมีกล่องยอดรับสุทธิด้านบน กระดาษเลื่อนข้างได้
+ * ดาวน์โหลด = บันทึกเป็น PDF (สั่งพิมพ์เฉพาะกระดาษ) และนับครั้งที่ดาวน์โหลด (BR-05)
+ * autoPrint = เปิดจากปุ่มดาวน์โหลดบนการ์ดมือถือ สั่งพิมพ์ทันทีที่กล่องเปิด
  */
 function SlipDialog({
   emp,
   row,
+  autoPrint,
   onClose,
 }: {
   emp: Employee;
   row: Row;
+  autoPrint: boolean;
   onClose: () => void;
 }) {
-  const { c, x, earn, gross, cuts, cut } = slipParts(row);
+  const hr = useHr();
+  const time = useHrTime();
+  const src = useComSource();
+  const s = { key: row.month, line: row.line, day: row.day, at: row.at };
+  const model = slipModel(inputOfLine(emp, s, time));
+  const ytd = slipYtd(hr, emp, time, src, row.month, model);
+  useAutoPrint(autoPrint);
+
+  function download() {
+    (row.day ? countDailyDownload : countDownload)(row.month, emp.id);
+    printSlip();
+  }
 
   return (
     <Sheet
-      title={`สลิปเงินเดือน ${labelOf(row.month)}`}
+      title={`${row.day ? "สลิปค่าจ้างรายสัปดาห์" : "สลิปเงินเดือน"} ${labelOf(row.month)}`}
+      wide
       onClose={onClose}
       className="m-ps-dlg"
       footer={
@@ -480,87 +352,26 @@ function SlipDialog({
           <button type="button" className="btn glass-thin" onClick={onClose}>
             ปิด
           </button>
-          <button type="button" className="btn solid btn-solid" onClick={() => downloadSlip(emp, row)}>
-            ดาวน์โหลด
+          <button type="button" className="btn glass-thin max-md:hidden" onClick={printSlip}>
+            <PrintIcon className="size-[15px]" strokeWidth={1.9} />
+            พิมพ์
+          </button>
+          <button type="button" className="btn solid btn-solid" onClick={download}>
+            <DownloadIcon className="size-3.5" strokeWidth={2} />
+            ดาวน์โหลด PDF
           </button>
         </>
       }
     >
       <div className="m-ps-slip">
-      <div className="m-ps-net md:hidden">
-        <span>รับสุทธิ</span>
-        <b className="num">{baht(x.net)} บาท</b>
-      </div>
-
-      {/* ส่วนแรกบนจอคอม — กล่องยอดสุทธิมือถือข้างบนซ่อนอยู่ first:mt-0 จึงจับไม่ได้ ต้องสั่ง md:mt-0 เอง */}
-      <Sect title="ข้อมูลพนักงาน" className="max-md:hidden md:mt-0">
-        <Row2 k="ชื่อ" v={emp.name} />
-        <Row2 k="ตำแหน่ง" v={hrPos(emp.pos).label} />
-        <Row2 k="รอบ" v={labelOf(row.month)} />
-        <Row2 k="ช่วงวันที่" v={`${thaiDate(c.from)} – ${thaiDate(c.to)}`} />
-      </Sect>
-
-      <Sect title="รายได้">
-        {earn
-          .filter(([, v]) => v !== 0)
-          .map(([label, v], i) => (
-            <Row2 key={`${i}-${label}`} k={label} v={baht(v)} />
-          ))}
-        <Row2 k="รวมรายได้" v={baht(gross)} strong />
-      </Sect>
-
-      <Sect title="รายการหัก">
-        {cuts.map(([label, v], i) => (
-          <Row2 key={`${i}-${label}`} k={label} v={baht(v)} />
-        ))}
-        <Row2 k="รวมรายการหัก" v={baht(cut)} strong />
-      </Sect>
-
-      {(x.reimb ?? 0) > 0 && (
-        /* ใบเบิกที่อนุมัติแล้ว จ่ายคืนพร้อมเงินเดือน — ไม่ใช่รายได้ ไม่คิดประกันสังคม */
-        <Sect title="ค่าใช้จ่ายคืน">
-          <Row2 k="ใบเบิกค่าใช้จ่ายที่อนุมัติแล้ว" v={baht(x.reimb ?? 0)} />
-        </Sect>
-      )}
-
-      <Sect title="ยอดสุทธิ" className="max-md:hidden">
-        <Row2 k="รับสุทธิ" v={`${baht(x.net)} บาท`} strong />
-      </Sect>
+        <div className="m-ps-net md:hidden">
+          <span>รับสุทธิ</span>
+          <b className="num">{baht(model.net)} บาท</b>
+        </div>
+        <div className="overflow-x-auto">
+          <PayslipPaper emp={emp} input={{ key: row.month, day: row.day, at: row.at }} model={model} ytd={ytd} />
+        </div>
       </div>
     </Sheet>
-  );
-}
-
-function Sect({
-  title,
-  className = "",
-  children,
-}: {
-  title: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={`mt-5 first:mt-0 ${className}`}>
-      <h3 className="mb-2 border-b border-border pb-2 text-[14px] font-bold">{title}</h3>
-      <dl className="flex flex-col gap-1.5">{children}</dl>
-    </section>
-  );
-}
-
-function Row2({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
-  return (
-    <div
-      className={`flex items-baseline justify-between gap-3 ${
-        strong ? "border-t border-border pt-2" : ""
-      }`}
-    >
-      <dt className={strong ? "text-[13.5px] font-bold" : "text-[13px] text-muted-foreground"}>
-        {k}
-      </dt>
-      <dd className={`num text-right ${strong ? "text-[14px] font-bold" : "text-[13px] font-medium"}`}>
-        {v}
-      </dd>
-    </div>
   );
 }

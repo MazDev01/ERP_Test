@@ -8,14 +8,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { INVOICE_STATUS, whtAmount, type InvoiceStatus } from "@/lib/acc-data";
-import { awaitingReceipt, invoiceDue, invoiceStatus, useAcc } from "@/lib/acc-store";
+import { INVOICE_STATUS, WHT_PAYEE, whtAmount, type InvoiceStatus } from "@/lib/acc-data";
+import { awaitingReceipt, invoiceDue, invoiceLateDays, invoiceStatus, useAcc } from "@/lib/acc-store";
 import { FileIcon, CheckCircleIcon, ClockIcon, BellIcon, TaxIcon } from "./icons";
 import {
   TH_MONTHS_FULL,
   baht,
   bkkNow,
-  daysBetween,
   thaiDate,
   toIsoDate,
 } from "@/lib/format";
@@ -68,7 +67,8 @@ export function AccDashboardPage() {
     .reduce((a, p) => a + p.received + p.wht, 0);
   /* ลูกหนี้อ่านจาก awaitingReceipt ชุดเดียวกับหน้าใบเสร็จ หน้าวางบิล และกระดิ่ง ตัวเลขจะได้ตรงกันทุกที่ */
   const openInv = awaitingReceipt(acc);
-  const late = openInv.filter((v) => daysBetween(v.due, today) > 0);
+  /* ใบลงวันที่ล่วงหน้ายังไม่ถึงวันออกไม่นับว่าเกินกำหนด (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  const late = openInv.filter((v) => invoiceLateDays(v, today) > 0);
   const lateSum = late.reduce((a, v) => a + invoiceDue(v), 0);
 
   const slices = (["pending", "partial", "paid"] as const).map((k) => ({
@@ -218,7 +218,7 @@ export function AccDashboardPage() {
           ) : (
             <ul className="mt-1.5 min-h-[240px] flex-1 divide-y divide-border overflow-y-auto">
               {[...late]
-                .sort((x, y) => daysBetween(y.due, today) - daysBetween(x.due, today))
+                .sort((x, y) => invoiceLateDays(y, today) - invoiceLateDays(x, today))
                 .slice(0, 5)
                 .map((v, i) => (
                   <li key={v.no} className="flex items-center gap-3 py-[11px]">
@@ -233,7 +233,7 @@ export function AccDashboardPage() {
                     </span>
                     <span className="tag t-late flex-none">
                       <i />
-                      เกิน {daysBetween(v.due, today)} วัน
+                      เกิน {invoiceLateDays(v, today)} วัน
                     </span>
                   </li>
                 ))}
@@ -267,7 +267,7 @@ export function AccDashboardPage() {
                   </span>
                   <span className="tag t-early flex-none">
                     <i />
-                    {r.kind === "53" ? "ภ.ง.ด.53" : "ภ.ง.ด.3"}
+                    {WHT_PAYEE[r.payeeType]}
                   </span>
                 </li>
               ))}

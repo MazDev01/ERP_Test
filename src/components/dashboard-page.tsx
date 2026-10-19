@@ -12,6 +12,7 @@ import {
 } from "@/lib/dashboard-cards";
 import { TH_MONTHS_SHORT, bkkNow, greetNow, toIsoDate, todayIso } from "@/lib/format";
 import { CURRENT_USER } from "@/lib/mock-data";
+import { useNameOf } from "@/lib/emp-name";
 import {
   buildAgenda,
   buildReport,
@@ -78,7 +79,9 @@ export function DashboardPage({
   const showRank = cardOn(cards, "rank");
   const [range, setRange] = useState<RangeKey>("m");
   /* คำทักทายตามช่วงเวลาจริงของวัน — ใช้ตัวช่วยกลางร่วมกับแดชบอร์ดหน้าอื่น */
-  const hello = `${greetNow()}, ${CURRENT_USER.name.split(" ")[0]}`;
+  /* ทักด้วยชื่อเล่น (ผู้ใช้สั่ง 19 ต.ค. 2569) */
+  const empName = useNameOf();
+  const hello = `${greetNow()}, ${empName(CURRENT_USER.name.split(" ")[0])}`;
   const [breakdown, setBreakdown] = useState<"status" | "source" | "lost">("status");
 
   // ตัวเลขทั้งหน้าคิดจากดีล ใบเสนอราคา และการติดต่อชุดเดียวกับหน้าอื่น

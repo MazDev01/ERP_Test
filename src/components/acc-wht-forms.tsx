@@ -3,7 +3,9 @@
 /*
  * แบบฟอร์มกรมสรรพากรของภาษีที่ MAZ หักผู้ให้บริการภายนอก (ผู้ใช้สั่ง 9 ต.ค. 2569)
  *   หนังสือรับรองการหักภาษี ณ ที่จ่าย ตามมาตรา 50 ทวิ   /acc/wht/cert   (?id= เปิดรายการเดิม · &edit=1 แก้ไข)
- *   ใบแนบ ภ.ง.ด.3 / ภ.ง.ด.53                         /acc/wht/pnd    (?kind=3|53&month=yyyy-mm)
+ *   ออกใหม่ตามประเภทผู้ถูกหักภาษี ?type=juristic (นิติบุคคล · ภ.ง.ด.53) | individual (บุคคลธรรมดา · ภ.ง.ด.3)
+ *   บริษัทไม่ใช้ใบแนบ ภ.ง.ด.3 / ภ.ง.ด.53 — ถอดหน้า /acc/wht/pnd ออกแล้ว (ผู้ใช้สั่ง 16 ต.ค. 2569)
+ *   TODO: เจ้าของจะส่งภาพแบบฟอร์มของบริษัทแยกตามประเภท (นิติบุคคล / บุคคลธรรมดา) มาภายหลัง — ตอนนี้ใช้แบบ 50 ทวิ เดิมไปก่อน
  *
  * ผู้มีหน้าที่หักภาษี = บริษัทเราเสมอ อ่านจากข้อมูลบริษัทในตั้งค่าระบบ แก้บนแบบไม่ได้
  * ผู้ถูกหักภาษี = ผู้ให้บริการภายนอก ไม่ใช่ลูกค้า — ตัวช่วยเลือกชื่อดึงจากรายการหัก ณ ที่จ่ายเดิมเท่านั้น
@@ -15,6 +17,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   WHT_COND,
+  WHT_PAYEE,
+  kindOfPayee,
+  payeeOfKind,
   whtAmount,
   whtFormRow,
   whtType,
@@ -22,15 +27,15 @@ import {
   type WhtCond,
   type WhtFormRow,
   type WhtKind,
+  type WhtPayee,
   type WhtRow,
 } from "@/lib/acc-data";
 import { issueWht, newWhtId, useAcc } from "@/lib/acc-store";
-import { TH_MONTHS_FULL, baht, bahtText, bkkNow, commaInput, parseIsoDate, todayIso } from "@/lib/format";
+import { baht, bahtText, commaInput, todayIso } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { useRole } from "@/lib/role";
 import { useLiveSettings } from "@/lib/system-settings";
 import { BackLink } from "./acc-doc";
-import { MonthNav } from "./acc-ui";
 import { useAddOption } from "./add-option";
 import { DownloadIcon, EditIcon, PrintIcon } from "./icons";
 import { DateField } from "./thai-date-picker";
@@ -155,8 +160,8 @@ function PrintButtons() {
 }
 
 /**
- * รายการของแบบ ภ.ง.ด. หนึ่งเดือน เรียงตามวันที่จ่าย — ลำดับนี้คือ "ลำดับที่" ทั้งในใบแนบและในหนังสือรับรอง
- * จะได้สอบยันกันได้ระหว่างสองเอกสาร
+ * รายการของแบบ ภ.ง.ด. หนึ่งเดือน เรียงตามวันที่จ่าย — ลำดับนี้คือ "ลำดับที่ ... ในแบบ" บนหนังสือรับรอง
+ * (บริษัทไม่ใช้ใบแนบแล้ว แต่ช่องนี้ยังอยู่บนแบบ 50 ทวิ ของกรมสรรพากร)
  */
 function pndList(wht: WhtRow[], kind: WhtKind, ym: string) {
   return wht
@@ -165,8 +170,23 @@ function pndList(wht: WhtRow[], kind: WhtKind, ym: string) {
 }
 
 function useCompany() {
-  const c = useLiveSettings().company;
-  return { name: c.name, taxId: c.taxId, address: c.address.replace(/\s*\n\s*/g, " ") };
+  const s = useLiveSettings();
+  const c = s.company;
+  /*
+   * ลายเซ็น/ตราประทับของผู้จ่ายเงิน = ผู้ออกเอกสารที่เป็นบริษัทบนหนังสือรับรอง (ผู้ใช้สั่ง 16 ต.ค. 2569)
+   * ตั้งต้น MAZ · ไม่มี MAZ ใช้รายที่เลขผู้เสียภาษีตรงกับข้อมูลบริษัท · ไม่มีอีกใช้รายแรก
+   */
+  const iss =
+    s.issuers.find((i) => i.code === "MAZ") ?? s.issuers.find((i) => i.taxId && i.taxId === c.taxId) ?? s.issuers[0];
+  return {
+    name: c.name,
+    taxId: c.taxId,
+    address: c.address.replace(/\s*\n\s*/g, " "),
+    sign: iss?.sign?.src ?? "",
+    stamp: iss?.stamp?.src ?? "",
+    signName: iss?.sign ? (iss.signName?.trim() ?? "") : "",
+    signTitle: iss?.sign ? (iss.signTitle?.trim() ?? "") : "",
+  };
 }
 
 // ─── หนังสือรับรอง 50 ทวิ ─────────────────────────────────────────
@@ -190,7 +210,8 @@ type Form = {
   issued: string;
 };
 
-function formOf(r: WhtRow | undefined): Form {
+/** preset = ประเภทผู้ถูกหักภาษีที่เลือกจากปุ่ม "+ ยื่นภาษี" ใช้กับใบใหม่เท่านั้น (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+function formOf(r: WhtRow | undefined, preset?: WhtPayee): Form {
   const type = r?.type ?? "service";
   const money = (n: number | undefined) => (n ? commaInput(String(n)) : "");
   return {
@@ -198,7 +219,7 @@ function formOf(r: WhtRow | undefined): Form {
     name: r?.name ?? "",
     tax: r?.tax ?? "",
     addr: r?.addr ?? "",
-    kind: r?.kind ?? "53",
+    kind: r?.kind ?? kindOfPayee(preset ?? "juristic"),
     type,
     date: r?.date ?? todayIso(),
     base: money(r?.base),
@@ -368,13 +389,14 @@ function CertPaper({
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <b>ผู้ถูกหักภาษี ณ ที่จ่าย :-</b>
             <span className="inline-flex items-center gap-2">
-              เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)*
+              {/* บุคคลธรรมดาใช้เลขประจำตัวประชาชน นิติบุคคลใช้เลขทะเบียนนิติบุคคล (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+              {f.kind === "3" ? "เลขประจำตัวประชาชน (13 หลัก)*" : "เลขประจำตัวผู้เสียภาษีอากร (13 หลัก)*"}
               {set ? (
                 <input
                   value={f.tax}
                   inputMode="numeric"
                   maxLength={13}
-                  placeholder="13 หลัก"
+                  placeholder={f.kind === "3" ? "เลขบัตรประชาชน 13 หลัก" : "เลขนิติบุคคล 13 หลัก"}
                   className={`num ${bad?.tax ? "bad" : ""}`}
                   style={{ width: 150, letterSpacing: "0.12em" }}
                   onChange={(e) => set({ tax: e.target.value.replace(/\D/g, "").slice(0, 13) })}
@@ -520,8 +542,37 @@ function CertPaper({
             <div className="flex-1 text-center">
               <p style={{ fontSize: 10.5 }}>ขอรับรองว่าข้อความและตัวเลขดังกล่าวข้างต้นถูกต้องตรงกับความจริงทุกประการ</p>
               <p className="mt-6">
-                ลงชื่อ <span className="dot" style={{ minWidth: 170 }} /> ผู้จ่ายเงิน
+                ลงชื่อ{" "}
+                {/* รูปลายเซ็นวางเหนือเส้นประ ไม่ดันความสูงของแบบ — ใช้ <img> ให้พิมพ์ติด (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+                <span className="dot" style={{ minWidth: 170, position: "relative" }}>
+                  {co.sign && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={co.sign}
+                      alt="ลายเซ็นผู้จ่ายเงิน"
+                      style={{
+                        position: "absolute",
+                        left: "50%",
+                        bottom: 2,
+                        transform: "translateX(-50%)",
+                        height: 40,
+                        maxWidth: 190,
+                        objectFit: "contain",
+                        mixBlendMode: "multiply",
+                      }}
+                    />
+                  )}
+                </span>{" "}
+                ผู้จ่ายเงิน
               </p>
+              {/* แบบ 50 ทวิ ไม่มีช่องชื่อ/ตำแหน่ง — เขียนในวงเล็บใต้ลายเซ็นตามที่นิยม เฉพาะเมื่อมีลายเซ็น (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+              {(co.signName || co.signTitle) && (
+                <p style={{ fontSize: 10 }}>
+                  {co.signName && `(${co.signName})`}
+                  {co.signName && co.signTitle && " "}
+                  {co.signTitle}
+                </p>
+              )}
               <p className="mt-2">
                 <span className="dot num" style={{ minWidth: 150 }}>
                   {dmy(f.issued || (f.no ? f.date : ""))}
@@ -530,11 +581,23 @@ function CertPaper({
               <p style={{ fontSize: 10 }}>(วัน เดือน ปี ที่ออกหนังสือรับรองฯ)</p>
             </div>
             <div className="stamp">
-              ประทับตรา
-              <br />
-              นิติบุคคล
-              <br />
-              (ถ้ามี)
+              {co.stamp ? (
+                /* ตราประทับบริษัทจากตั้งค่า วางในวงกลมช่องประทับตรา (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={co.stamp}
+                  alt="ตราประทับนิติบุคคล"
+                  style={{ width: 70, height: 70, objectFit: "contain", mixBlendMode: "multiply" }}
+                />
+              ) : (
+                <>
+                  ประทับตรา
+                  <br />
+                  นิติบุคคล
+                  <br />
+                  (ถ้ามี)
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -564,6 +627,8 @@ export function AccWhtCertPage() {
   const readOnly = useRole() !== "acc";
   const id = params.get("id") ?? "";
   const row = id ? acc.wht.find((r) => r.id === id) : undefined;
+  /* ใบใหม่เปิดจากตัวเลือกประเภทบนหน้ายื่นภาษี ?type=juristic|individual — ไม่ระบุถือเป็นนิติบุคคล (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const preset: WhtPayee = params.get("type") === "individual" ? "individual" : "juristic";
   const editing = !readOnly && (!id || (row ? !row.no || params.get("edit") === "1" : false));
   /* รายการและบทบาทอยู่ใน localStorage — รอเบราว์เซอร์อ่านก่อน ช่องกรอกจะได้ไม่ตั้งต้นจากข้อมูลตั้งต้นของเซิร์ฟเวอร์ */
   const hydrated = useHydrated();
@@ -577,7 +642,7 @@ export function AccWhtCertPage() {
   }
   /* key ตามรายการ — เปิดรายการอื่นแล้วช่องกรอกตั้งต้นใหม่ */
   return editing ? (
-    <CertEditor key={id || "new"} row={row} onDone={(rid) => router.replace(`/acc/wht/cert?id=${encodeURIComponent(rid)}`)} />
+    <CertEditor key={id || `new-${preset}`} row={row} preset={preset} onDone={(rid) => router.replace(`/acc/wht/cert?id=${encodeURIComponent(rid)}`)} />
   ) : (
     <CertView row={row!} readOnly={readOnly} />
   );
@@ -614,7 +679,7 @@ function CertView({ row, readOnly }: { row: WhtRow; readOnly: boolean }) {
           <div className="min-w-0">
             <h1 className="num">{row.no || "หนังสือรับรอง 50 ทวิ"}</h1>
             <p>{row.name}</p>
-            <p className="text-[12.5px]">หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) · ภ.ง.ด.{row.kind}</p>
+            <p className="text-[12.5px]">หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) · {WHT_PAYEE[row.payeeType]}</p>
           </div>
           {row.no ? (
             <span className="tag t-ok mt-1">
@@ -646,9 +711,17 @@ function CertView({ row, readOnly }: { row: WhtRow; readOnly: boolean }) {
   );
 }
 
-function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: string) => void }) {
+function CertEditor({
+  row,
+  preset,
+  onDone,
+}: {
+  row: WhtRow | undefined;
+  preset: WhtPayee;
+  onDone: (id: string) => void;
+}) {
   const acc = useAcc();
-  const [f, setF] = useState<Form>(() => formOf(row));
+  const [f, setF] = useState<Form>(() => formOf(row, preset));
   const [tried, setTried] = useState(false);
   const set = (patch: Partial<Form>) => setF((x) => ({ ...x, ...patch }));
   const addType = useAddOption({ catalog: "whtTypes" }, (v) => set({ type: v, rate: String(whtType(v).rate) }));
@@ -677,6 +750,7 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
       name: f.name.trim(),
       tax: f.tax,
       kind: f.kind,
+      payeeType: payeeOfKind(f.kind),
       type: f.type,
       base: Math.round(base * 100) / 100,
       rate,
@@ -698,7 +772,7 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
         <div className="flex min-w-0 flex-wrap items-start gap-3">
           <BackLink href={back} label={row ? "กลับไปหน้าเอกสาร" : "กลับไปหน้าหัก ณ ที่จ่าย"} />
           <div className="min-w-0">
-            <h1 className="num">{f.no || "ออกหนังสือรับรอง 50 ทวิ"}</h1>
+            <h1 className="num">{f.no || `ออกหนังสือรับรอง 50 ทวิ · ${WHT_PAYEE[payeeOfKind(f.kind)]}`}</h1>
             <p>หนังสือรับรองการหักภาษี ณ ที่จ่าย ตามมาตรา 50 ทวิ</p>
           </div>
         </div>
@@ -713,24 +787,7 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
       </div>
 
       <section className="glass no-print flex flex-wrap items-end gap-3 rounded-[15px] px-4 py-3">
-        <label className="grid gap-1 text-[12.5px] font-medium">
-          ผู้ให้บริการ (ผู้ถูกหักภาษี)
-          <span className="flex gap-1.5">
-            {(["53", "3"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => set({ kind: k })}
-                className={`rounded-[10px] border px-3 text-[12.5px] ${
-                  f.kind === k ? "border-primary bg-accent font-semibold text-primary" : "glass-thin text-muted-foreground"
-                }`}
-                style={{ height: 38 }}
-              >
-                {k === "53" ? "นิติบุคคล · ภ.ง.ด.53" : "บุคคลธรรมดา · ภ.ง.ด.3"}
-              </button>
-            ))}
-          </span>
-        </label>
+        {/* ประเภทผู้ถูกหักภาษีเลือกแล้วตอนกด "+ ยื่นภาษี" — สลับในหน้านี้ไม่ได้ (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
         <label className="grid gap-1 text-[12.5px] font-medium" style={{ minWidth: 220 }}>
           ประเภทเงินได้
           <Select
@@ -750,16 +807,7 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
           </Select>
         </label>
         {addType.dialog}
-        <label className="grid gap-1 text-[12.5px] font-medium">
-          อัตราภาษี (%)
-          <input
-            value={f.rate}
-            inputMode="decimal"
-            onChange={(e) => set({ rate: e.target.value.replace(/[^\d.]/g, "") })}
-            className="field-control num rounded-[10px] px-3 text-[13.5px]"
-            style={{ width: 90, height: 38 }}
-          />
-        </label>
+        {/* อัตราภาษีมาจากประเภทเงินได้ ไม่มีช่องให้แก้เอง (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
         <div className="grid gap-1 text-[12.5px] font-medium" style={{ width: 170 }}>
           วันที่จ่ายเงิน
           <DateField value={f.date} onChange={(iso) => set({ date: iso })} label="วันที่จ่ายเงิน" className="h-[38px] rounded-[10px] text-[13.5px]" />
@@ -772,7 +820,7 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
           <p className="w-full text-[12.5px] font-semibold text-destructive">
             {[
               !f.name.trim() && "ชื่อผู้ให้บริการ",
-              f.tax.length !== 13 && "เลขประจำตัวผู้เสียภาษี 13 หลัก",
+              f.tax.length !== 13 && (f.kind === "3" ? "เลขประจำตัวประชาชน 13 หลัก" : "เลขประจำตัวผู้เสียภาษี 13 หลัก"),
               base <= 0 && "จำนวนเงินที่จ่าย",
             ]
               .filter(Boolean)
@@ -786,239 +834,5 @@ function CertEditor({ row, onDone }: { row: WhtRow | undefined; onDone: (id: str
         <CertPaper f={f} copy={1} seq={seq} set={set} bad={bad} vendors={vendors} />
       </FitSheet>
     </div>
-  );
-}
-
-// ─── ใบแนบ ภ.ง.ด.3 / ภ.ง.ด.53 ────────────────────────────────────
-
-/** รายการต่อแผ่น ตามแบบใบแนบของกรมสรรพากร */
-const PER_SHEET = 6;
-
-export function AccWhtPndPage() {
-  const acc = useAcc();
-  const router = useRouter();
-  const params = useSearchParams();
-  const kind: WhtKind = params.get("kind") === "3" ? "3" : "53";
-  const now = bkkNow();
-  const ym = /^\d{4}-\d{2}$/.test(params.get("month") ?? "")
-    ? params.get("month")!
-    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const view = parseIsoDate(`${ym}-01`);
-  const go = (k: WhtKind, m: string) => router.replace(`/acc/wht/pnd?kind=${k}&month=${m}`);
-
-  const list = pndList(acc.wht, kind, ym);
-  const sheets = Math.max(1, Math.ceil(list.length / PER_SHEET));
-  const total = list.reduce((a, r) => a + whtAmount(r), 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="bar no-print">
-        <div className="flex min-w-0 flex-wrap items-start gap-3">
-          <BackLink href={`/acc/wht?month=${ym}`} label="กลับไปหน้าหัก ณ ที่จ่าย" />
-          <div className="min-w-0">
-            <h1>ใบแนบ ภ.ง.ด.{kind}</h1>
-            <p>
-              {TH_MONTHS_FULL[view.getMonth()]} {view.getFullYear() + 543} · {list.length} ราย · ภาษี {baht(total)} บาท
-            </p>
-          </div>
-        </div>
-        <div className="tools w-full flex-wrap sm:w-auto">
-          <div className="tabs">
-            {(["53", "3"] as const).map((k) => (
-              <button key={k} type="button" className={kind === k ? "on" : ""} onClick={() => go(k, ym)}>
-                ภ.ง.ด.{k}
-              </button>
-            ))}
-          </div>
-          <MonthNav
-            view={view}
-            onChange={(d) => go(kind, `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)}
-          />
-          <PrintButtons />
-        </div>
-      </div>
-      <FitSheet width={1123}>
-        {Array.from({ length: sheets }, (_, i) => (
-          <PndSheet
-            key={i}
-            kind={kind}
-            page={i + 1}
-            pages={sheets}
-            rows={list.slice(i * PER_SHEET, (i + 1) * PER_SHEET)}
-            start={i * PER_SHEET}
-          />
-        ))}
-      </FitSheet>
-    </div>
-  );
-}
-
-function PndSheet({
-  kind,
-  page,
-  pages,
-  rows,
-  start,
-}: {
-  kind: WhtKind;
-  page: number;
-  pages: number;
-  rows: WhtRow[];
-  start: number;
-}) {
-  const co = useCompany();
-  const blanks = PER_SHEET - rows.length;
-  const sumBase = rows.reduce((a, r) => a + r.base, 0);
-  const sumTax = rows.reduce((a, r) => a + whtAmount(r), 0);
-  const who =
-    kind === "53"
-      ? "(ให้ระบุให้ชัดเจนว่าเป็น บริษัท จำกัด ห้างหุ้นส่วนจำกัด หรือห้างหุ้นส่วนสามัญนิติบุคคล)"
-      : "(ให้ระบุให้ชัดเจนว่าเป็น นาย นาง นางสาว หรือยศ)";
-
-  return (
-    <article className="paper rd-form rd-land">
-      <div className="flex items-end justify-between gap-4">
-        <div className="flex items-end gap-3">
-          <h2 className="bx px-3 py-1" style={{ fontSize: 20, fontWeight: 700 }}>
-            ใบแนบ ภ.ง.ด.{kind}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="inline-flex items-center gap-2">
-            เลขประจำตัวผู้เสียภาษีอากร (ของผู้มีหน้าที่หักภาษี ณ ที่จ่าย) <Digits value={co.taxId} />
-          </span>
-          <span className="inline-flex items-center gap-2">
-            สาขาที่ <Digits value={branchOf(co.name)} groups={[5]} />
-          </span>
-        </div>
-        <span className="whitespace-nowrap">
-          แผ่นที่ <span className="bx num inline-block text-center" style={{ minWidth: 28 }}>{page}</span> ในจำนวน{" "}
-          <span className="bx num inline-block text-center" style={{ minWidth: 28 }}>{pages}</span> แผ่น
-        </span>
-      </div>
-
-      <table className="mt-3" style={{ fontSize: 10.5 }}>
-        <thead>
-          <tr>
-            <th rowSpan={2} style={{ width: 44 }}>
-              ลำดับ
-              <br />
-              ที่
-            </th>
-            <th rowSpan={2}>
-              เลขประจำตัวผู้เสียภาษีอากร (ของผู้มีเงินได้)
-              <br />
-              ชื่อผู้มีเงินได้ <span style={{ fontWeight: 400 }}>{who}</span>
-              <br />
-              ที่อยู่ของผู้มีเงินได้{" "}
-              <span style={{ fontWeight: 400 }}>(ให้ระบุ เลขที่ ตรอก/ซอย ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด)</span>
-            </th>
-            <th colSpan={4}>รายละเอียดเกี่ยวกับการจ่ายเงิน</th>
-            <th rowSpan={2} style={{ width: 112 }}>
-              จำนวนเงินภาษีที่หัก
-              <br />
-              และนำส่งในครั้งนี้
-            </th>
-            <th rowSpan={2} style={{ width: 54 }}>
-              เงื่อนไข
-            </th>
-          </tr>
-          <tr>
-            <th style={{ width: 84 }}>
-              วัน เดือน ปี
-              <br />
-              ที่จ่าย
-            </th>
-            <th style={{ width: 168 }}>ประเภทเงินได้พึงประเมินที่จ่าย</th>
-            <th style={{ width: 54 }}>
-              อัตราภาษี
-              <br />
-              ร้อยละ
-            </th>
-            <th style={{ width: 132 }}>
-              จำนวนเงินที่จ่ายแต่ละประเภท
-              <br />
-              เฉพาะคนหนึ่ง ๆ ในครั้งนี้
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={r.id} style={{ height: 66 }}>
-              <td className="c num">{start + i + 1}</td>
-              <td>
-                <span className="inline-flex flex-wrap items-center gap-x-3">
-                  <Digits value={r.tax} />
-                  {kind === "53" && (
-                    <span className="inline-flex items-center gap-1.5">
-                      สาขาที่ <Digits value="" groups={[5]} />
-                    </span>
-                  )}
-                </span>
-                <p className="mt-0.5">
-                  ชื่อ <span className="font-semibold">{r.name}</span>
-                </p>
-                <p>ที่อยู่ {r.addr ?? ""}</p>
-              </td>
-              <td className="c num">{dmy(r.date)}</td>
-              <td>{whtType(r.type).label}</td>
-              <td className="c num">{r.rate}</td>
-              <td className="r num">{baht(r.base)}</td>
-              <td className="r num">{baht(whtAmount(r))}</td>
-              <td className="c num">{(r.cond ?? 1) <= 3 ? (r.cond ?? 1) : ""}</td>
-            </tr>
-          ))}
-          {Array.from({ length: blanks }, (_, i) => (
-            <tr key={`b${i}`} style={{ height: 66 }}>
-              {Array.from({ length: 8 }, (_, j) => (
-                <td key={j} />
-              ))}
-            </tr>
-          ))}
-          <tr>
-            <td colSpan={5} className="r font-semibold">
-              รวมยอดเงินได้และภาษีที่นำส่ง (นำไปรวมกับใบแนบ ภ.ง.ด.{kind} แผ่นอื่น (ถ้ามี))
-            </td>
-            <td className="r num font-semibold">{amt(sumBase)}</td>
-            <td className="r num font-semibold">{amt(sumTax)}</td>
-            <td />
-          </tr>
-        </tbody>
-      </table>
-
-      <div className="mt-3 flex items-start justify-between gap-6" style={{ fontSize: 10.5 }}>
-        <div>
-          <p>(ให้กรอกลำดับที่ต่อเนื่องกันไปทุกแผ่นตามเงินได้แต่ละประเภท)</p>
-          <p className="mt-1.5 font-semibold">หมายเหตุ เงื่อนไขการหักภาษีให้กรอกดังนี้</p>
-          <p>• หัก ณ ที่จ่าย กรอก 1</p>
-          <p>• ออกให้ตลอดไป กรอก 2</p>
-          <p>• ออกให้ครั้งเดียว กรอก 3</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-center" style={{ fontSize: 11.5 }}>
-            <p>
-              ลงชื่อ <span className="dot" style={{ minWidth: 200 }} /> ผู้จ่ายเงิน
-            </p>
-            <p className="mt-1.5">
-              ( <span className="dot" style={{ minWidth: 200 }} /> )
-            </p>
-            <p className="mt-1.5">
-              ตำแหน่ง <span className="dot" style={{ minWidth: 200 }} />
-            </p>
-            <p className="mt-1.5">
-              ยื่นวันที่ <span className="dot" style={{ minWidth: 40 }} /> เดือน <span className="dot" style={{ minWidth: 90 }} />{" "}
-              พ.ศ. <span className="dot" style={{ minWidth: 50 }} />
-            </p>
-          </div>
-          <div className="stamp">
-            ประทับตรา
-            <br />
-            นิติบุคคล
-            <br />
-            (ถ้ามี)
-          </div>
-        </div>
-      </div>
-    </article>
   );
 }

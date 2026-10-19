@@ -28,6 +28,7 @@ import {
 } from "./icons";
 import { ApproverNote } from "./approver-note";
 import { OtDialog } from "./ot-dialog";
+import { stackNo } from "@/lib/stack-no";
 
 const PER_PAGE = 10;
 
@@ -91,10 +92,13 @@ export function OtPage() {
     return records.filter((r) => r.date.startsWith(prefix));
   }, [records, view]);
 
+  /* ลำดับแบบกองซ้อน — นับจากคำขอโอทีทั้งหมดทุกเดือนตามวันที่ยื่น ใบล่าสุดเลขมากสุดอยู่บน (ผู้ใช้สั่ง 12 ต.ค. 2569) */
+  const noOf = useMemo(() => stackNo(records, (r) => r.submittedAt || r.date, (r) => r.id), [records]);
+
   const scoped = useMemo(() => {
     const list = tab === "all" ? inMonth : inMonth.filter((r) => r.status === tab);
-    return [...list].sort((a, b) => b.date.localeCompare(a.date));
-  }, [inMonth, tab]);
+    return [...list].sort((a, b) => (noOf.get(b.id) ?? 0) - (noOf.get(a.id) ?? 0));
+  }, [inMonth, tab, noOf]);
 
   const maxPage = Math.max(1, Math.ceil(scoped.length / PER_PAGE));
   const safePage = Math.min(page, maxPage);
@@ -224,9 +228,10 @@ export function OtPage() {
         </div>
 
         <div className="scroll-stable hidden min-h-0 flex-1 overflow-auto md:block">
-          <table className="data-table min-w-[760px]">
+          <table className="data-table min-w-[820px]">
             <thead>
               <tr>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th style={{ width: 150 }}>วันที่ทำล่วงเวลา</th>
                 <th style={{ width: 140 }}>ช่วงเวลา</th>
                 <th className="c" style={{ width: 116 }}>ชั่วโมง</th>
@@ -238,12 +243,12 @@ export function OtPage() {
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-[50px] text-center text-muted-foreground">
+                  <td colSpan={7} className="py-[50px] text-center text-muted-foreground">
                     ไม่มีรายการในเดือนนี้
                   </td>
                 </tr>
               ) : (
-                list.map((r) => <Row key={r.id} row={r} hit={r.id === findId} />)
+                list.map((r) => <Row key={r.id} no={noOf.get(r.id) ?? 0} row={r} hit={r.id === findId} />)
               )}
             </tbody>
           </table>
@@ -418,9 +423,10 @@ function shownHours(row: OtRecord) {
   return row.status === "อนุมัติแล้ว" && row.approvedHours != null ? row.approvedHours : row.hours;
 }
 
-function Row({ row, hit }: { row: OtRecord; hit?: boolean }) {
+function Row({ no, row, hit }: { no: number; row: OtRecord; hit?: boolean }) {
   return (
     <tr className={hit ? "ring-2 ring-primary ring-inset" : undefined}>
+      <td className="c num muted">{no}</td>
       <td>
         {/* กดวันที่เพื่อไปดูเวลาทำงานจริงของเดือนนั้น ว่าวันนั้นเข้าออกกี่โมง */}
         <Link

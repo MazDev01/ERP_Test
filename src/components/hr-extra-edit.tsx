@@ -1,16 +1,17 @@
 "use client";
 
 /*
- * แก้ค่าตอบแทนที่ไม่มีสูตร — Incentive ค่าตำแหน่ง และรายการปรับปรุงด้วยมือ (BR-03)
+ * แก้รายการเงินได้/รายการหักที่ไม่มีสูตร ตามแบบสลิป (ผู้ใช้สั่ง 16 ต.ค. 2569)
  *
- * เดิมอยู่ในหน้าสลิปเงินเดือน ซึ่งเป็นขั้นที่ปิดรอบไปแล้ว เท่ากับเปิดทางให้แก้ตัวเลข
- * ของรอบที่ปิดและ CEO อนุมัติแล้วเงียบ ๆ (ผู้ใช้ทักไว้ 23 ก.ย. 2569)
- * จึงแยกออกมาเป็นกล่องกลาง ให้หน้าคำนวณเงินเดือนเรียกใช้ตอนรอบยังเปิดอยู่
- * ส่วนหน้าสลิปเหลือแค่ปุ่มที่กดไม่ลงพร้อมเหตุผล ไม่ใช่ซ่อนปุ่มจนไม่รู้ว่าทำไมแก้ไม่ได้
+ * เดิมคือ Incentive + ค่าตำแหน่ง + "รายการปรับปรุงด้วยมือ" แบบพิมพ์เหตุผลเอง — แทนด้วยช่องตัวเลขทีละบรรทัดของสลิป
+ * สลิปจึงลงบรรทัดตามช่องตรง ๆ ไม่ต้องเดาจากชื่อ · ว่าง = 0
+ * มาสาย ประกันสังคม ค่าล่วงเวลา ภาษีหัก ณ ที่จ่าย ยังคิดจากสูตร ไม่มีช่องให้แก้
+ *
+ * อยู่ในหน้าคำนวณเงินเดือน แก้ได้ตอนรอบยังเปิดอยู่เท่านั้น (ผู้ใช้ทักไว้ 23 ก.ย. 2569 · ส่ง CEO แล้วแก้ = ต้องส่งอนุมัติใหม่ ผู้ใช้สั่ง 19 ต.ค. 2569)
  */
 
 import { useState } from "react";
-import { baht, commaInput, commaInputSigned, thaiMonth, todayIso } from "@/lib/format";
+import { baht, commaInput, thaiMonth, todayIso } from "@/lib/format";
 import {
   dailyRoundRange,
   extraOf,
@@ -19,9 +20,11 @@ import {
   isDailyRoundKey,
   payIn,
   payKeyLabel,
-  type Adjust,
+  PAY_CUT_ITEMS,
+  PAY_INCOME_ITEMS,
   type Employee,
-  type Extra,
+  type PayItemKey,
+  type PayItems,
 } from "@/lib/hr-data";
 import { saveExtra, useHr } from "@/lib/hr-store";
 import { useComSource, useHrTime } from "@/lib/hr-link";
@@ -43,35 +46,42 @@ export function EditExtra({
   onClose: () => void;
 }) {
   const src = useComSource();
-  const saved = extraOf(hr.extras, emp.id, runKey);
-  const [inc, setInc] = useState(commaInput(String(saved.incentive)));
-  const [allow, setAllow] = useState(commaInput(String(saved.allowance)));
-  const [adjust, setAdjust] = useState<Adjust[]>(saved.adjust);
-  const [amt, setAmt] = useState("");
-  const [why, setWhy] = useState("");
-  /** กดเพิ่ม/บันทึกทั้งที่กรอกไม่ถูก — ขึ้นคำเตือนตาม mockup แทนการกดไม่ลงเฉย ๆ */
+  const saved = extraOf(hr.extras, emp.id, runKey).items;
+  const all = [...PAY_INCOME_ITEMS, ...PAY_CUT_ITEMS];
+  const [raw, setRaw] = useState<Record<string, string>>(() =>
+    Object.fromEntries(all.map(({ k }) => [k, saved[k] ? commaInput(String(saved[k])) : ""])),
+  );
+  /** กดบันทึกทั้งที่กรอกไม่ถูก — ขึ้นคำเตือนแทนการกดไม่ลงเฉย ๆ */
   const [warn, setWarn] = useState(false);
 
-  const incNum = num(inc);
-  const allowNum = num(allow);
-  const valid =
-    incNum !== null && allowNum !== null && incNum >= 0 && allowNum >= 0;
+  const parsed = all.map(({ k }) => [k, num(raw[k] ?? "")] as const);
+  const valid = parsed.every(([, v]) => v !== null && v >= 0);
+  const items: PayItems = {};
+  for (const [k, v] of parsed) if (v) items[k as PayItemKey] = v;
 
-  const amtNum = num(amt);
-  /* ศูนย์ไม่ใช่การปรับปรุง และการปรับปรุงที่ไม่มีเหตุผลตรวจย้อนไม่ได้ */
-  const canAdd = amtNum !== null && amtNum !== 0 && why.trim() !== "";
+  /* ยอดสุทธิก่อน/หลังแก้ — คิดด้วยสูตรเดียวกับหน้าคำนวณเงินเดือน (รวมภาษีหัก ณ ที่จ่ายของทดลองงาน) */
+  const range = isDailyRoundKey(runKey) ? dailyRoundRange(runKey) : hrCycle(runKey);
+  const now = payIn(emp, range, time, hr.extras, todayIso(), src);
+  const preview = payIn(
+    emp,
+    range,
+    time,
+    { ...hr.extras, [runKey]: { ...(hr.extras[runKey] ?? {}), [emp.id]: { items } } },
+    todayIso(),
+    src,
+  );
 
-  const now = payIn(emp, isDailyRoundKey(runKey) ? dailyRoundRange(runKey) : hrCycle(runKey), time, hr.extras, todayIso(), src);
-  const adjSum = adjust.reduce((a, x) => a + x.amt, 0);
-  const savedSum = saved.adjust.reduce((a, x) => a + x.amt, 0);
-  const preview =
-    now.net -
-    saved.incentive -
-    saved.allowance -
-    savedSum +
-    (incNum ?? 0) +
-    (allowNum ?? 0) +
-    adjSum;
+  const field = ({ k, label }: { k: PayItemKey; label: string }) => (
+    <Field key={k} label={`${label} (บาท)`}>
+      <Input
+        value={raw[k] ?? ""}
+        onChange={(e) => setRaw((v) => ({ ...v, [k]: commaInput(e.target.value) }))}
+        inputMode="decimal"
+        placeholder="0"
+        aria-invalid={warn && num(raw[k] ?? "") === null ? true : undefined}
+      />
+    </Field>
+  );
 
   return (
     <Sheet
@@ -87,12 +97,7 @@ export function EditExtra({
             className="btn solid btn-solid"
             onClick={() => {
               if (!valid) return setWarn(true);
-              const next: Extra = {
-                incentive: incNum ?? 0,
-                allowance: allowNum ?? 0,
-                adjust,
-              };
-              saveExtra(runKey, emp.id, next);
+              saveExtra(runKey, emp.id, { items });
               onClose();
             }}
           >
@@ -105,92 +110,26 @@ export function EditExtra({
         {hrPos(emp.pos).label} · รอบ {payKeyLabel(runKey, thaiMonth)}
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="Incentive (บาท)">
-          <Input
-            value={inc}
-            onChange={(e) => setInc(commaInput(e.target.value))}
-            inputMode="decimal"
-          />
-        </Field>
-        <Field label="ค่าตำแหน่ง (บาท)">
-          <Input
-            value={allow}
-            onChange={(e) => setAllow(commaInput(e.target.value))}
-            inputMode="decimal"
-          />
-        </Field>
-      </div>
+      <p className="mt-4 text-[12.5px] font-semibold text-muted-foreground">รายได้</p>
+      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{PAY_INCOME_ITEMS.map(field)}</div>
+      {now.com > 0 && (
+        /* ค่าคอมจากยอดขายคิดอัตโนมัติอยู่แล้ว ช่อง ค่า commission คือยอดที่กรอกเพิ่ม — สลิปรวมสองก้อนในบรรทัดเดียว */
+        <p className="mt-1.5 text-[12px] text-muted-foreground">
+          ค่าคอมจากยอดขาย (คิดอัตโนมัติ) {baht(now.com)} บาท — ช่อง “ค่า commission” คือยอดที่กรอกเพิ่ม
+        </p>
+      )}
 
       <hr className="my-4 border-border" />
 
-      <p className="text-[12.5px] font-semibold text-muted-foreground">
-        รายการปรับปรุงด้วยมือ
+      <p className="text-[12.5px] font-semibold text-muted-foreground">รายการหัก</p>
+      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{PAY_CUT_ITEMS.map(field)}</div>
+      <p className="mt-1.5 text-[12px] text-muted-foreground">
+        หักมาสาย ประกันสังคม และภาษีหัก ณ ที่จ่าย คิดจากสูตร ไม่ต้องกรอก
       </p>
-      <ul className="mt-1.5 text-[12.5px]">
-        {adjust.length === 0 ? (
-          <li className="py-1.5 text-muted-foreground">
-            ยังไม่มีรายการปรับปรุง
-          </li>
-        ) : (
-          adjust.map((a, i) => (
-            <li
-              key={`${a.why}-${a.amt}-${i}`}
-              className="flex items-center justify-between gap-3 border-t border-border py-1.5"
-            >
-              <span className="min-w-0 flex-1 break-words">{a.why}</span>
-              <b
-                className={`num whitespace-nowrap ${a.amt < 0 ? "text-destructive" : ""}`}
-              >
-                {a.amt > 0 ? "+" : ""}
-                {baht(a.amt)}
-              </b>
-              <button
-                type="button"
-                onClick={() => setAdjust((v) => v.filter((_, k) => k !== i))}
-                aria-label={`ลบรายการ ${a.why}`}
-                className="lnk flex-none"
-              >
-                ลบ
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Field label="จำนวนเงิน (ติดลบคือหัก)">
-          <Input
-            value={amt}
-            onChange={(e) => setAmt(commaInputSigned(e.target.value))}
-            inputMode="decimal"
-            placeholder="เช่น -500"
-          />
-        </Field>
-        <Field label="เหตุผล">
-          <Input
-            value={why}
-            onChange={(e) => setWhy(e.target.value)}
-            placeholder="ต้องระบุทุกครั้ง"
-          />
-        </Field>
-      </div>
-      <button
-        type="button"
-        className="btn glass-thin mt-2.5"
-        onClick={() => {
-          if (!canAdd) return setWarn(true);
-          setWarn(false);
-          setAdjust((v) => [...v, { amt: amtNum!, why: why.trim() }]);
-          setAmt("");
-          setWhy("");
-        }}
-      >
-        เพิ่มรายการปรับปรุง
-      </button>
-      {warn && (
+      {warn && !valid && (
         <p className="mt-2.5 rounded-[11px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-3.5 py-2.5 text-[12.5px] text-destructive">
-          กรอกจำนวนเงินเป็นตัวเลข และระบุเหตุผลด้วย
+          กรอกเป็นตัวเลขไม่ติดลบ หรือเว้นว่างไว้
         </p>
       )}
 
@@ -198,19 +137,16 @@ export function EditExtra({
 
       <p className="num text-[13px]">
         ยอดสุทธิหลังแก้ ·{" "}
-        <b className="text-[15px] text-primary">{baht(round2(preview))}</b> บาท
+        <b className="text-[15px] text-primary">{valid ? baht(preview.net) : "—"}</b> บาท
         <span className="text-muted-foreground"> (เดิม {baht(now.net)})</span>
       </p>
     </Sheet>
   );
 }
 
-/** อ่านตัวเลขที่พิมพ์มา — คืน null เมื่ออ่านไม่ได้ เพื่อให้ปุ่มบันทึกกดไม่ลง */
+/** อ่านตัวเลขที่พิมพ์มา — ว่าง = 0 · อ่านไม่ได้ = null */
 function num(raw: string) {
   const v = raw.replace(/,/g, "").trim();
-  return /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : null;
-}
-
-function round2(v: number) {
-  return Math.round(v * 100) / 100;
+  if (!v) return 0;
+  return /^\d+(\.\d+)?$/.test(v) ? Number(v) : null;
 }

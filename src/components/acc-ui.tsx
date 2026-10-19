@@ -54,15 +54,38 @@ export function MonthNav({
  */
 export type AccFilter = { q: string; from: string; to: string };
 
+/*
+ * ค้นหาด้วยยอดเงิน (ผู้ใช้สั่ง 13 ต.ค. 2569) — พิมพ์ "88400" "88,400" "88,400.00" "฿88,400" ได้ผลเดียวกัน
+ * ตัดจุลภาค/ช่องว่าง/฿/บาท และ .00 ท้าย · ไม่ใช่ตัวเลขคืน null · ตรงแบบขึ้นต้นด้วยตัวเลขที่พิมพ์ก็นับ
+ */
+export function amountQuery(q: string): string | null {
+  const s = q.replace(/[\s,฿]/g, "").replace(/บาท$/, "").replace(/\.0*$/, "");
+  return /^\d+(\.\d{1,2})?$/.test(s) ? s : null;
+}
+
+export function amountHit(aq: string, amounts: number[]) {
+  return amounts.some((n) => {
+    if (!Number.isFinite(n)) return false;
+    const fixed = Math.abs(n).toFixed(2);
+    const plain = fixed.endsWith(".00") ? fixed.slice(0, -3) : fixed;
+    return aq.includes(".") ? fixed.startsWith(aq) : plain.startsWith(aq);
+  });
+}
+
 export function useAccFilter(initialQuery = "") {
   const [f, setF] = useState<AccFilter>({ q: initialQuery, from: "", to: "" });
   const q = f.q.trim().toLowerCase();
+  const aq = amountQuery(q);
+  const hit = (...fields: string[]) => !q || fields.join(" ").toLowerCase().includes(q);
   return {
     f,
     setF,
     active: Boolean(q || f.from || f.to),
     /** คำค้นตรงกับข้อความใดข้อความหนึ่งไหม */
-    hit: (...fields: string[]) => !q || fields.join(" ").toLowerCase().includes(q),
+    hit,
+    /** คำค้นตรงกับข้อความ หรือยอดเงินใดยอดหนึ่ง (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    match: (fields: string[], amounts: number[] = []) =>
+      !q || hit(...fields) || (aq !== null && amountHit(aq, amounts)),
     /** วันที่อยู่ในช่วงไหม — รายการที่ไม่มีวันที่แสดงเฉพาะตอนยังไม่ได้เลือกช่วง */
     inRange: (iso: string) => {
       if (!iso) return !f.from && !f.to;
@@ -76,13 +99,17 @@ export function useAccFilter(initialQuery = "") {
 
 export function AccFilters({
   filter,
+  search = true,
 }: {
   filter: ReturnType<typeof useAccFilter>;
+  /** false = ช่องค้นหาย้ายไปหัวหน้าแล้ว เหลือแต่ช่วงวันที่ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  search?: boolean;
 }) {
   const { f, setF, active, clear } = filter;
   return (
     <div className="flex w-full flex-wrap items-center gap-2.5 py-2 lg:ml-auto lg:w-auto">
       {/* มือถือ: ช่องค้นหาเต็มแถว วันที่สองช่องแบ่งครึ่งแถวถัดไป สูงพอให้นิ้วกด */}
+      {search && (
       <div className="search min-w-[160px] flex-1 max-sm:h-10! max-sm:basis-full lg:w-[250px] lg:flex-none">
         <SearchIcon className="size-[15px] shrink-0" strokeWidth={2} />
         <input
@@ -93,6 +120,7 @@ export function AccFilters({
           aria-label="ค้นหาเลขที่เอกสารหรือลูกค้า"
         />
       </div>
+      )}
       <div className="w-[calc(50%-5px)] sm:w-[160px]">
         <DateField
           value={f.from}

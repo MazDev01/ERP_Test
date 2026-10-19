@@ -4,7 +4,7 @@
  * ประเภทการลา — สิทธิ์วันลาต่อปีของรอบปีปัจจุบัน (leave-data.ts อ่านผ่าน entitlements() / leaveTypes())
  *
  * ผู้ดูแลระบบเพิ่มประเภทใหม่ได้ (ผู้ใช้สั่ง 18 ก.ย. 2569) — กดปุ่ม "เพิ่มประเภทการลา" เปิดกล่อง
- * ชื่อ + จำนวนวันต่อปี + คำอธิบายสั้น · ประเภทที่เพิ่มเองกดดินสอแก้ได้ทุกช่อง
+ * ชื่อ + จำนวนวันต่อปี (ไม่มีช่องคำอธิบาย ผู้ใช้สั่ง 13 ต.ค. 2569) · ประเภทที่เพิ่มเองกดดินสอแก้ได้ทุกช่อง
  * เปลี่ยนชื่อแล้วใบลาที่ยื่นไปแล้วยังเก็บชื่อเดิม (กล่องเตือนให้เห็นก่อนบันทึก)
  * ประเภทตั้งต้นของระบบลบไม่ได้ · ประเภทที่เพิ่มเองลบได้ ใบลาเก่ายังเก็บชื่อเดิมไว้
  * ตั้ง 0 วัน = ไม่มีสิทธิ์ลาประเภทนี้ (ยังเห็นในรายการ แต่ยื่นแล้วจะเตือนว่าเกินสิทธิ์)
@@ -15,10 +15,10 @@
  */
 
 import { useState } from "react";
-import { LEAVE_TYPES, currentPeriod, isBuiltinLeave, leaveLabel, leaveNote } from "@/lib/leave-data";
+import { LEAVE_TYPES, currentPeriod, isBuiltinLeave, leaveLabel } from "@/lib/leave-data";
 import type { LeaveQuota, RateSettings } from "@/lib/system-settings";
 import { thaiDate } from "@/lib/format";
-import { AdminHead, Card, Input2, SaveBar, Switch, inputCls, useSectionDraft } from "./admin-ui";
+import { AdminHead, Card, IconBtn, Input2, SaveBar, Switch, inputCls, thCls, trCls, useSectionDraft } from "./admin-ui";
 import { useAllLeave } from "@/lib/leave-store";
 import { PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
@@ -108,22 +108,18 @@ export function AdminLeavePage() {
       <AdminHead
         title="ประเภทการลา"
         desc="สิทธิ์วันลาต่อปีของพนักงานทุกบทบาท — พนักงานเห็นวันคงเหลือจากตัวเลขนี้ และระบบเตือนเมื่อยื่นลาเกินสิทธิ์"
-      />
+      >
+        {/* ปุ่มเพิ่มอยู่หัวหน้าแบบเดียวกับตารางตัวเลือกในรายการ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+        <button type="button" className="btn solid btn-solid" onClick={() => setEditing("")}>
+          <PlusIcon className="size-4" strokeWidth={2.4} />
+          เพิ่มประเภทการลา
+        </button>
+      </AdminHead>
 
       <section className="glass overflow-hidden rounded-[18px]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5">
-          <div>
-            <h2 className="text-[14.5px] font-bold">สิทธิ์วันลา</h2>
-          </div>
-          <button type="button" className="btn solid btn-solid" onClick={() => setEditing("")}>
-            <PlusIcon className="size-4" strokeWidth={2.4} />
-            เพิ่มประเภทการลา
-          </button>
-        </div>
-
-        <div className="px-4 pt-3 pb-4 sm:px-5">
+        <div className="px-4 pt-3.5 pb-4 sm:px-5">
           {/* หัวตารางแบบเดียวกับหน้าข้อมูลหลัก (ต้นแบบ HR-12) */}
-          <div className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border pb-2 text-[11.5px] font-bold text-muted-foreground sm:grid-cols-[26px_minmax(0,1fr)_150px_58px_84px]">
+          <div className={`grid grid-cols-[minmax(0,1fr)_96px_58px_84px] sm:grid-cols-[28px_minmax(0,1fr)_150px_58px_84px] ${thCls}`}>
             <span className="text-center max-sm:hidden">#</span>
             <span>ชื่อ</span>
             <span className="text-right sm:text-left">สิทธิ์ต่อปี</span>
@@ -138,27 +134,22 @@ export function AdminLeavePage() {
             return (
               <div
                 key={q.type}
-                className="grid grid-cols-[minmax(0,1fr)_96px_58px_84px] items-center gap-2 border-b border-border py-2 last:border-b-0 hover:bg-muted/40 sm:grid-cols-[26px_minmax(0,1fr)_150px_58px_84px]"
+                className={`grid grid-cols-[minmax(0,1fr)_96px_58px_84px] sm:grid-cols-[28px_minmax(0,1fr)_150px_58px_84px] ${trCls} ${q.off ? "opacity-50" : ""}`}
               >
                 <span className="num text-center text-[12px] text-muted-foreground max-sm:hidden">{i + 1}</span>
                 <span className="min-w-0">
-                  <b className={`block text-[13.5px] ${q.off ? "font-medium text-muted-foreground" : "font-semibold"}`}>
+                  {/* ปิดใช้แล้วจางทั้งแถว ไม่มีป้าย · ไม่แสดงคำอธิบาย (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+                  <b className="block truncate text-[13.5px] font-semibold">
                     {leaveLabel(q.type)}
-                    {q.off && (
-                      <em className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground not-italic">
-                        ปิดใช้งาน
-                      </em>
-                    )}
                     {!builtin && !was && (
                       <em className="ml-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary not-italic">
                         ใหม่ · ยังไม่บันทึก
                       </em>
                     )}
                   </b>
-                  <small className="block text-[11.5px] text-muted-foreground">
-                    {q.note ?? leaveNote(q.type)}
-                    {was && q.days !== was.days && ` · เดิม ${was.days} วัน`}
-                  </small>
+                  {was && q.days !== was.days && (
+                    <small className="block text-[11.5px] text-muted-foreground">เดิม {was.days} วัน</small>
+                  )}
                 </span>
                 <span className="flex items-center justify-end gap-1.5 sm:justify-start">
                   <input
@@ -181,24 +172,14 @@ export function AdminLeavePage() {
                   />
                 </span>
                 <span className="flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    aria-label={`แก้ไขประเภท ${q.type}`}
-                    onClick={() => setEditing(q.type)}
-                    className="btn glass-thin btn-mini"
-                  >
-                    <PencilIcon className="size-4" strokeWidth={1.9} />
-                  </button>
+                  <IconBtn label={`แก้ไขประเภท ${q.type}`} title="แก้ไข" onClick={() => setEditing(q.type)}>
+                    <PencilIcon className="size-3.5" strokeWidth={1.9} />
+                  </IconBtn>
                   {/* ลบไม่ได้ก็ไม่ต้องมีปุ่มลบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
                   {!builtin && !used && (
-                    <button
-                      type="button"
-                      aria-label={`ลบประเภท ${q.type}`}
-                      onClick={() => remove(q.type)}
-                      className="btn glass-thin btn-mini"
-                    >
-                      <TrashIcon className="size-4" strokeWidth={1.9} />
-                    </button>
+                    <IconBtn label={`ลบประเภท ${q.type}`} title="ลบ" danger onClick={() => remove(q.type)}>
+                      <TrashIcon className="size-3.5" strokeWidth={1.9} />
+                    </IconBtn>
                   )}
                 </span>
               </div>
@@ -290,7 +271,7 @@ function TypeDialog({
   onSave,
 }: {
   initial?: LeaveQuota;
-  /** ประเภทตั้งต้นของระบบ — แก้ได้แค่วันและคำอธิบาย ชื่อผูกกับการสรุปของฝ่ายบุคคล */
+  /** ประเภทตั้งต้นของระบบ — แก้ได้แค่วัน ชื่อผูกกับการสรุปของฝ่ายบุคคล */
   lockName?: boolean;
   taken: string[];
   onClose: () => void;
@@ -298,7 +279,6 @@ function TypeDialog({
 }) {
   const [name, setName] = useState(initial?.type ?? "");
   const [days, setDays] = useState(initial ? String(initial.days) : "");
-  const [note, setNote] = useState(initial?.note ?? (initial ? leaveNote(initial.type) : ""));
   const clean = name.trim();
   const dup = Boolean(clean) && taken.includes(clean);
   const n = Number(days) || 0;
@@ -307,7 +287,7 @@ function TypeDialog({
 
   function save() {
     if (!clean || dup || badDays) return;
-    onSave({ type: clean, days: n, ...(note.trim() ? { note: note.trim() } : {}) });
+    onSave({ type: clean, days: n, /* ไม่มีช่องคำอธิบายแล้ว เก็บค่าเดิมไว้ (ผู้ใช้สั่ง 13 ต.ค. 2569) */ ...(initial?.note ? { note: initial.note } : {}) });
   }
 
   return (
@@ -350,17 +330,6 @@ function TypeDialog({
             onKeyDown={(e) => e.key === "Enter" && save()}
             placeholder="0"
             className={`${inputCls} num text-right`}
-          />
-        </Input2>
-      </div>
-      <div className="mt-3.5">
-        <Input2 label="คำอธิบาย (ไม่บังคับ)">
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            placeholder="เช่น ลาได้ครั้งเดียวตลอดการทำงาน"
-            className={inputCls}
           />
         </Input2>
       </div>

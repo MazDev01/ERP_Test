@@ -26,6 +26,7 @@ export type IconName =
   | "team"
   | "ads"
   | "accboard"
+  | "ledger"
   | "billing"
   | "receipt"
   | "tax"
@@ -56,40 +57,102 @@ export type SubItem = {
 };
 
 /*
- * หัวข้อของหน้าตั้งค่าระบบ (/admin/settings?s=<key>) — เดิมเป็นรายการด้านซ้ายในเนื้อหาหน้า
- * ผู้ใช้สั่ง 5 ต.ค. 2569 ย้ายมาเป็นเมนูย่อยในแถบข้างใต้ "ตั้งค่าระบบ" ไม่ให้มีเมนูซ้อนในเนื้อหาอีก
- * ลำดับและกลุ่มตามต้นแบบ "ตั้งค่าระบบ — ERP MAZ.html" · หน้าตั้งค่าอ่านรายการนี้ชุดเดียวกัน
+ * ตั้งค่าระบบแบ่งเป็น 5 หมวดในแถบข้าง แต่ละหมวดมีแท็บในหน้า (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * ที่อยู่ /admin/settings?s=<หมวด>&t=<แท็บ> · หน้าตั้งค่า แถบข้าง และเส้นทางบนแถบบนอ่านรายการนี้ชุดเดียวกัน
+ * หน้า "ข้อมูลหลัก" เอาออกแล้ว รายการย้ายไปอยู่ในแท็บของแต่ละหมวด
  */
-export const SETTINGS_SECTIONS = [
-  { key: "master", label: "ข้อมูลหลัก", group: "ข้อมูลองค์กร" },
-  { key: "positions", label: "ตำแหน่งและสายอนุมัติ", group: "ข้อมูลองค์กร" },
-  { key: "leave", label: "ประเภทการลา", group: "การลาและเวลา" },
-  { key: "holidays", label: "วันหยุดบริษัท", group: "การลาและเวลา" },
-  { key: "attendance", label: "เวลาทำงานและจุดลงเวลา", group: "การลาและเวลา" },
-  { key: "payroll", label: "การคำนวณเงินเดือน", group: "เงินและเอกสาร" },
-  { key: "wht", label: "ภาษี", group: "เงินและเอกสาร" },
-  { key: "issuer", label: "ข้อมูลผู้ออกเอกสาร", group: "เงินและเอกสาร" },
+export const SETTINGS_DOMAINS = [
+  {
+    key: "staff",
+    label: "พนักงาน",
+    tabs: [
+      { key: "depts", label: "แผนก" },
+      { key: "positions", label: "ตำแหน่งและสายอนุมัติ" },
+      { key: "attendance", label: "เวลาทำงานและจุดลงเวลา" },
+      { key: "holidays", label: "วันหยุดบริษัท" },
+      { key: "leave", label: "ประเภทการลา" },
+      { key: "payroll", label: "การคำนวณเงินเดือน" },
+      { key: "expense", label: "ประเภทค่าใช้จ่าย" },
+      { key: "info", label: "ข้อมูลประกอบ" },
+    ],
+  },
+  {
+    key: "sales",
+    label: "งานขาย",
+    tabs: [
+      { key: "services", label: "ประเภทบริการ" },
+      { key: "source", label: "แหล่งที่มาของผู้สนใจ" },
+      { key: "channel", label: "ช่องทางติดต่อ" },
+    ],
+  },
+  {
+    key: "acc",
+    label: "บัญชีและภาษี",
+    tabs: [
+      { key: "tax", label: "ภาษี" },
+      { key: "issuer", label: "ข้อมูลผู้ออกเอกสาร" },
+      /* เลขที่เอกสารและช่องทางติดตามหนี้ตั้งค่าไม่ได้แล้ว — ระบบกำหนดเอง (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+    ],
+  },
+  /* ไม่มีหมวดตั้งค่าโปรเจค — แพลตฟอร์มโฆษณาใช้ชุดตายตัว (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  { key: "system", label: "ประวัติการตั้งค่า", tabs: [{ key: "log", label: "ประวัติการตั้งค่า" }] },
 ] as const;
-export type SettingsKey = (typeof SETTINGS_SECTIONS)[number]["key"];
 
-/** หัวข้อที่เปิดอยู่จาก ?s= — ไม่มีหรือไม่รู้จัก = ข้อมูลหลัก */
-export function settingsKeyOf(q: URLSearchParams): SettingsKey {
-  const s = q.get("s");
-  return SETTINGS_SECTIONS.find((x) => x.key === s)?.key ?? "master";
+type SettingsDomain = (typeof SETTINGS_DOMAINS)[number];
+export type SettingsDomainKey = SettingsDomain["key"];
+export type SettingsTabKey = SettingsDomain["tabs"][number]["key"];
+
+/*
+ * ?s= แบบเก่า (เมนูย่อยเดิม 5 ต.ค. 2569) → หมวด + แท็บใหม่ ลิงก์เก่ายังเปิดถูกที่ (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * positions ไม่มี ?t= = แท็บแผนก (ค่าเริ่มของหัวข้อเดิม)
+ */
+const OLD_SETTINGS: Record<string, [SettingsDomainKey, SettingsTabKey | ""]> = {
+  master: ["sales", ""],
+  options: ["sales", ""],
+  positions: ["staff", "depts"],
+  leave: ["staff", "leave"],
+  holidays: ["staff", "holidays"],
+  attendance: ["staff", "attendance"],
+  payroll: ["staff", "payroll"],
+  wht: ["acc", "tax"],
+  tax: ["acc", "tax"],
+  issuer: ["acc", "issuer"],
+  company: ["acc", "issuer"],
+  "doc-numbers": ["acc", "tax"],
+  log: ["system", "log"],
+};
+
+/** ?s= แบบเก่า (หรือ #hash เก่า) → query ใหม่ · ไม่ใช่ของเก่า = null */
+export function legacySettingsQuery(q: URLSearchParams, hash = ""): string | null {
+  const s = q.get("s") || hash;
+  const hit = OLD_SETTINGS[s];
+  if (!hit) return null;
+  const [domain, fallback] = hit;
+  /* ตำแหน่งและสายอนุมัติเดิมมีแท็บของตัวเอง (?t=depts|positions|approval|…) */
+  const t = s === "positions" ? (q.get("t") && q.get("t") !== "depts" ? "positions" : "depts") : fallback;
+  return t ? `s=${domain}&t=${t}` : `s=${domain}`;
 }
 
-const SETTINGS_SUB: SubItem[] = [
-  ...SETTINGS_SECTIONS.map((x, i, all) => ({
-    label: x.label,
-    href: `/admin/settings?s=${x.key}`,
-    caption: i === 0 || all[i - 1].group !== x.group ? x.group : undefined,
-    on: (p: string, q: URLSearchParams) => p === "/admin/settings" && settingsKeyOf(q) === x.key,
-  })),
-  /* หน้าระบบที่แยกเป็นหน้าของตัวเอง — อยู่ท้ายเมนูย่อยเหมือนเดิม */
-  /* บทบาทและสิทธิ์ย้ายไปเป็นแท็บใน "ตำแหน่งและสายอนุมัติ" แล้ว (?s=positions&t= · ผู้ใช้สั่ง 5 ต.ค. 2569) */
-  { label: "เลขที่เอกสาร", href: "/admin/doc-numbers", caption: "ระบบ" },
-  { label: "ประวัติการตั้งค่า", href: "/admin/log" },
-];
+/** หมวดและแท็บที่เปิดอยู่ — ไม่มีหรือไม่รู้จัก = หมวดแรก แท็บแรก */
+export function settingsOf(q: URLSearchParams): { domain: SettingsDomain; tab: SettingsDomain["tabs"][number] } {
+  const legacy = legacySettingsQuery(q);
+  if (legacy) q = new URLSearchParams(legacy);
+  const domain = SETTINGS_DOMAINS.find((x) => x.key === q.get("s")) ?? SETTINGS_DOMAINS[0];
+  const tabs: readonly SettingsDomain["tabs"][number][] = domain.tabs;
+  const tab = tabs.find((x) => x.key === q.get("t")) ?? tabs[0];
+  return { domain, tab };
+}
+
+/** ลิงก์เข้าแท็บหนึ่งของตั้งค่าระบบ */
+export function settingsHref(domain: SettingsDomainKey, tab?: SettingsTabKey) {
+  return `/admin/settings?s=${domain}${tab ? `&t=${tab}` : ""}`;
+}
+
+const SETTINGS_SUB: SubItem[] = SETTINGS_DOMAINS.map((x) => ({
+  label: x.label,
+  href: settingsHref(x.key),
+  on: (p: string, q: URLSearchParams) => p === "/admin/settings" && settingsOf(q).domain.key === x.key,
+}));
 
 /*
  * รอบเงินเดือนแยกเป็นสองเมนูย่อยตามกลุ่มการจ่าย (ผู้ใช้สั่ง 5 ต.ค. 2569) — "พนักงาน" รายเดือน | "ทดลองงาน" รายวัน
@@ -100,7 +163,7 @@ const PAY_STEPS = ["/hr/timesheet", "/hr/payroll", "/hr/payslip", "/hr/cycles"];
 const PAY_SUB: SubItem[] = [
   {
     /* "พนักงานทั่วไป" ไม่ใช่ "พนักงาน" — ชื่อซ้ำกับเมนูข้อมูลพนักงาน (ผู้ใช้สั่ง 6 ต.ค. 2569) */
-    label: "พนักงานทั่วไป",
+    label: "พนักงานประจำ", // เดิม "พนักงานทั่วไป" (ผู้ใช้สั่ง 13 ต.ค. 2569)
     href: "/hr/timesheet?g=month",
     on: (p, q) => PAY_STEPS.includes(p) && q.get("g") !== "daily",
   },
@@ -112,21 +175,9 @@ const PAY_SUB: SubItem[] = [
 ];
 
 /*
- * คำขออนุมัติของ CEO แยกสองเมนูย่อย (ผู้ใช้สั่ง 5 ต.ค. 2569) — ส่งต่อกันทาง ?k= ไม่ใช่แท็บในหน้า
- * ไม่มี ?k= ถือเป็นลาและโอที (ลิงก์เก่า ?req= จากแดชบอร์ด/LINE เป็นคำขอของพนักงานทั้งหมด)
+ * คำขออนุมัติของ CEO เคยแยกสองเมนูย่อย ลาและโอที / ยอดเงินเดือน (ผู้ใช้สั่ง 5 ต.ค. 2569)
+ * เลิกขั้น CEO อนุมัติยอดเงินเดือนแล้ว เหลือหน้าเดียว จึงไม่มีเมนูย่อย (ผู้ใช้สั่ง 13 ต.ค. 2569)
  */
-const CEO_APPROVALS_SUB: SubItem[] = [
-  {
-    label: "ลาและโอที",
-    href: "/ceo/approvals?k=time",
-    on: (p, q) => p === "/ceo/approvals" && q.get("k") !== "pay",
-  },
-  {
-    label: "ยอดเงินเดือน",
-    href: "/ceo/approvals?k=pay",
-    on: (p, q) => p === "/ceo/approvals" && q.get("k") === "pay",
-  },
-];
 
 export type NavItem = {
   group: NavGroup;
@@ -162,12 +213,19 @@ const MINE: NavItem[] = [
 const SALES: NavItem[] = [
   { group: "งานขาย", label: "แดชบอร์ด", icon: "chart", href: "/dashboard" },
   { group: "งานขาย", label: "ผู้สนใจ", icon: "leads", href: "/leads" },
-  { group: "งานขาย", label: "คำขอก่อนการขาย", icon: "presales", href: "/presales" },
+  { group: "งานขาย", label: "ขอทำข้อเสนอ", icon: "presales", href: "/presales" },
   { group: "งานขาย", label: "ใบเสนอราคา", icon: "quotation", href: "/quotations" },
   { group: "งานขาย", label: "ดีล", icon: "deals", href: "/deals" },
   /* ตารางงานของฝ่ายขาย (ผู้ใช้สั่ง 5 ต.ค. 2569) — ปฏิทินชุดเดียวกับทุกบทบาท */
   { group: "งานขาย", label: "ตารางงาน", icon: "leave", href: "/sales-schedule" },
+  /* ไม่มีหน้ารายงานลูกค้าปฏิเสธ — มีแค่การเลือกเหตุผลตอนปฏิเสธ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
 ];
+
+/*
+ * คำขอทำข้อเสนอที่ส่งถึงตัวคน (ผู้ใช้สั่ง 14 ต.ค. 2569) — คนนอกทีมก่อนการขายที่มีคำขอส่งถึงตัวเอง
+ * ได้เมนูนี้ในกลุ่ม "ของฉัน" (useMyMine ใน hr-link.ts) และเปิดหน้าได้เพราะอยู่ในเมนูของตัวเอง
+ */
+export const PS_REQUEST_ITEM: NavItem = { group: "ของฉัน", label: "คำขอทำข้อเสนอ", icon: "presales", href: "/presales-work" };
 
 /*
  * ทีมก่อนการขาย (SA/BD) — รับคำขอจากฝ่ายขายแล้วส่งข้อเสนอกลับ
@@ -226,7 +284,7 @@ const HR: NavItem[] = [
    * 28 ก.ย. 2569 เจ้าของส่งต้นแบบ "ตั้งค่าระบบ — ERP MAZ.html" มาแล้วสั่งให้เปลี่ยนตามนั้น
    * ทั้ง 9 หัวข้อจึงรวมอยู่ในหน้าเดียว (/admin/settings?s=) เลือกหัวข้อจากเมนูย่อยในแถบข้าง (ผู้ใช้สั่ง 5 ต.ค. 2569)
    * หน้าเดิมของแต่ละหัวข้อยังเปิดตรงได้ (กระดิ่งและลิงก์เก่าชี้ไปที่นั่น) แต่ไม่อยู่ในเมนูแล้ว
-   * สามหน้าที่ไม่มีใน proposal (ประวัติการตั้งค่า · ข้อมูลตัวอย่าง · เลขที่เอกสาร)
+   * หน้าที่ไม่มีใน proposal (ประวัติการตั้งค่า · เลขที่เอกสาร) — เลิกหน้าข้อมูลตัวอย่างแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569)
    * เจ้าของสั่งให้เก็บไว้เป็นหน้าย่อยของเมนูนี้ · บทบาทและสิทธิ์รวมเข้าแท็บของ "ตำแหน่งและสายอนุมัติ" แล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569)
    */
   {
@@ -234,7 +292,7 @@ const HR: NavItem[] = [
     label: "ตั้งค่าระบบ",
     icon: "shield",
     href: "/admin/settings",
-    /* หัวข้อตั้งค่าทั้ง 9 + หน้าระบบอีก 3 เป็นเมนูย่อยในแถบข้าง (SETTINGS_SUB · ผู้ใช้สั่ง 5 ต.ค. 2569) */
+    /* 5 หมวดเป็นเมนูย่อยในแถบข้าง หัวข้อในหมวดเป็นแท็บในหน้า (SETTINGS_SUB · ผู้ใช้สั่ง 13 ต.ค. 2569) */
     sub: SETTINGS_SUB,
   },
 ];
@@ -263,10 +321,20 @@ const GM: NavItem[] = [
  */
 const CEO: NavItem[] = [
   { group: "ผู้บริหาร", label: "แดชบอร์ด", icon: "chart", href: "/ceo/dashboard" },
-  { group: "ผู้บริหาร", label: "คำขออนุมัติ", icon: "approve", href: "/ceo/approvals", sub: CEO_APPROVALS_SUB },
+  { group: "ผู้บริหาร", label: "คำขออนุมัติ", icon: "approve", href: "/ceo/approvals" },
   { group: "ภาพรวมระบบ", label: "งานขาย", icon: "deals", href: "/ceo/sales" },
-  { group: "ภาพรวมระบบ", label: "บัญชี", icon: "accboard", href: "/ceo/acc" },
-  { group: "ภาพรวมระบบ", label: "บุคคล", icon: "team", href: "/ceo/hr" },
+  { group: "ภาพรวมระบบ", label: "บัญชี", icon: "ledger", href: "/ceo/acc" },
+  /* ยอดเงินเดือนแบบดูอย่างเดียวเป็นเมนูย่อยของบุคคล ไม่ใช่คำขออนุมัติ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  {
+    group: "ภาพรวมระบบ",
+    label: "บุคคล",
+    icon: "team",
+    href: "/ceo/hr",
+    sub: [
+      { label: "ภาพรวม", href: "/ceo/hr", title: "บุคคล" },
+      { label: "ยอดเงินเดือน", href: "/ceo/hr/payroll" },
+    ],
+  },
   { group: "ภาพรวมระบบ", label: "โปรเจค", icon: "project", href: "/ceo/pm" },
 ];
 
@@ -596,7 +664,13 @@ function matchIn(items: NavItem[], pathname: string) {
  * /admin/roles รวมเข้า /admin/settings?s=positions แล้ว (ผู้ใช้สั่ง 5 ต.ค. 2569)
  * ใครเปิดตั้งค่าระบบได้ (รวมฝ่ายบุคคล) ก็เปิดลิงก์เก่าได้ แล้วถูกพาต่อไปแท็บที่ตรงกัน
  */
-const MOVED: Record<string, string> = { "/admin/roles": "/admin/settings", "/acc/receipts": "/acc/billing" };
+/* เลขที่เอกสารและประวัติการตั้งค่าเป็นแท็บในตั้งค่าระบบแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+const MOVED: Record<string, string> = {
+  "/admin/roles": "/admin/settings",
+  "/admin/doc-numbers": "/admin/settings",
+  "/admin/log": "/admin/settings",
+  "/acc/receipts": "/acc/billing",
+};
 
 /* หน้าเอกสารใบเสร็จ /acc/receipts/<เลขที่> ถือสิทธิ์และชื่อหน้าตามเมนูวางบิล (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 function moved(pathname: string) {
@@ -606,6 +680,18 @@ function moved(pathname: string) {
 
 /** หน้าที่ทุกบทบาทเปิดได้ นอกจากเมนูของตัวเอง */
 const SHARED_PAGES = ["/profile"];
+
+/*
+ * บัญชีควบฝ่ายบุคคลบนมือถือ (E12 "บัญชีและบุคคล") — เปิดหน้าฝ่ายบุคคลที่การ์ดหน้าหลักบัญชี (acc-home-mobile.tsx) ลิงก์ไปได้
+ * ให้แค่ "เข้าได้" ไม่เพิ่มในเมนูข้างจอคอม เมนูทุกบทบาทคงเดิม (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ */
+const ACC_HR_PAGES = [
+  "/hr/employees",
+  "/hr/dashboard",
+  /* รอบเงินเดือนทั้งสี่ขั้น */
+  ...PAY_STEPS,
+  /* เอา /my-schedule ออก — หน้าหลักบัญชีไม่ลิงก์ไปแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+];
 
 /** หน้านอกเมนูที่เป็นของบทบาทใดบทบาทหนึ่ง */
 const EXTRA_OWNER: Record<string, Role | Role[]> = {
@@ -634,6 +720,7 @@ export function canVisit(
 ): boolean {
   pathname = moved(pathname);
   if (SHARED_PAGES.includes(pathname)) return true;
+  if (role === "acc" && ACC_HR_PAGES.includes(pathname)) return true;
   const owner = EXTRA_OWNER[pathname];
   if (owner) return Array.isArray(owner) ? owner.includes(role) : owner === role;
   return Boolean(matchIn(navItems(role, access, route), pathname));
@@ -660,4 +747,28 @@ export function pageTitle(pathname: string, role: Role) {
   if (!item) return "ERP MAZ";
   const sub = item.sub?.find((s) => s.href === pathname);
   return sub ? (sub.title ?? sub.label) : item.label;
+}
+
+/*
+ * ช่วงต้นของเส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) — เมนูแม่ › เมนูย่อย › หน้านอกเมนูที่อยู่ใต้เมนูนั้น
+ * ช่วงท้ายที่ลึกกว่านี้ (ชื่อลูกค้า เลขที่เอกสาร) หน้าเติมเองด้วย useCrumb (crumb.ts)
+ */
+export function navCrumbs(pathname: string, role: Role, q: URLSearchParams): { label: string; href: string }[] {
+  const item = findItem(pathname, role);
+  if (!item) return [];
+  const out: { label: string; href: string }[] = [];
+  const path = moved(pathname);
+  const parent = item.parent ? findItem(item.parent, role) : undefined;
+  if (parent) out.push({ label: parent.label, href: parent.href });
+  const sub = item.sub?.find((s) => (s.on ? s.on(path, q) : s.href === path));
+  /* หน้านอกเมนู (คำนวณเงินเดือน) อยู่ใต้เมนูแม่ — เมนูย่อยคั่นกลาง แล้วจบที่ชื่อหน้าเอง */
+  if (parent) {
+    if (sub) out.push({ label: sub.label, href: sub.href });
+    out.push({ label: item.label, href: item.href });
+    return out;
+  }
+  out.push({ label: item.label, href: item.href });
+  /* เมนูย่อยที่ชี้หน้าเดียวกับเมนูแม่ (ตอกบัตรเข้า/ออก) ไม่ต้องซ้ำ */
+  if (sub && sub.href !== item.href) out.push({ label: sub.label, href: sub.href });
+  return out;
 }

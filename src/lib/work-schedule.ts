@@ -5,6 +5,8 @@ import { settings } from "./system-settings";
  *
  * เป็น getter ทุกช่อง อ่านค่าล่าสุดทุกครั้งที่ใช้ ห้ามเอาไปคำนวณเก็บเป็นค่าคงที่ระดับไฟล์
  * ไม่งั้นพอผู้ดูแลแก้เวลา หน้าที่โหลดไว้แล้วจะยังคิดด้วยเวลาเก่า
+ *
+ * เวลาของ "คนหนึ่งคน" ให้ใช้ scheduleFor(ตำแหน่ง) — บางตำแหน่งมีเวลาเฉพาะ (ผู้ใช้สั่ง 16 ต.ค. 2569)
  */
 export const WORK_SCHEDULE = {
   /** เวลาเข้างาน */
@@ -25,17 +27,51 @@ export const WORK_SCHEDULE = {
   /** เวลาเริ่มนับโอทีของวันทำงาน */
   get otStart() { return settings().schedule.otStart; },
   /** ถ้ายังไม่ตอกออกหลังเลิกงานเกินกี่ชั่วโมง ให้เตือนว่าอาจลืม */
-  get forgotPunchOutAfterHours() { return settings().schedule.forgotPunchOutAfterHours; },
 };
 
+/*
+ * ─── เวลาทำงานรายคน (ผู้ใช้สั่ง 16 ต.ค. 2569) ───
+ * บางตำแหน่งมีเวลาของตัวเอง (ตอนนี้แม่บ้าน 08:00–17:00) ตั้งที่หน้าเวลาทำงานและจุดลงเวลา
+ * ฟังก์ชันด้านล่างรับ sch เป็นค่าสุดท้าย — ไม่ส่ง = เวลาของบริษัท
+ */
+export type DaySchedule = { start: string; end: string; lunchStart: string; lunchEnd: string; otStart: string };
+
+/** เวลาทำงานของบริษัท (อ่านค่าล่าสุดทุกครั้ง) */
+export function companySchedule(): DaySchedule {
+  const c = settings().schedule;
+  return { start: c.start, end: c.end, lunchStart: c.lunchStart, lunchEnd: c.lunchEnd, otStart: c.otStart };
+}
+
+/**
+ * เวลาทำงานของคนหนึ่ง — ตำแหน่งที่ตั้งเวลาเฉพาะไว้ใช้ชุดนั้น ไม่มีก็ใช้ของบริษัท (ผู้ใช้สั่ง 16 ต.ค. 2569)
+ * รับรหัสตำแหน่ง หรือข้อมูลพนักงานที่มี pos
+ * เริ่มโอทีวันธรรมดาของตำแหน่งที่มีเวลาเฉพาะ = เวลาเลิกงานของตำแหน่ง + ช่วงพักเย็นยาวเท่าของบริษัท
+ * (บริษัทเลิก 18:00 เริ่มโอที 19:00 → แม่บ้านเลิก 17:00 เริ่มโอที 18:00)
+ */
+export function scheduleFor(who?: string | { pos?: string } | null): DaySchedule {
+  const company = companySchedule();
+  const pos = typeof who === "string" ? who : who?.pos;
+  if (!pos) return company;
+  const hit = (settings().positionSchedules ?? []).find((p) => p.pos === pos);
+  if (!hit) return company;
+  const gap = Math.max(0, minutesOfDay(company.otStart) - minutesOfDay(company.end));
+  return {
+    start: hit.start,
+    end: hit.end,
+    lunchStart: hit.lunchStart,
+    lunchEnd: hit.lunchEnd,
+    otStart: formatMinutesOfDay(Math.min(24 * 60 - 1, minutesOfDay(hit.end) + gap)),
+  };
+}
+
+/** นาทีพักกลางวันของชุดเวลานี้ */
+export function breakOf(sch: DaySchedule = companySchedule()) {
+  return Math.max(0, minutesOfDay(sch.lunchEnd) - minutesOfDay(sch.lunchStart));
+}
+
 /** ชั่วโมงที่ต้องทำงานจริงต่อวัน (เป็นมิลลิวินาที) */
-export function targetWorkMs() {
-  return (
-    (minutesOfDay(WORK_SCHEDULE.end) -
-      minutesOfDay(WORK_SCHEDULE.start) -
-      WORK_SCHEDULE.breakMinutes) *
-    60_000
-  );
+export function targetWorkMs(sch: DaySchedule = companySchedule()) {
+  return (minutesOfDay(sch.end) - minutesOfDay(sch.start) - breakOf(sch)) * 60_000;
 }
 
 export function minutesOfDay(hhmm: string) {
@@ -59,25 +95,20 @@ export function scheduleTimeOn(sameDayAs: Date, hhmm: string) {
 }
 
 /** สายกี่นาที (0 = ไม่สาย) โดยหักเวลาผ่อนผันแล้ว */
-export function lateMinutes(punchIn: Date) {
-  const start = scheduleTimeOn(punchIn, WORK_SCHEDULE.start);
+export function lateMinutes(punchIn: Date, sch: DaySchedule = companySchedule()) {
+  const start = scheduleTimeOn(punchIn, sch.start);
   const diff = Math.floor((punchIn.getTime() - start.getTime()) / 60_000);
   return diff > WORK_SCHEDULE.lateGraceMinutes ? diff : 0;
 }
 
 /** ออกก่อนเวลากี่นาที (0 = ไม่ได้ออกก่อน) */
-export function earlyLeaveMinutes(punchOut: Date) {
-  const end = scheduleTimeOn(punchOut, WORK_SCHEDULE.end);
+export function earlyLeaveMinutes(punchOut: Date, sch: DaySchedule = companySchedule()) {
+  const end = scheduleTimeOn(punchOut, sch.end);
   const diff = Math.floor((end.getTime() - punchOut.getTime()) / 60_000);
   return diff > 0 ? diff : 0;
 }
 
-/** เลยเวลาเลิกงานมานานจนน่าจะลืมตอกบัตรออกหรือยัง */
-export function looksForgotten(openedAt: Date, now: Date) {
-  const end = scheduleTimeOn(openedAt, WORK_SCHEDULE.end);
-  const hoursPastEnd = (now.getTime() - end.getTime()) / 3_600_000;
-  return hoursPastEnd > WORK_SCHEDULE.forgotPunchOutAfterHours;
-}
+/* ไม่มีการเตือนลืมตอกบัตรออกแล้ว (ผู้ใช้สั่ง 16 ต.ค. 2569) */
 
 export function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -89,18 +120,18 @@ export function formatMinutes(minutes: number) {
 /** ช่วงเวลาที่ลาไป (นาทีของวัน) */
 export type LeaveWindow = { from: number; to: number } | null;
 
-/** ครึ่งวันเช้า = 09:00–12:00 · ครึ่งวันบ่าย = 13:00–18:00 — พักกลางวันไม่ใช่เวลาลา */
-const lunchFrom = () => minutesOfDay(WORK_SCHEDULE.lunchStart);
-const lunchTo = () => minutesOfDay(WORK_SCHEDULE.lunchEnd);
+/** ครึ่งวันเช้า = เข้างาน–เริ่มพัก · ครึ่งวันบ่าย = เลิกพัก–เลิกงาน — พักกลางวันไม่ใช่เวลาลา */
+const lunchFrom = (sch: DaySchedule) => minutesOfDay(sch.lunchStart);
+const lunchTo = (sch: DaySchedule) => minutesOfDay(sch.lunchEnd);
 
 /** ลาจบคาบพักกลางวัน → กลับเข้างานหลังพัก ไม่ใช่ตอนลาหมดพอดี */
-function backAfterLunch(minute: number) {
-  return minute >= lunchFrom() && minute < lunchTo() ? lunchTo() : minute;
+function backAfterLunch(minute: number, sch: DaySchedule) {
+  return minute >= lunchFrom(sch) && minute < lunchTo(sch) ? lunchTo(sch) : minute;
 }
 
 /** ลาเริ่มคาบพักกลางวัน → ออกได้ตั้งแต่ก่อนพัก เพราะช่วงพักไม่ใช่เวลาทำงานอยู่แล้ว */
-function leaveBeforeLunch(minute: number) {
-  return minute > lunchFrom() && minute <= lunchTo() ? lunchFrom() : minute;
+function leaveBeforeLunch(minute: number, sch: DaySchedule) {
+  return minute > lunchFrom(sch) && minute <= lunchTo(sch) ? lunchFrom(sch) : minute;
 }
 
 /** แปลงใบลาของวันนั้นเป็นช่วงเวลาที่ไม่ต้องอยู่ทำงาน */
@@ -113,25 +144,26 @@ export function leaveWindowOf(
         endMin?: number;
       }
     | undefined,
+  sch: DaySchedule = companySchedule(),
 ): LeaveWindow {
   if (!leave) return null;
-  const start = minutesOfDay(WORK_SCHEDULE.start);
-  const end = minutesOfDay(WORK_SCHEDULE.end);
+  const start = minutesOfDay(sch.start);
+  const end = minutesOfDay(sch.end);
   // เวลาที่ระบุเองมาก่อนเสมอ
   if (leave.startMin != null && leave.endMin != null) {
     return { from: leave.startMin, to: leave.endMin };
   }
-  if (leave.half === "morning") return { from: start, to: lunchFrom() };
-  if (leave.half === "afternoon") return { from: lunchTo(), to: end };
+  if (leave.half === "morning") return { from: start, to: lunchFrom(sch) };
+  if (leave.half === "afternoon") return { from: lunchTo(sch), to: end };
   return { from: start, to: end };
 }
 
 /** ลาคลุมทั้งกะ = ไม่ต้องมาทำงานวันนั้น */
-export function isFullDayLeave(leave: LeaveWindow) {
+export function isFullDayLeave(leave: LeaveWindow, sch: DaySchedule = companySchedule()) {
   return Boolean(
     leave &&
-      leave.from <= minutesOfDay(WORK_SCHEDULE.start) &&
-      leave.to >= minutesOfDay(WORK_SCHEDULE.end),
+      leave.from <= minutesOfDay(sch.start) &&
+      leave.to >= minutesOfDay(sch.end),
   );
 }
 
@@ -139,34 +171,34 @@ export function isFullDayLeave(leave: LeaveWindow) {
  * ลาคาบเวลาเข้างาน → เริ่มงานตอนลาหมด
  * ลาทั้งวันให้กะยุบเป็นศูนย์ ไม่งั้นจะได้กะกลับหัวแบบ 18:00–09:00
  */
-export function expectedInMinutes(leave: LeaveWindow) {
-  const start = minutesOfDay(WORK_SCHEDULE.start);
-  if (isFullDayLeave(leave)) return start;
+export function expectedInMinutes(leave: LeaveWindow, sch: DaySchedule = companySchedule()) {
+  const start = minutesOfDay(sch.start);
+  if (isFullDayLeave(leave, sch)) return start;
   return leave && leave.from <= start && leave.to > start
-    ? backAfterLunch(leave.to)
+    ? backAfterLunch(leave.to, sch)
     : start;
 }
 
 /** ลาคาบเวลาเลิกงาน → เลิกได้ตอนลาเริ่ม */
-export function expectedOutMinutes(leave: LeaveWindow) {
-  const start = minutesOfDay(WORK_SCHEDULE.start);
-  const end = minutesOfDay(WORK_SCHEDULE.end);
-  if (isFullDayLeave(leave)) return start;
+export function expectedOutMinutes(leave: LeaveWindow, sch: DaySchedule = companySchedule()) {
+  const start = minutesOfDay(sch.start);
+  const end = minutesOfDay(sch.end);
+  if (isFullDayLeave(leave, sch)) return start;
   return leave && leave.to >= end && leave.from < end
-    ? leaveBeforeLunch(leave.from)
+    ? leaveBeforeLunch(leave.from, sch)
     : end;
 }
 
 /** หักพักกลางวันเฉพาะกะที่คร่อมเวลาพัก */
-export function breakMinutesFor(inMin: number, outMin: number) {
-  return inMin < lunchTo() && outMin > lunchFrom() ? WORK_SCHEDULE.breakMinutes : 0;
+export function breakMinutesFor(inMin: number, outMin: number, sch: DaySchedule = companySchedule()) {
+  return inMin < lunchTo(sch) && outMin > lunchFrom(sch) ? breakOf(sch) : 0;
 }
 
 /** ต้องทำงานกี่นาทีในวันนั้น (หลังหักวันลาและพักกลางวัน) */
-export function requiredMinutes(leave: LeaveWindow) {
-  const a = expectedInMinutes(leave);
-  const b = expectedOutMinutes(leave);
-  return Math.max(0, b - a - breakMinutesFor(a, b));
+export function requiredMinutes(leave: LeaveWindow, sch: DaySchedule = companySchedule()) {
+  const a = expectedInMinutes(leave, sch);
+  const b = expectedOutMinutes(leave, sch);
+  return Math.max(0, b - a - breakMinutesFor(a, b, sch));
 }
 
 /** นาทีที่เท่าไรของวัน นับตามหน้าปัดไทย — รับ "ชั่วขณะจริง" เท่านั้น */
@@ -192,8 +224,8 @@ export function formatMinutesOfDay(m: number) {
  * กะของวันนั้นหลังหักวันลา (เป็นนาทีของวัน)
  * ลาคาบเวลาเข้า → เริ่มช้าลง · ลาคาบเวลาเลิก → เลิกเร็วขึ้น
  */
-export function shiftOf(leave: LeaveWindow) {
-  return { in: expectedInMinutes(leave), out: expectedOutMinutes(leave) };
+export function shiftOf(leave: LeaveWindow, sch: DaySchedule = companySchedule()) {
+  return { in: expectedInMinutes(leave, sch), out: expectedOutMinutes(leave, sch) };
 }
 
 /**
@@ -205,13 +237,14 @@ export function workedMinutesOf(
   inMin: number | null,
   outMin: number | null,
   leave: LeaveWindow,
+  sch: DaySchedule = companySchedule(),
 ) {
   if (inMin == null || outMin == null) return 0;
-  const s = shiftOf(leave);
+  const s = shiftOf(leave, sch);
   const start = Math.max(inMin, s.in);
   const end = Math.min(outMin, s.out);
   if (end <= start) return 0;
-  const lunch = Math.max(0, Math.min(end, lunchTo()) - Math.max(start, lunchFrom()));
+  const lunch = Math.max(0, Math.min(end, lunchTo(sch)) - Math.max(start, lunchFrom(sch)));
   return end - start - lunch;
 }
 
@@ -219,9 +252,9 @@ export function workedMinutesOf(
  * ชั่วโมงที่อยู่จริง (นาที) — ตั้งแต่ตอกเข้าถึงตอกออก หักพักเที่ยงเฉพาะส่วนที่คร่อม
  * ใช้แสดงผลเท่านั้น · เงินเดือนคิดจาก workedMinutesOf ที่ตัดให้อยู่ในกะ
  */
-export function actualMinutesOf(inMin: number | null, outMin: number | null) {
+export function actualMinutesOf(inMin: number | null, outMin: number | null, sch: DaySchedule = companySchedule()) {
   if (inMin == null || outMin == null || outMin <= inMin) return 0;
-  const lunch = Math.max(0, Math.min(outMin, lunchTo()) - Math.max(inMin, lunchFrom()));
+  const lunch = Math.max(0, Math.min(outMin, lunchTo(sch)) - Math.max(inMin, lunchFrom(sch)));
   return outMin - inMin - lunch;
 }
 

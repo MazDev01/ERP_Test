@@ -26,7 +26,13 @@ export type ScheduleSettings = {
   lunchStart: string;
   lunchEnd: string;
   otStart: string;
-  forgotPunchOutAfterHours: number;
+  /* ช่วงพักของโอทีวันหยุด (รวมวันแรงงาน) ไม่นับเป็นชั่วโมงโอที — พักเที่ยงกับพักเย็น (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  holLunchStart: string;
+  holLunchEnd: string;
+  holDinnerStart: string;
+  holDinnerEnd: string;
+  /** เลิกใช้แล้ว — ไม่มีการเตือนลืมตอกบัตรออก (ผู้ใช้สั่ง 16 ต.ค. 2569) ข้อมูลเก่าในเครื่องยังอ่านได้ */
+  forgotPunchOutAfterHours?: number;
   /** วันที่ตัดรอบเงินเดือน — รอบถัดไปเริ่มวันรุ่งขึ้น (25 = 26 เดือนก่อน ถึง 25 เดือนนี้) */
   payCutDay: number;
 };
@@ -67,6 +73,15 @@ export type IssuerDoc = {
   expires?: string;
   attach?: boolean;
   addedAt?: string;
+  /*
+   * รูปเอกสารแนบเก็บจริงในเครื่อง (ผู้ใช้สั่ง 15 ต.ค. 2569) — รับเฉพาะรูป JPG PNG WEBP
+   * src = data URL ของรูปที่ย่อแล้ว (ด้านยาวไม่เกิน ~1600px · JPEG คุณภาพ ~0.8) · w/h = ขนาดหลังย่อ
+   * ต่อท้ายใบเสนอราคาที่ออกในนามผู้ออกรายนี้ แผ่นละรูป พร้อมลายน้ำ (quotation-paper.tsx)
+   * ไม่มี src = ไฟล์เดิมจากก่อนเปลี่ยน (เก็บแค่ชื่อ) — ไม่แสดงบนเอกสาร ผู้ดูแลลบทิ้งได้
+   */
+  src?: string;
+  w?: number;
+  h?: number;
 };
 
 /**
@@ -83,7 +98,7 @@ export type RateSettings = {
   commission: number;
   otAfterWork: number;
   otHoliday: number;
-  /** โอทีวันหยุดราชการ/วันแรงงาน (วันที่อยู่ในรายการวันหยุด) */
+  /** โอทีวันแรงงาน 1 พ.ค. เท่านั้น — วันหยุดราชการอื่นใช้ otHoliday (ผู้ใช้สั่ง 13 ต.ค. 2569) */
   otPublic: number;
   /*
    * โอทีวันหยุดต้องยื่นล่วงหน้ากี่ "วันทำงาน" (เจ้าของแจ้ง 25 ก.ย. 2569)
@@ -119,8 +134,7 @@ export type DocPrefixes = {
   /** เลขที่โปรเจค PJ-<พ.ศ.>-xxxx — ออกตอนวางบิลงวดแรกได้รับชำระ งานเข้ากล่อง PM (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   project: string;
   /*
-   * ไม่มี CN/DN/RF แล้ว — เจ้าของระบบสั่งพักใบลดหนี้ ใบเพิ่มหนี้ และการคืนเงิน (24 ก.ย. 2569)
-   * เปิดใช้ใหม่เมื่อไรค่อยเติมสามช่องนี้กลับ แล้วให้ acc-store.ts อ่านจากตรงนี้แทนตัวอักษรตรง ๆ
+   * ไม่มีตัวนำหน้า CN/DN/RF — ระบบไม่มีใบลดหนี้ ใบเพิ่มหนี้ และคืนเงินถาวร ห้ามเติมกลับ (ผู้ใช้สั่ง 14 ต.ค. 2569)
    */
 };
 
@@ -182,9 +196,21 @@ export type Issuer = {
   /** ตัวนำหน้าเลขใบเสนอราคา */
   prefix: string;
   docs?: IssuerDoc[];
+  /*
+   * ลายเซ็นผู้มีอำนาจลงนามและตราประทับ — ผู้ออกเอกสารละหนึ่งคน (ผู้ใช้สั่ง 16 ต.ค. 2569)
+   * แสดงบนใบเสนอราคา (ช่องผู้เสนอราคา) และหนังสือรับรองหัก ณ ที่จ่าย 50 ทวิ (ช่องผู้จ่ายเงิน) อัตโนมัติ
+   * ไม่มีค่า = ไม่มีลายเซ็น เอกสารหน้าตาเหมือนเดิม · ข้อมูลที่บันทึกไว้ก่อนมีช่องนี้ไม่ต้องย้ายค่า
+   */
+  sign?: IssuerImage;
+  signName?: string;
+  signTitle?: string;
+  stamp?: IssuerImage;
 };
 
-/** ชื่อและตำแหน่งของผู้อนุมัติแต่ละสาย — ผู้ดูแลระบบแก้ได้ที่ /admin/settings?s=positions&t=approval (บทบาทที่ล็อกอินอนุมัติอยู่ใน role.ts) */
+/** รูปลายเซ็น/ตราประทับที่ย่อแล้ว — src = data URL (PNG เก็บพื้นโปร่งใส) · w/h = ขนาดหลังย่อ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+export type IssuerImage = { src: string; w: number; h: number; name: string; size: number };
+
+/** ชื่อและตำแหน่งของผู้อนุมัติแต่ละสาย — ผู้ดูแลระบบแก้ได้ที่ /admin/settings?s=staff&t=positions (บทบาทที่ล็อกอินอนุมัติอยู่ใน role.ts) */
 export type ApproverNames = Record<"pm" | "acc" | "hr" | "gm" | "exec", { name: string; title: string }>;
 
 /*
@@ -219,13 +245,43 @@ export type PosRoute = Record<string, { leave?: string; ot?: string; expense?: s
  * at = วันแรกที่ใช้ชุดนี้ · ตั้งล่วงหน้าได้ ระบบสลับให้เองเมื่อถึงวัน เหมือนอัตราใน rateHistory
  * เก็บทั้งเวลาและพิกัดไว้ด้วยกัน เพราะต้นแบบให้บันทึกพร้อมกันครั้งเดียว
  */
+/*
+ * เวลาทำงานเฉพาะตำแหน่ง (ผู้ใช้สั่ง 16 ต.ค. 2569) — ตอนนี้มีแค่แม่บ้าน 08:00–17:00
+ * pos = รหัสตำแหน่งในทะเบียนฝ่ายบุคคล · ตำแหน่งที่ไม่อยู่ในรายการใช้เวลาทำงานของบริษัท
+ */
+export type PosSchedule = { pos: string; start: string; end: string; lunchStart: string; lunchEnd: string };
+export const DEFAULT_POS_SCHEDULES: PosSchedule[] = [
+  { pos: "maid", start: "08:00", end: "17:00", lunchStart: "12:00", lunchEnd: "13:00" },
+];
+
 export type AttTimes = { start: string; end: string; lunchStart: string; lunchEnd: string };
 export type AttPlace = { lat: number; lng: number; radius: number };
 export type AttChange = { at: string; times: AttTimes; place: AttPlace; note: string };
 
+/*
+ * คำขอแก้วันหยุดบริษัทที่รอ CEO อนุมัติ (ผู้ใช้สั่ง 13 ต.ค. 2569 — "แบบรอบเงินเดือน")
+ * holidays = ชุดที่ใช้อยู่จริง (อนุมัติแล้ว) ทั้งระบบอ่านชุดนี้เสมอ · draft = ชุดเต็มที่ฝ่ายบุคคลเสนอ
+ * pending  รอ CEO — ร่างล็อกไว้ ฝ่ายบุคคลดึงกลับมาแก้ได้
+ * rejected ตีกลับพร้อมเหตุผล — ฝ่ายบุคคลแก้แล้วส่งใหม่
+ * approved อนุมัติแล้ว draft ถูกคัดลอกไปเป็น holidays แล้ว (เก็บไว้แจ้งผลในกระดิ่ง)
+ */
+export type HolidayReq = {
+  status: "pending" | "rejected" | "approved";
+  draft: Record<string, string>;
+  sentAt: string;
+  sentBy: string;
+  at?: string;
+  by?: string;
+  reason?: string;
+};
+
 export type SystemSettings = {
   schedule: ScheduleSettings;
+  /** เวลาทำงานเฉพาะตำแหน่ง (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  positionSchedules: PosSchedule[];
   holidays: Record<string, string>;
+  /** คำขอแก้วันหยุดที่ส่ง CEO ล่าสุด — null = ไม่มี (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  holidayReq: HolidayReq | null;
   leave: LeaveQuota[];
   company: CompanySettings;
   rates: RateSettings;
@@ -261,9 +317,15 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     lunchEnd: "13:00",
     /* 18:00–19:00 เป็นช่วงพักกินข้าว ไม่นับเป็นโอที */
     otStart: "19:00",
-    forgotPunchOutAfterHours: 3,
+    /* พักของโอทีวันหยุด 12:00–13:00 และ 18:00–19:00 — เครื่องเก่าได้ค่านี้จาก fill() (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    holLunchStart: "12:00",
+    holLunchEnd: "13:00",
+    holDinnerStart: "18:00",
+    holDinnerEnd: "19:00",
     payCutDay: 25,
   },
+  positionSchedules: DEFAULT_POS_SCHEDULES,
+  holidayReq: null,
   /* วันหยุดราชการ ปี 2569 — วันตามจันทรคติและวันชดเชยต้องเทียบประกาศ ครม. ทุกปี */
   holidays: {
     "2026-01-01": "วันขึ้นปีใหม่",
@@ -345,7 +407,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     collectChannel: ["โทรศัพท์", "อีเมล", "ไลน์", "เข้าพบ"],
     adPlatform: ["Google", "Facebook", "Instagram", "TikTok", "YouTube", "Line"],
     eduLevel: ["มัธยมศึกษาตอนปลาย / ปวช.", "ปวส. / อนุปริญญา", "ปริญญาตรี", "ปริญญาโท"],
-    expenseKind: ["ค่าเดินทาง", "ค่าคอมมิชชั่น", "ค่ารับรองลูกค้า", "ค่าอุปกรณ์และวัสดุ", "ค่าที่พัก", "อื่นๆ"],
+    /* ไม่มีค่าคอมมิชชั่นแล้ว — ผู้บริหารให้ในรอบเงินเดือน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+    expenseKind: ["ค่าเดินทาง", "ค่ารับรองลูกค้า", "ค่าอุปกรณ์และวัสดุ", "ค่าที่พัก", "อื่นๆ"],
     sex: ["ชาย", "หญิง", "ไม่ระบุ"],
   },
   optionsOff: {},
@@ -421,15 +484,25 @@ function isSettings(v: unknown): v is SystemSettings {
 function withExpenseKinds(o: Record<OptionKey, string[]>, rev: number): Record<OptionKey, string[]> {
   if (rev >= EXPENSE_KIND_REV) return o;
   const list = o.expenseKind ?? [];
-  const add = ["ค่าเดินทาง", "ค่าคอมมิชชั่น"].filter((k) => !list.includes(k));
+  const add = ["ค่าเดินทาง"].filter((k) => !list.includes(k));
   return add.length ? { ...o, expenseKind: [...add, ...list] } : o;
+}
+
+function withDefaultPosSchedules(list: PosSchedule[] | undefined): PosSchedule[] {
+  if (!Array.isArray(list)) return DEFAULT_POS_SCHEDULES;
+  const add = DEFAULT_POS_SCHEDULES.filter((d) => !list.some((x) => x.pos === d.pos));
+  return add.length ? [...list, ...add] : list;
 }
 
 /** เติมช่องที่เพิ่มเข้ามาทีหลังจากค่าตั้งต้น โดยไม่ทับค่าที่ผู้ดูแลตั้งไว้ */
 function fill(v: SystemSettings): SystemSettings {
   return {
     schedule: { ...DEFAULT_SETTINGS.schedule, ...v.schedule },
+    /* เครื่องเก่ายังไม่มีเวลาเฉพาะตำแหน่ง — เติมแถวแม่บ้านตั้งต้นถ้ายังไม่มี (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    positionSchedules: withDefaultPosSchedules(v.positionSchedules),
     holidays: v.holidays,
+    /* เครื่องเก่ายังไม่มีคำขอ — รายการวันหยุดที่เก็บไว้ถือเป็นชุดที่อนุมัติแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+    holidayReq: v.holidayReq ?? null,
     /* เครื่องที่บันทึกไว้ก่อนเลิกลาคลอด/ลาไม่รับค่าจ้าง — ตัดประเภทอื่นทิ้ง และตั้งสิทธิ์เป็น 3/6/30 ครั้งเดียว
        หลังจากนั้นค่าที่ผู้ดูแลแก้เองไม่ถูกทับ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
     leave:
@@ -452,6 +525,8 @@ function fill(v: SystemSettings): SystemSettings {
     approvers: { ...DEFAULT_SETTINGS.approvers, ...(v.approvers ?? {}) },
     /* หมวดนี้เพิ่ม 28 ก.ย. 2569 — เครื่องที่บันทึกไว้ก่อนยังไม่มี ถือว่าไม่มีสายรายตำแหน่ง */
     posRoute: v.posRoute ?? {},
+    /* presalesRoute (ประเภทงาน → ตำแหน่ง) เลิกใช้แล้ว — คำขอก่อนการขายกลับไปเลือกตัวคน
+       ค่าที่ค้างในเครื่องเก่าไม่ถูกอ่าน ไม่มีผลอะไร (ผู้ใช้สั่ง 14 ต.ค. 2569) */
     rateHistory: Array.isArray(v.rateHistory) ? v.rateHistory : [],
     /* หมวดนี้เพิ่ม 29 ก.ย. 2569 — เครื่องที่บันทึกไว้ก่อนยังไม่มีประวัติเวลาทำงาน */
     attHistory: Array.isArray(v.attHistory) ? v.attHistory : [],
@@ -471,7 +546,7 @@ function fill(v: SystemSettings): SystemSettings {
 
 /*
  * v3 (24 ก.ย. 2569) — ถอดตัวนำหน้า CN/DN/RF ออกจากชุดเลขที่เอกสาร
- *                     เพราะใบลดหนี้ ใบเพิ่มหนี้ และการคืนเงินพักไว้แล้ว
+ *                     เพราะระบบไม่มีเอกสารสามชนิดนี้แล้ว (ถาวร — ผู้ใช้สั่ง 14 ต.ค. 2569)
  *                     ของเก่ายังเก็บสามช่องนั้นไว้ ถ้าอ่านต่อจะไปโผล่ในหน้าตรวจตัวนำหน้าซ้ำ
  */
 const store = createPersistedStore<SystemSettings>(
@@ -614,6 +689,49 @@ export function resetSection<K extends keyof SystemSettings>(key: K) {
   store.update((s) => ({ ...s, [key]: DEFAULT_SETTINGS[key] }));
 }
 
+/*
+ * ─── วันหยุดบริษัทต้องให้ CEO อนุมัติ (ผู้ใช้สั่ง 13 ต.ค. 2569) ───
+ * ฝ่ายบุคคลส่งชุดเต็ม → CEO อนุมัติ = ชุดนั้นเป็น holidays ที่ทั้งระบบใช้ · ตีกลับ = ฝ่ายบุคคลแก้แล้วส่งใหม่
+ * ระหว่างรอ ทุกหน้ายังใช้ holidays ชุดเดิม
+ */
+export function submitHolidays(draft: Record<string, string>, by: string, at: string) {
+  store.update((s) => ({ ...s, holidayReq: { status: "pending", draft, sentAt: at, sentBy: by } }));
+}
+
+/** ดึงคำขอกลับ / ทิ้งคำขอที่ถูกตีกลับ */
+export function clearHolidayReq() {
+  store.update((s) => ({ ...s, holidayReq: null }));
+}
+
+/**
+ * CEO ตัดสิน — อนุมัติแล้ววันที่อยู่ในรอบเงินเดือนที่ปิดไปแล้ว (lockedUntil) คงค่าเดิมไว้
+ * เพราะระหว่างรออาจมีรอบปิดเพิ่ม ตัวเลขของรอบที่ปิดแล้วต้องไม่ขยับ
+ */
+export function decideHolidays(ok: boolean, reason: string, by: string, at: string, lockedUntil?: string | null) {
+  store.update((s) => {
+    const req = s.holidayReq;
+    if (!req || req.status !== "pending") return s;
+    if (!ok) return { ...s, holidayReq: { ...req, status: "rejected", at, by, reason } };
+    let next = req.draft;
+    if (lockedUntil) {
+      next = Object.fromEntries(Object.entries(req.draft).filter(([d]) => d > lockedUntil));
+      for (const [d, n] of Object.entries(s.holidays)) if (d <= lockedUntil) next[d] = n;
+    }
+    return { ...s, holidays: next, holidayReq: { ...req, status: "approved", at, by, reason: "" } };
+  });
+}
+
+/** รายการที่เปลี่ยนจากชุดที่ใช้อยู่ — เพิ่ม/แก้ชื่อ/ลบ เรียงตามวันที่ */
+export function holidayDiff(active: Record<string, string>, draft: Record<string, string>) {
+  const out: { d: string; kind: "add" | "edit" | "del"; name: string; was?: string }[] = [];
+  for (const d of new Set([...Object.keys(active), ...Object.keys(draft)])) {
+    if (!(d in active)) out.push({ d, kind: "add", name: draft[d] });
+    else if (!(d in draft)) out.push({ d, kind: "del", name: active[d] });
+    else if (active[d] !== draft[d]) out.push({ d, kind: "edit", name: draft[d], was: active[d] });
+  }
+  return out.sort((a, b) => a.d.localeCompare(b.d));
+}
+
 export function resetSystemSettings() {
   store.reset();
 }
@@ -623,7 +741,8 @@ export function resetSystemSettings() {
  * ไม่นับหมวดตัวเลือกในรายการ (options/catalog) เพราะหน้างานเพิ่มตัวเลือกได้กลางฟอร์ม
  * ถ้าวาดใหม่ทั้งหน้า ข้อมูลที่กรอกค้างไว้จะหาย · ดรอปดาวน์อ่านค่าใหม่เองตอนคอมโพเนนต์วาดรอบถัดไป
  */
-const SKIP_KEY: (keyof SystemSettings)[] = ["options", "optionsOff", "catalog", "issuers"];
+/* holidayReq ไม่มีผลกับการคำนวณจนกว่าจะอนุมัติ (ตอนนั้น holidays เปลี่ยนเอง) ไม่ต้องวาดหน้าใหม่ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+const SKIP_KEY: (keyof SystemSettings)[] = ["options", "optionsOff", "catalog", "issuers", "holidayReq"];
 const secIds = new WeakMap<object, number>();
 let nextSec = 1;
 function secId(o: unknown) {

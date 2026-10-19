@@ -31,6 +31,57 @@ export const JOBS: { key: Role; label: string }[] = [
   { key: "hr", label: "บุคคล" },
 ];
 
+/**
+ * คำอธิบายย่อของแต่ละงาน — เปิดจากปุ่ม i ข้างช่องติก (ผู้ใช้สั่ง 13 ต.ค. 2569)
+ * ผู้ใช้บอกว่าไม่เข้าใจว่าแต่ละงานใครควรได้ และเกี่ยวกับอะไร
+ */
+const JOB_INFO: Record<string, { who: string; does: string[] }> = {
+  staff: {
+    who: "ทีมงานที่ลงมือทำงานในโปรเจค เช่น Graphic, Content, Dev, Website, Media",
+    does: ["รับงานที่ PM มอบหมาย", "ส่งผลงานให้ PM ตรวจ และแก้ตามที่ลูกค้าคอมเมนต์", "ดูตารางงานของตัวเอง"],
+  },
+  pm: {
+    who: "ผู้จัดการโครงการ (PM) หรือผู้ที่ดูแลโปรเจคของลูกค้า",
+    does: ["รับงานเข้าใหม่หลังลูกค้าชำระงวดแรก", "วางแผนงาน แบ่งงาน และมอบหมายให้ทีม", "ตรวจงานก่อนส่งลูกค้า และติดตามความคืบหน้า"],
+  },
+  sales: {
+    who: "พนักงานขาย หรือ BD ที่ติดต่อลูกค้า",
+    does: ["ดูแล Lead และบันทึกการติดต่อ", "ขอทำข้อเสนอ ออกใบเสนอราคา", "ส่งใบเสนอราคาไปวางบิลเมื่อลูกค้าตกลง"],
+  },
+  acc: {
+    who: "พนักงานบัญชี",
+    does: ["วางบิล ออกใบแจ้งหนี้และใบเสร็จ", "ติดตามลูกหนี้ค้างชำระ", "บันทึกภาษีหัก ณ ที่จ่าย"],
+  },
+  hr: {
+    who: "ฝ่ายบุคคล",
+    does: ["ดูแลข้อมูลพนักงานและบัญชีผู้ใช้", "ปิดรอบเวลาทำงาน คำนวณเงินเดือน ออกสลิป", "ตั้งค่าเวลาทำงาน วันหยุด และอัตราต่าง ๆ"],
+  },
+};
+
+/** สีป้ายของงานที่รับผิดชอบ — ใช้ชุดสีป้ายเดิมของระบบ (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+const JOB_TAG: Partial<Record<Role, string>> = {
+  staff: "t-info",
+  pm: "t-job",
+  sales: "t-early",
+  acc: "t-ok",
+  hr: "t-late",
+};
+
+/** งานที่รับผิดชอบเป็นป้ายสี เรียงตามลำดับที่ติก — ไม่มีงานขึ้นขีด */
+export function JobTags({ roles }: { roles?: Role[] }) {
+  if (!roles?.length) return <span className="muted">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {roles.map((r) => (
+        <span key={r} className={`tag ${JOB_TAG[r] ?? "t-miss"}`}>
+          <i />
+          {jobLabel(r)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** ชื่อที่แสดงของบทบาทในบัญชี — ใช้ชื่องานถ้ามี */
 export function jobLabel(r: Role) {
   return JOBS.find((j) => j.key === r)?.label ?? roleLabel(r);
@@ -54,7 +105,11 @@ export function RolePicker({
     if (roles.includes(r)) return onChange(roles.filter((x) => x !== r));
     onChange([...roles, r]);
   }
+  const [info, setInfo] = useState<Role | null>(null);
+  const shown = info ? JOBS.find((j) => j.key === info) : undefined;
+  const detail = info ? JOB_INFO[info] : undefined;
   return (
+    <>
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       {JOBS.map((r) => {
         const at = roles.indexOf(r.key);
@@ -78,10 +133,49 @@ export function RolePicker({
                 {at + 1}
               </b>
             )}
+            {/* ปุ่ม i เปิดคำอธิบายงาน — กดแล้วไม่ติก/เอาติกออก (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+            {JOB_INFO[r.key] && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setInfo((v) => (v === r.key ? null : r.key));
+                }}
+                className={`grid size-5 flex-none place-items-center rounded-full border text-[11px] font-bold italic leading-none ${
+                  info === r.key ? "border-primary bg-primary text-white" : "border-border bg-white text-muted-foreground"
+                }`}
+                aria-label={`งาน${r.label}คืออะไร`}
+                aria-expanded={info === r.key}
+                title="ดูคำอธิบาย"
+              >
+                i
+              </button>
+            )}
           </label>
         );
       })}
     </div>
+    {shown && detail && (
+      <div className="mt-2 rounded-[12px] border border-border bg-muted/40 px-3.5 py-3 text-[12.5px] leading-relaxed">
+        <div className="flex items-start justify-between gap-2">
+          <b className="text-[13px] font-semibold">{shown.label}</b>
+          <button type="button" className="text-[12px] text-muted-foreground" onClick={() => setInfo(null)}>
+            ปิด
+          </button>
+        </div>
+        <p className="mt-1">
+          <span className="text-muted-foreground">เหมาะกับ: </span>
+          {detail.who}
+        </p>
+        <ul className="mt-1 list-disc pl-5">
+          {detail.does.map((d) => (
+            <li key={d}>{d}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+    </>
   );
 }
 

@@ -170,12 +170,12 @@ const APPROVER_ROLE: Record<ApproverKey, Role | null> = {
 };
 
 /**
- * ผู้อนุมัติที่เลือกได้ในหน้าตั้งค่าบทบาทของผู้ดูแลระบบ (/admin/settings?s=positions&t=approval)
+ * ผู้อนุมัติที่เลือกได้ในหน้าตั้งค่าบทบาทของผู้ดูแลระบบ (/admin/settings?s=staff&t=positions)
  * เก็บเป็นคีย์ ไม่ได้เก็บชื่อคน — ชื่อและตำแหน่งดึงจากตรงนี้เสมอ
  */
 export type ApproverKey = "pm" | "acc" | "hr" | "gm" | "exec";
 
-/** ผู้อนุมัติทั้งหมด — ชื่อ/ตำแหน่งอ่านจากการตั้งค่าทุกครั้ง (ผู้ดูแลระบบแก้ได้ที่ /admin/settings?s=positions&t=approval) */
+/** ผู้อนุมัติทั้งหมด — ชื่อ/ตำแหน่งอ่านจากการตั้งค่าทุกครั้ง (ผู้ดูแลระบบแก้ได้ที่ /admin/settings?s=staff&t=positions) */
 export function approvers(): Record<ApproverKey, Approver> {
   const n = settings().approvers;
   return {

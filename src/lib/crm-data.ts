@@ -30,6 +30,8 @@ export const BUYER_TYPE: Record<BuyerType, string> = {
 
 export type Customer = {
   code: string;
+  /** วันเวลาที่เพิ่มผู้สนใจเข้าระบบ (ISO) — ใช้เรียงล่าสุด/เก่าสุด · ข้อมูลเดิมไม่มี (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  createdAt?: string;
   name: string;
   contact: string;
   phone: string;
@@ -54,10 +56,54 @@ export type Customer = {
    * เก็บไว้เป็นข้อมูลอ้างอิง ลิงก์เก่าและเอกสารเก่าที่อ้างรหัสนี้จะได้ยังชี้ไปถูกราย
    */
   leadCode?: string;
-  /** เหตุผลที่ปิดเสนอ — ว่างถ้ายังไม่ปิด */
+  /** เหตุผลที่ปิดเสนอ — ว่างถ้ายังไม่ปิด · รายใหม่เก็บเป็นข้อความแสดงผล "<หมวด> · <หมายเหตุ>" (ผู้ใช้สั่ง 14 ต.ค. 2569) */
   closedReason: string;
+  /** หมวดเหตุผลที่ลูกค้าปฏิเสธ — เลือกจากรายการ · ข้อมูลเก่าที่ไม่มีถือเป็น "อื่นๆ" (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  rejectKind?: RejectKind;
+  /** หมายเหตุประกอบเหตุผล (ไม่รวมหมวด) (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  rejectNote?: string;
+  /** วันที่เปลี่ยนเป็นปฏิเสธ (yyyy-mm-dd) — ครบ 1 เดือนแล้วออกจาก Pipeline ไปอยู่รายงาน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  rejectedAt?: string;
   owner: string;
 };
+
+/* ─── เหตุผลที่ลูกค้าปฏิเสธ — เลือกจากรายการ (ผู้ใช้สั่ง 14 ต.ค. 2569) ─── */
+export const REJECT_KINDS = ["ติดราคา", "เงียบหาย", "ลูกค้าไม่เอา", "เราปฏิเสธงานเอง", "อื่นๆ"] as const;
+export type RejectKind = (typeof REJECT_KINDS)[number];
+
+/** ข้อความแสดงผล "<หมวด> · <หมายเหตุ>" — ไม่มีหมายเหตุแสดงแค่หมวด */
+export function rejectText(kind: RejectKind, note: string) {
+  const n = note.trim();
+  return n ? `${kind} · ${n}` : kind;
+}
+
+/** แยกข้อความเหตุผลกลับเป็นหมวด + หมายเหตุ — ข้อความเก่าที่พิมพ์เอง (ไม่ขึ้นต้นด้วยหมวด) ถือเป็น "อื่นๆ" */
+export function parseRejectText(text: string): { kind: RejectKind; note: string } {
+  const t = text.trim();
+  for (const k of REJECT_KINDS) {
+    if (t === k) return { kind: k, note: "" };
+    if (t.startsWith(k + " · ")) return { kind: k, note: t.slice(k.length + 3).trim() };
+  }
+  return { kind: "อื่นๆ", note: t };
+}
+
+/** หมวด/หมายเหตุของรายที่ปฏิเสธ — อ่านช่องใหม่ก่อน ไม่มีค่อยแยกจากข้อความเดิม */
+export function rejectInfo(c: Pick<Customer, "closedReason" | "rejectKind" | "rejectNote">) {
+  const { kind, note } = c.rejectKind
+    ? { kind: c.rejectKind, note: c.rejectNote ?? "" }
+    : parseRejectText(c.closedReason);
+  return { kind, note, text: rejectText(kind, note) };
+}
+
+/** ปฏิเสธครบ 1 เดือนแล้ว — ไม่แสดงใน Pipeline (ยังดูได้ในแท็บปฏิเสธของหน้าผู้สนใจ · ไม่มีหน้ารายงานแล้ว 15 ต.ค. 2569) */
+export function rejectArchived(c: Pick<Customer, "status" | "rejectedAt">, today: string) {
+  if (c.status !== "ปฏิเสธ" || !c.rejectedAt) return false;
+  const [y, m, d] = c.rejectedAt.split("-").map(Number);
+  const due = new Date(Date.UTC(y, m, d));
+  /* เดือนถัดไปไม่มีวันนั้น (31 ม.ค. → 3 มี.ค.) ใช้วันสุดท้ายของเดือนถัดไปแทน */
+  if (due.getUTCDate() !== d) due.setUTCDate(0);
+  return today >= due.toISOString().slice(0, 10);
+}
 
 export type Activity = {
   id: string;
@@ -169,14 +215,14 @@ export const CUSTOMERS: Customer[] = [
   { code: "LEAD-6908-002", name: "บ้านสวนพฤกษา", contact: "กิตติ ศรีสุข", phone: "086-909-1122", email: "kitti@baansuan.com", address: "18/3 ม.5 ต.สันผีเสื้อ อ.เมือง จ.เชียงใหม่ 50300", source: "ออกบูธ", taxId: "1509900111223", type: "individual", status: "รอนัดหมาย", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "CUS-6908-021", name: "สยามพลาสติก", contact: "ณัฐพล พงษ์ไพร", phone: "082-556-7788", email: "nut@siamplastic.co.th", address: "145 ม.4 ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่", source: "เว็บไซต์", taxId: "0505558000456", legalName: "บริษัท สยามพลาสติก จำกัด", legalAddress: "145 ม.4 ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่ 50000", branch: "00000", type: "juristic", leadCode: "LEAD-6908-021", status: "ปิดงาน", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "CUS-6905-007", name: "เอ็มเทคเอ็นจิเนียริ่ง", contact: "อรทัย รุ่งเรือง", phone: "095-221-9080", email: "orathai@mtech.co.th", address: "88/9 ถ.เชียงใหม่-ลำปาง อ.เมือง จ.เชียงใหม่", source: "ลูกค้าเก่า", taxId: "0505560000789", legalName: "บริษัท เอ็มเทคเอ็นจิเนียริ่ง จำกัด", branch: "00000", type: "juristic", leadCode: "LEAD-6905-007", status: "ปิดงาน", closedReason: "", owner: "ชนัญชิดา ใจดี" },
-  { code: "LEAD-6907-011", name: "ร้านทองไพศาล", contact: "ธนา วงศ์ทอง", phone: "083-447-1290", email: "", address: "231 ถ.วัวลาย ต.หายยา อ.เมือง จ.เชียงใหม่ 50100", source: "โทรเข้า", taxId: "1509900222334", type: "individual", status: "ปฏิเสธ", closedReason: "ชะลอโครงการ — ยังไม่มีกำหนดกลับมา", owner: "ชนัญชิดา ใจดี" },
+  { code: "LEAD-6907-011", name: "ร้านทองไพศาล", contact: "ธนา วงศ์ทอง", phone: "083-447-1290", email: "", address: "231 ถ.วัวลาย ต.หายยา อ.เมือง จ.เชียงใหม่ 50100", source: "โทรเข้า", taxId: "1509900222334", type: "individual", status: "ปฏิเสธ", closedReason: "เงียบหาย · ชะลอโครงการ — ยังไม่มีกำหนดกลับมา", rejectKind: "เงียบหาย", rejectNote: "ชะลอโครงการ — ยังไม่มีกำหนดกลับมา", owner: "ชนัญชิดา ใจดี" },
   { code: "LEAD-6909-002", name: "มั่นคงก่อสร้าง", contact: "ปิยะ มั่นคง", phone: "081-778-4433", email: "piya@mankong.co.th", address: "409 ม.2 ต.ท่าศาลา อ.เมือง จ.เชียงใหม่ 50000", source: "เว็บไซต์", taxId: "0505563000246", legalName: "บริษัท มั่นคงก่อสร้าง จำกัด", legalAddress: "409 ม.2 ต.ท่าศาลา อ.เมือง จ.เชียงใหม่ 50000", branch: "00000", type: "juristic", status: "รอนัดหมาย", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "LEAD-6907-018", name: "คลินิกใสใส", contact: "สุดารัตน์ แก้วใส", phone: "094-332-1177", email: "", address: "77/12 ถ.ห้วยแก้ว ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200", source: "เฟซบุ๊ก", taxId: "1509900333445", type: "individual", status: "รอนัดหมาย", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "LEAD-6908-030", name: "วีพีโลจิสติกส์", contact: "วรพล อินทร์แก้ว", phone: "087-665-2201", email: "worapon@vplogis.co.th", address: "302 ม.6 ต.สันทรายน้อย อ.สันทราย จ.เชียงใหม่ 50210", source: "แนะนำต่อ", taxId: "0505559000321", legalName: "บริษัท วีพีโลจิสติกส์ จำกัด", legalAddress: "302 ม.6 ต.สันทรายน้อย อ.สันทราย จ.เชียงใหม่ 50210", branch: "00001", type: "juristic", status: "รอนัดหมาย", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "CUS-6906-004", name: "ครัวคุณจิ", contact: "จิราพร นาคทอง", phone: "092-118-5566", email: "", address: "12 ถ.ช้างคลาน อ.เมือง จ.เชียงใหม่", source: "ออกบูธ", taxId: "1509901234567", type: "individual", leadCode: "LEAD-6906-004", status: "ปิดงาน", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "CUS-6906-019", name: "ทองดีการช่าง", contact: "อนุชา ทองดี", phone: "088-909-3311", email: "", address: "64 ถ.เจริญราษฎร์ ต.วัดเกต อ.เมือง จ.เชียงใหม่ 50000", source: "โทรเข้า", taxId: "1509900444556", type: "individual", leadCode: "LEAD-6906-019", status: "ปิดงาน", closedReason: "", owner: "ชนัญชิดา ใจดี" },
   { code: "LEAD-6909-003", name: "บุญมีฟาร์ม", contact: "เมธาวี บุญมี", phone: "081-556-9911", email: "methawee@boonmee.farm", address: "9 ม.8 ต.ออนใต้ อ.สันกำแพง จ.เชียงใหม่ 50130", source: "เฟซบุ๊ก", taxId: "1509900555667", type: "individual", status: "รอนัดหมาย", closedReason: "", owner: "ชนัญชิดา ใจดี" },
-  { code: "LEAD-6908-008", name: "ใจงามเบเกอรี่", contact: "ศิริพร ใจงาม", phone: "090-224-6677", email: "", address: "120/4 ถ.มหิดล ต.ป่าแดด อ.เมือง จ.เชียงใหม่ 50100", source: "เว็บไซต์", taxId: "1509900666778", type: "individual", status: "ปฏิเสธ", closedReason: "เลือกผู้ให้บริการรายอื่น", owner: "ชนัญชิดา ใจดี" },
+  { code: "LEAD-6908-008", name: "ใจงามเบเกอรี่", contact: "ศิริพร ใจงาม", phone: "090-224-6677", email: "", address: "120/4 ถ.มหิดล ต.ป่าแดด อ.เมือง จ.เชียงใหม่ 50100", source: "เว็บไซต์", taxId: "1509900666778", type: "individual", status: "ปฏิเสธ", closedReason: "ลูกค้าไม่เอา · เลือกผู้ให้บริการรายอื่น", rejectKind: "ลูกค้าไม่เอา", rejectNote: "เลือกผู้ให้บริการรายอื่น", owner: "ชนัญชิดา ใจดี" },
   { code: "CUS-6908-027", name: "พูลผลอะไหล่", contact: "ชัยวัฒน์ พูลผล", phone: "084-771-2288", email: "", address: "72 ถ.มหิดล ต.หายยา อ.เมือง จ.เชียงใหม่ 50100", source: "ลูกค้าเก่า", taxId: "0505557000654", legalName: "บริษัท พูลผลอะไหล่ จำกัด", legalAddress: "72 ถ.มหิดล ต.หายยา อ.เมือง จ.เชียงใหม่ 50100", branch: "00000", type: "juristic", leadCode: "LEAD-6908-027", status: "ปิดงาน", closedReason: "", owner: "ชนัญชิดา ใจดี" },
 ];
 
@@ -228,7 +274,14 @@ export type PresalesRequest = {
   kind: "BD" | "SA";
   problem: string;
   assignee: string;
+  /** ประเภทงาน (รหัสบริการใน pm-data) — ฝ่ายขายเลือกตอนส่งคำขอ (ผู้ใช้สั่ง 14 ต.ค. 2569) · คำขอเก่าไม่มี */
+  service?: string;
+  /** ตำแหน่งที่รับคำขอ (กติกาเดิมส่งตามประเภทงาน) — เลิกใช้แล้ว คำขอเก่ายังอ่านได้ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  toPos?: string;
+  /** รหัสพนักงานที่รับคำขอ — ฝ่ายขายเลือกตัวคนในช่อง "ส่งให้" คนนั้นเห็นคำขอในคิวงาน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  toEmp?: string;
   due: string;
+  /** ฟอร์มไม่ให้เลือกแล้ว คำขอใหม่เป็น "ปกติ" เสมอ (ผู้ใช้สั่ง 14 ต.ค. 2569) — คำขอเก่าคงค่าเดิม */
   urgency: Urgency;
   /** เหตุผลที่ต้องด่วนมาก — บังคับกรอกเมื่อเลือกด่วนมาก */
   urgentReason: string;
@@ -613,11 +666,11 @@ export const DEMO_OCT_CUSTOMERS: Customer[] = [
   { code: "LEAD-6910-007", name: "สหกรณ์โคนมแม่ออน", contact: "บุญเรือน คำปัน", phone: "053-880-412", email: "coop.maeon@gmail.com", address: "88 ม.3 ต.ออนเหนือ อ.แม่ออน จ.เชียงใหม่ 50130", source: "เว็บไซต์", taxId: "0994000412871", legalName: "สหกรณ์โคนมแม่ออน จำกัด", legalAddress: "88 ม.3 ต.ออนเหนือ อ.แม่ออน จ.เชียงใหม่ 50130", branch: "00000", type: "juristic", status: "รอนัดหมาย", closedReason: "", owner: SALES_NAME },
   { code: "LEAD-6910-006", name: "ฟิตแอนด์เฟิร์มยิม", contact: "ธีรวัฒน์ แสงคำ", phone: "091-447-8820", email: "teerawat@fitfirm.co", address: "21/5 ถ.เชียงใหม่-หางดง ต.ป่าแดด อ.เมือง จ.เชียงใหม่ 50100", source: "แนะนำต่อ", taxId: "1509901122334", type: "individual", status: "รอนัดหมาย", closedReason: "", owner: SALES_NAME },
   { code: "CUS-6910-005", name: "ล้านนาเฮอริเทจรีสอร์ท", contact: "พิมพ์ชนก อินต๊ะ", phone: "053-271-990", email: "sales@lannaheritage.com", address: "199 ม.2 ต.แม่แรม อ.แม่ริม จ.เชียงใหม่ 50180", source: "ออกบูธ", taxId: "0505561004417", legalName: "บริษัท ล้านนาเฮอริเทจรีสอร์ท จำกัด", legalAddress: "199 ม.2 ต.แม่แรม อ.แม่ริม จ.เชียงใหม่ 50180", branch: "00000", type: "juristic", leadCode: "LEAD-6910-005", status: "ปิดงาน", closedReason: "", owner: SALES_NAME },
-  { code: "LEAD-6910-004", name: "กวดวิชาเก่งเลข", contact: "ปวีณา ศรีวงศ์", phone: "086-330-7741", email: "", address: "45/2 ถ.ศรีดอนไชย ต.ช้างคลาน อ.เมือง จ.เชียงใหม่ 50100", source: "โทรเข้า", taxId: "1509901234890", type: "individual", status: "ปฏิเสธ", closedReason: "งบปีนี้ไม่พอ ขอเลื่อนไปต้นปีหน้า", owner: SALES_NAME },
+  { code: "LEAD-6910-004", name: "กวดวิชาเก่งเลข", contact: "ปวีณา ศรีวงศ์", phone: "086-330-7741", email: "", address: "45/2 ถ.ศรีดอนไชย ต.ช้างคลาน อ.เมือง จ.เชียงใหม่ 50100", source: "โทรเข้า", taxId: "1509901234890", type: "individual", status: "ปฏิเสธ", closedReason: "ติดราคา · งบปีนี้ไม่พอ ขอเลื่อนไปต้นปีหน้า", rejectKind: "ติดราคา", rejectNote: "งบปีนี้ไม่พอ ขอเลื่อนไปต้นปีหน้า", owner: SALES_NAME },
   { code: "CUS-6910-003", name: "เชียงใหม่เมดแล็บ", contact: "นพ.ศุภชัย ธรรมวงศ์", phone: "053-224-118", email: "supachai@cmmedlab.co.th", address: "300/8 ถ.ช้างเผือก ต.ช้างเผือก อ.เมือง จ.เชียงใหม่ 50300", source: "เว็บไซต์", taxId: "0505563007712", legalName: "บริษัท เชียงใหม่เมดแล็บ จำกัด", legalAddress: "300/8 ถ.ช้างเผือก ต.ช้างเผือก อ.เมือง จ.เชียงใหม่ 50300", branch: "00000", type: "juristic", leadCode: "LEAD-6910-003", status: "ปิดงาน", closedReason: "", owner: SALES_NAME },
   { code: "LEAD-6910-002", name: "นครพิงค์โฮเทล", contact: "กมลวรรณ ชัยมงคล", phone: "053-418-600", email: "kamonwan@nakornping-hotel.com", address: "77 ถ.ท่าแพ ต.ช้างม่อย อ.เมือง จ.เชียงใหม่ 50300", source: "เว็บไซต์", taxId: "0505560009934", legalName: "บริษัท นครพิงค์โฮเทล จำกัด", legalAddress: "77 ถ.ท่าแพ ต.ช้างม่อย อ.เมือง จ.เชียงใหม่ 50300", branch: "00000", type: "juristic", status: "รอนัดหมาย", closedReason: "", owner: SALES_NAME },
   { code: "LEAD-6910-001", name: "ลานนาคอฟฟี่โรสเตอร์", contact: "ภาณุวัฒน์ ใจเย็น", phone: "098-765-1203", email: "panuwat@lannaroaster.com", address: "15 ซ.นิมมานเหมินท์ 9 ต.สุเทพ อ.เมือง จ.เชียงใหม่ 50200", source: "เฟซบุ๊ก", taxId: "1509901345678", type: "individual", status: "รอนัดหมาย", closedReason: "", owner: SALES_NAME },
-  { code: "LEAD-6909-026", name: "ร้านแว่นตาวิสัยทัศน์", contact: "สมศักดิ์ ตาดี", phone: "089-554-2210", email: "", address: "102 ถ.ราชดำเนิน ต.ศรีภูมิ อ.เมือง จ.เชียงใหม่ 50200", source: "โทรเข้า", taxId: "1509900778899", type: "individual", status: "ปฏิเสธ", closedReason: "ใช้แพลตฟอร์มสำเร็จรูปทำเว็บไซต์เอง", owner: SALES_NAME },
+  { code: "LEAD-6909-026", name: "ร้านแว่นตาวิสัยทัศน์", contact: "สมศักดิ์ ตาดี", phone: "089-554-2210", email: "", address: "102 ถ.ราชดำเนิน ต.ศรีภูมิ อ.เมือง จ.เชียงใหม่ 50200", source: "โทรเข้า", taxId: "1509900778899", type: "individual", status: "ปฏิเสธ", closedReason: "ลูกค้าไม่เอา · ใช้แพลตฟอร์มสำเร็จรูปทำเว็บไซต์เอง", rejectKind: "ลูกค้าไม่เอา", rejectNote: "ใช้แพลตฟอร์มสำเร็จรูปทำเว็บไซต์เอง", owner: SALES_NAME },
   { code: "CUS-6909-024", name: "สมาร์ทโฮมเชียงใหม่", contact: "อภิชาติ วงศ์สวัสดิ์", phone: "081-992-4477", email: "apichat@smarthomecm.co.th", address: "56/1 ถ.มหิดล ต.หนองหอย อ.เมือง จ.เชียงใหม่ 50000", source: "เว็บไซต์", taxId: "0505564001189", legalName: "บริษัท สมาร์ทโฮมเชียงใหม่ จำกัด", legalAddress: "56/1 ถ.มหิดล ต.หนองหอย อ.เมือง จ.เชียงใหม่ 50000", branch: "00000", type: "juristic", leadCode: "LEAD-6909-024", status: "ปิดงาน", closedReason: "", owner: SALES_NAME },
   { code: "LEAD-6909-021", name: "ภูพิงค์พร็อพเพอร์ตี้", contact: "ชลธิชา บุญยืน", phone: "082-331-6654", email: "chonthicha@phuping-property.com", address: "250 ถ.เชียงใหม่-หางดง ต.หนองควาย อ.หางดง จ.เชียงใหม่ 50230", source: "เว็บไซต์", taxId: "0505562008841", legalName: "บริษัท ภูพิงค์พร็อพเพอร์ตี้ จำกัด", legalAddress: "250 ถ.เชียงใหม่-หางดง ต.หนองควาย อ.หางดง จ.เชียงใหม่ 50230", branch: "00000", type: "juristic", status: "รอนัดหมาย", closedReason: "", owner: SALES_NAME },
 ];
@@ -714,4 +767,7 @@ export const ACC_DEMO_QUOTATIONS: Quotation[] = [
   { id: "QA2", no: "MAZ-2569-0053", customerCode: "CUS-6910-005", issuer: "MAZ", buyer: "juristic", service: "dm", issued: "2026-10-02", validDays: 10, validUntil: "2026-10-12", amount: 48000, discount: 0, wht: true, whtPct: 2, body: "<p>แคมเปญโฆษณาช่วงปลายปี</p><ul><li>โฆษณา Facebook 2 เดือน</li></ul>", terms: "ชำระเต็มจำนวนก่อนเริ่มงาน", status: "ส่งแล้ว", revision: 1, createdAt: "2026-10-02", sentAt: "2026-10-02" },
   { id: "QA3", no: "MAZ-2569-0039", customerCode: "CUS-6909-024", issuer: "MAZ", buyer: "juristic", service: "seo", issued: "2026-09-15", validDays: 30, validUntil: "2026-10-15", amount: 36000, discount: 0, wht: true, whtPct: 3, body: "<p>บริการ SEO 3 เดือน</p>", terms: "ชำระรายเดือน", status: "ส่งแล้ว", revision: 1, createdAt: "2026-09-15", sentAt: "2026-09-15", rejectedAt: "2026-09-29", rejectReason: "ลูกค้าขอเลื่อนงบไปปีหน้า" },
   { id: "QA4", no: "MAZ-2569-0037", customerCode: "CUS-6905-007", issuer: "MAZ", buyer: "juristic", service: "website", issued: "2026-08-20", validDays: 30, validUntil: "2026-09-19", amount: 52000, discount: 0, wht: true, whtPct: 3, body: "<p>ระบบสมัครงานออนไลน์</p>", terms: "มัดจำ 50% ก่อนเริ่มงาน", status: "ส่งแล้ว", revision: 1, createdAt: "2026-08-20", sentAt: "2026-08-20" },
+  /* ตัวอย่างใบที่ยังไม่ได้ส่งไปวางบิล (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  { id: "QA5", no: "MAZ-2569-0054", customerCode: "CUS-6910-003", issuer: "MAZ", buyer: "juristic", service: "dataviz", issued: "2026-10-10", validDays: 30, validUntil: "2026-11-09", amount: 64000, discount: 0, wht: true, whtPct: 3, body: "<p>แดชบอร์ดผลตรวจรายเดือน</p><ul><li>เชื่อมข้อมูลจากระบบแล็บ</li></ul>", terms: "มัดจำ 50% ก่อนเริ่มงาน", status: "ส่งแล้ว", revision: 1, createdAt: "2026-10-10", sentAt: "2026-10-10" },
+  { id: "QA6", no: "MAZ-2569-0056", customerCode: "CUS-6906-004", issuer: "MAZ", buyer: "juristic", service: "dm", issued: "2026-10-09", validDays: 7, validUntil: "2026-10-16", amount: 18500, discount: 0, wht: false, whtPct: 0, body: "<p>โปรโมตเมนูใหม่ทางเพจ 1 เดือน</p>", terms: "ชำระเต็มจำนวนก่อนเริ่มงาน", status: "ส่งแล้ว", revision: 1, createdAt: "2026-10-09", sentAt: "2026-10-09" },
 ];

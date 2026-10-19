@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { stackNo } from "@/lib/stack-no";
 import {
   PRESALES_STATUS,
   type PresalesRequest,
@@ -20,7 +21,7 @@ import { thaiDate, thaiStamp, todayIso } from "@/lib/format";
 import { countTemplateUse, useTemplates } from "@/lib/presales-templates";
 import {
   addPsAsk,
-  PS_ME as ME,
+  psActorName,
   psBucket as bucket,
   psKindText,
   psMine as mine,
@@ -35,6 +36,7 @@ import { PaperclipIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { SearchBox } from "./sales-ui";
+import { useNameOf } from "@/lib/emp-name";
 
 /*
  * งานก่อนการขายของ SA และ BD — ตามต้นแบบ presales-work.html (บทบาท ps)
@@ -86,7 +88,8 @@ export function PresalesWorkPage() {
      ตรงกับคำขอของเราพอดี → ไปแท็บของงานนั้นแล้วเปิดหน้าต่างงานเลย (ต้นแบบ ?no=) */
   const find = useFindParam();
   const linked = find ? crm.presales.find((r) => r.no === find && inScope(r)) : undefined;
-  const [query, setQuery] = useState(find);
+  /* ไม่ใส่เลขที่ลงช่องค้นหา — เปิดหน้าต่างงานให้แทน (ผู้ใช้สั่ง 14 ต.ค. 2569) */
+  const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>(() => (linked ? bucket(linked) : "todo"));
   const [open, setOpen] = useState<string | null>(() => linked?.no ?? null);
   /* ปุ่มขอข้อมูลเพิ่ม / ส่งงานอยู่ในตาราง (ผู้ใช้สั่ง 5 ต.ค. 2569) — กดแล้วเปิดตรงฟอร์มนั้นเลย
@@ -134,6 +137,12 @@ export function PresalesWorkPage() {
 
   const nameOf = useMemo(() => new Map(crm.customers.map((c) => [c.code, c.name])), [crm.customers]);
 
+  /*
+   * ลำดับแบบกองซ้อน — นับจากงานทั้งหมดของเราก่อนแยกแท็บ/ค้นหา ตามวันที่ส่งคำขอ (ผู้ใช้สั่ง 12 ต.ค. 2569)
+   * ตารางยังเรียงตามวันส่งงานเหมือนเดิม เลขจึงไม่ได้เรียงจากมากไปน้อยเสมอ
+   */
+  const noOf = stackNo(crm.presales.filter(inScope), (r) => r.createdAt, (r) => r.id);
+
   const listOf = (t: Tab) => {
     const q = query.trim().toLowerCase();
     return crm.presales
@@ -155,7 +164,7 @@ export function PresalesWorkPage() {
           <p>พบ {rows.length} รายการ</p>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
-          <SearchBox value={query} onChange={setQuery} placeholder="ค้นหาเลขที่ใบงาน ผู้สนใจ หรือโจทย์" />
+          <SearchBox value={query} onChange={setQuery} placeholder="ค้นหาผู้สนใจ หรือโจทย์" />
         </div>
       </div>
       <ReadOnlyNote owner="ทีมก่อนการขาย" />
@@ -192,14 +201,14 @@ export function PresalesWorkPage() {
                   >
                     <span className="flex items-start justify-between gap-2.5">
                       <b className="min-w-0 text-[14.5px] font-semibold">
-                        {nameOf.get(r.customerCode) ?? r.customerCode}
+                        {nameOf.get(r.customerCode) ?? "—"}
                       </b>
                       <span className="flex shrink-0 items-center gap-1.5">
                         <KindTag kind={r.kind} />
                         <StatusTag status={r.status} />
                       </span>
                     </span>
-                    <span className="num mt-0.5 block text-[12px] text-muted-foreground">{r.no}</span>
+                    <span className="num mt-0.5 block text-[12px] text-muted-foreground">#{noOf.get(r.id)}</span>
                     <span className="mt-1.5 line-clamp-2 block text-[13px] text-muted-foreground">{r.problem}</span>
                     <span className="mt-2 flex items-center justify-between gap-2.5 text-[12.5px]">
                       <span className="font-semibold text-muted-foreground">{r.urgency}</span>
@@ -219,7 +228,7 @@ export function PresalesWorkPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th style={{ width: 136 }}>เลขที่ใบงาน</th>
+                <th className="c" style={{ width: 60 }}>ลำดับ</th>
                 <th className="max-[1000px]:hidden" style={{ width: 78 }}>
                   ประเภท
                 </th>
@@ -258,12 +267,12 @@ export function PresalesWorkPage() {
                         }
                       }}
                     >
-                      <td className="num">{r.no}</td>
+                      <td className="c num muted">{noOf.get(r.id)}</td>
                       <td className="max-[1000px]:hidden">
                         <KindTag kind={r.kind} />
                       </td>
                       <td className="min-w-[220px]">
-                        <b className="font-semibold">{nameOf.get(r.customerCode) ?? r.customerCode}</b>
+                        <b className="font-semibold">{nameOf.get(r.customerCode) ?? "—"}</b>
                         <span className="why">{r.problem}</span>
                         {/* ผู้รับผิดชอบดูได้ในหน้าต่างรายละเอียด — ตารางมีแค่ผู้สนใจกับโจทย์ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                         {/* จอแคบซ่อนคอลัมน์ความเร่งด่วนและสถานะ แล้วแสดงเป็นบรรทัดเล็กใต้ชื่อแทน ชื่อจะได้ไม่ถูกบีบ */}
@@ -291,7 +300,7 @@ export function PresalesWorkPage() {
           key={`${current.no}-${startForm ?? "view"}`}
           request={current}
           start={startForm}
-          customerName={nameOf.get(current.customerCode) ?? current.customerCode}
+          customerName={nameOf.get(current.customerCode) ?? "—"}
           onClose={() => setOpen(null)}
           onMoved={(t, keepOpen) => {
             /* งานสำเร็จแล้วต้องไม่หายไปเฉย ๆ — สลับไปแท็บของขั้นใหม่เสมอ
@@ -355,7 +364,7 @@ function WorkDialog({
     /* รายการที่มาจากคลังเทมเพลตมี id ขึ้นต้น tpl: — นับการใช้ให้เทมเพลตนั้น */
     countTemplateUse(files.filter((f) => f.id.startsWith("tpl:")).map((f) => f.id.split(":")[1]));
     submitPresalesRound(r.no, {
-      by: ME.name,
+      by: psActorName(),
       hours: h > 0 ? h : 0,
       note: note.trim() || "—",
       /* รายการแรกเป็นตัวแทนของรอบ — ลิงก์ใช้ชนิด canva เพราะหน้าอื่นเปิดเป็นลิงก์ได้ */
@@ -381,7 +390,7 @@ function WorkDialog({
 
   return (
     <Sheet
-      title={form === "send" ? `ส่งงาน · ${customerName}` : form === "ask" ? `ขอข้อมูลเพิ่ม · ${customerName}` : `${r.no} · ${customerName}`}
+      title={form === "send" ? `ส่งงาน · ${customerName}` : form === "ask" ? `ขอข้อมูลเพิ่ม · ${customerName}` : customerName}
       onClose={onClose}
       footer={
         /* GM เปิดดูได้อย่างเดียว ปุ่มรับงาน/ขอข้อมูลเพิ่ม/ส่งงาน จึงไม่มี */
@@ -394,7 +403,7 @@ function WorkDialog({
             type="button"
             className="btn solid btn-solid flex-1 justify-center sm:flex-none"
             onClick={() => {
-              acceptPresales(r.no, ME.name);
+              acceptPresales(r.no, psActorName());
               setTook(true);
               /* รับแล้วงานหายจากแท็บที่ยืนอยู่ — พาไปแท็บ "กำลังทำ" พร้อมคาใบเดิมไว้ตรงหน้า
                  หน้าต่างนี้จะกลายเป็นชุดปุ่มของขั้นถัดไป (ขอข้อมูลเพิ่ม / ส่งงาน) ทันที */
@@ -434,7 +443,7 @@ function WorkDialog({
           role="status"
           className="mb-3.5 rounded-[11px] bg-[var(--success-soft)] px-3.5 py-3 text-[12.5px] leading-relaxed font-semibold text-[var(--success)]"
         >
-          รับงาน {r.no} แล้ว
+          รับงานนี้แล้ว
         </p>
       )}
 
@@ -610,6 +619,7 @@ function WorkDialog({
  * ไม่มีชื่อกับเวลาแล้วอ่านไม่ออกว่าใครถามและถามไว้นานแค่ไหน
  */
 export function PsThread({ notes }: { notes: PsNote[] }) {
+  const empName = useNameOf();
   if (notes.length === 0) return null;
   return (
     <section className="mt-[18px]">
@@ -625,7 +635,7 @@ export function PsThread({ notes }: { notes: PsNote[] }) {
             }`}
           >
             <p className="flex flex-wrap items-baseline gap-x-2 text-[11.5px] text-muted-foreground">
-              <b className="font-semibold text-foreground">{n.by}</b>
+              <b className="font-semibold text-foreground">{empName(n.by)}</b>
               <span>{n.side === "ps" ? "ขอข้อมูลเพิ่ม" : "ตอบข้อมูล"}</span>
               {n.at && <span className="num">{thaiStamp(n.at)} น.</span>}
             </p>

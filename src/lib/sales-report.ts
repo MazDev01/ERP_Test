@@ -6,6 +6,7 @@
 
 import { quotationTotals, quotationValidUntil, type CustomerStatus } from "./crm-data";
 import type { CrmState } from "./crm-store";
+import { nameOf as empNameOf } from "./emp-name";
 import { parseIsoDate, TH_MONTHS_FULL, TH_MONTHS_SHORT, toIsoDate } from "./format";
 
 export type RangeKey = "m" | "q" | "y";
@@ -219,7 +220,7 @@ export function buildReport(crm: CrmState, key: RangeKey, today: Date) {
   const nameOf = new Map(crm.customers.map((c) => [c.code, c.name]));
   /* เก็บรหัสลูกค้าไว้ด้วย จะได้กดจากอันดับไปหน้าลูกค้าได้ */
   const rank: RankRow[] = [...byCustomer.entries()]
-    .map(([code, value]) => ({ code, name: nameOf.get(code) ?? code, value }))
+    .map(([code, value]) => ({ code, name: nameOf.get(code) ?? "—", value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
@@ -301,7 +302,7 @@ export function buildAgenda(crm: CrmState): AgendaEvent[] {
       id: `f-${a.id}`,
       date: a.followUp,
       type: "follow",
-      title: `นัดติดตาม ${nameOf.get(a.customerCode) ?? a.customerCode}`,
+      title: `นัดติดตาม ${nameOf.get(a.customerCode) ?? "—"}`,
       detail: a.nextAction || a.summary,
       href: `/leads/${a.customerCode}`,
     });
@@ -313,9 +314,9 @@ export function buildAgenda(crm: CrmState): AgendaEvent[] {
       id: `p-${p.id}`,
       date: p.due,
       type: "presale",
-      title: `คำขอ ${p.no} ครบกำหนด`,
+      title: `คำขอข้อเสนอ ${nameOf.get(p.customerCode) ?? ""} ครบกำหนด`,
       /* "SA ปิยะวัฒน์" — ประเภทงานกับชื่อผู้รับผิดชอบ ไม่เอาวงเล็บตำแหน่งซ้ำ */
-      detail: `${p.kind} ${p.assignee.replace(/\s*\(.*\)$/, "")}`,
+      detail: `${p.kind} ${empNameOf(p.assignee.replace(/\s*\(.*\)$/, ""))}`,
       href: `/presales?find=${encodeURIComponent(p.no)}`,
     });
   }
@@ -329,7 +330,7 @@ export function buildAgenda(crm: CrmState): AgendaEvent[] {
       date: quotationValidUntil(q),
       type: "quote",
       title: `ใบเสนอราคา ${q.no} หมดอายุ`,
-      detail: `${nameOf.get(q.customerCode) ?? q.customerCode} ${quotationTotals(q).grand.toLocaleString("th-TH")} บาท`,
+      detail: `${nameOf.get(q.customerCode) ?? "—"} ${quotationTotals(q).grand.toLocaleString("th-TH")} บาท`,
       href: `/quotations/${encodeURIComponent(q.no)}`,
     });
   }

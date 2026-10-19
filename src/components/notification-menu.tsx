@@ -11,6 +11,8 @@ import {
   subscribeRecords,
 } from "@/lib/attendance-store";
 import { useCrm } from "@/lib/crm-store";
+import { useContracts } from "@/lib/contract-store";
+import { CURRENT_USER } from "@/lib/mock-data";
 import { useExpenseClaims } from "@/lib/expense-store";
 import { useLeaveRecords } from "@/lib/leave-store";
 import { markAllRead, markRead, useReadNotices } from "@/lib/notification-store";
@@ -21,15 +23,15 @@ import { usePm } from "@/lib/pm-store";
 import { useClientReviews } from "@/lib/client-review-store";
 import { useSchedule } from "@/lib/pm-schedule-store";
 import { useHr } from "@/lib/hr-store";
+import { useSystemSettings } from "@/lib/system-settings";
 import { useAdminLog } from "@/lib/admin-log";
 import { useProfile } from "@/lib/profile-data";
 import { approvesFor, useApprovalRoute, useRole } from "@/lib/role";
-import { useMyRoles } from "@/lib/hr-link";
+import { useHrTime, useMyRoles, usePunchTimes } from "@/lib/hr-link";
 import { useEmpRequests } from "@/lib/emp-requests";
 import { useAllLeave } from "@/lib/leave-store";
 import { useAllOt } from "@/lib/ot-store";
 import { useAllClaims } from "@/lib/expense-store";
-import { popupOn, useNotifySettings } from "@/lib/notify-settings";
 import { useOtRecords } from "@/lib/ot-store";
 import {
   BellIcon,
@@ -41,14 +43,23 @@ import {
   FileIcon,
 } from "./icons";
 
-export function NotificationMenu({ variant = "top" }: { variant?: "top" | "bar" }) {
+export function NotificationMenu({
+  variant = "top",
+  icon,
+}: {
+  variant?: "top" | "bar";
+  /** ไอคอนกระดิ่งแทนตัวตั้งต้น — หน้าหลักมือถือของบัญชีใช้เส้นตามต้นแบบ (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  icon?: React.ReactNode;
+}) {
   /* "bar" = ปุ่มในแถบล่างบนมือถือ — กล่องยังคลี่จากขอบบนเหมือนเดิม เพราะกล่องยาว */
   const bar = variant === "bar";
   const crm = useCrm();
+  /* ใบสัญญาที่ออกแล้ว — แจ้งพนักงานขายเจ้าของดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+  const contracts = useContracts();
   const hr = useHr();
   const adminLog = useAdminLog();
   const me = useProfile();
-  const notify = useNotifySettings();
+  const sys = useSystemSettings();
   const leaves = useLeaveRecords();
   const ot = useOtRecords();
   const punches = useSyncExternalStore(
@@ -70,6 +81,9 @@ export function NotificationMenu({ variant = "top" }: { variant?: "top" | "bar" 
   const allOt = useAllOt();
   const allClaims = useAllClaims();
   const extra = useEmpRequests();
+  /* เวลาทำงานและเวลาตอกบัตรของทุกคน — ฝ่ายบุคคลใช้หารายการที่ต้องตรวจ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+  const hrTime = useHrTime();
+  const punchTimes = usePunchTimes();
 
   /* คำขอที่ยังไม่ได้ตัดสิน — นับเฉพาะประเภทและบทบาทที่เราเป็นผู้อนุมัติ
      รวมคำขอของทีมงานที่ยังไม่มีบัญชีเข้าระบบ (emp-requests) ที่ส่งถึง PM / GM ด้วย
@@ -90,8 +104,10 @@ export function NotificationMenu({ variant = "top" }: { variant?: "top" | "bar" 
         else sum += allClaims[from].filter((v) => v.status === "รออนุมัติ").length;
       }
     /* คิวของทีมงานที่ยังไม่มีบัญชีเข้าระบบมีเฉพาะสองบทบาทนี้ (emp-requests.to) */
-    const queues = myRoles.filter((r): r is "pm" | "gm" => r === "pm" || r === "gm");
-    return sum + extra.filter((r) => r.to !== "exec" && queues.includes(r.to) && r.status === "pending").length;
+    const queues: ("pm" | "gm" | "exec")[] = myRoles.filter((r): r is "pm" | "gm" => r === "pm" || r === "gm");
+    /* โอทีของ SA/Dev ที่ยังไม่มีบัญชีขึ้นถึง CEO (to = exec) — นับเข้าคิวของ CEO ตรงกับหน้า /ceo/approvals (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+    if (myRoles.includes("ceo")) queues.push("exec");
+    return sum + extra.filter((r) => queues.includes(r.to) && r.status === "pending").length;
   }, [myRoles, route, allLeaves, allOt, allClaims, extra]);
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -121,12 +137,23 @@ export function NotificationMenu({ variant = "top" }: { variant?: "top" | "bar" 
         /* นัดหมายของทั้งระบบ — ในนี้กรองเฉพาะใบที่มีชื่อเราเป็นผู้เข้าร่วม */
         events: sched.events,
         reviews: clientReviews.rounds,
+        /* คำขอแก้วันหยุดที่ส่ง CEO (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+        holidayReq: sys.holidayReq,
+        /* ใบสัญญาที่ออกแล้ว — ถึงพนักงานขายที่ดูแลดีล (ผู้ใช้สั่ง 15 ต.ค. 2569) */
+        contracts,
+        meName: CURRENT_USER.name,
+        hrTime,
+        punchTimes,
       })
-        // เรื่องที่ปิดไว้ในหน้าตั้งค่าแจ้งเตือน ไม่ต้องขึ้นกระดิ่ง
-        .filter((n) => !n.event || popupOn(notify, n.event))
+        /* กระดิ่งบันทึกทุกเรื่องเสมอ ไม่ขึ้นกับสิทธิ์แจ้งเตือนหรือค่าตั้งรายเรื่อง (ผู้ใช้สั่ง 16 ต.ค. 2569) */
         // เมนูที่ผู้ดูแลระบบปิดไว้ ไม่ต้องเตือนเรื่องของหน้านั้น กดไปก็เข้าไม่ได้
-        .filter((n) => canVisitAny(n.href.split("?")[0], myRoles, access, route)),
-    [crm, pm, acc, hr, leaves, ot, punches, claims, notify, role, myRoles, approvals, me.employeeId, access, route, adminLog, extra, sched.events, clientReviews.rounds],
+        // คำขอทำข้อเสนอที่ส่งถึงตัวเราแม้ไม่ได้อยู่ทีมก่อนการขาย — เมนู "ของฉัน" มีคิวงานให้อยู่แล้ว (ผู้ใช้สั่ง 15 ต.ค. 2569)
+        .filter(
+          (n) =>
+            canVisitAny(n.href.split("?")[0], myRoles, access, route) ||
+            (n.id.startsWith("psto-") && n.href.split("?")[0] === "/presales-work"),
+        ),
+    [sys.holidayReq, contracts, crm, pm, acc, hr, leaves, ot, punches, claims, role, myRoles, approvals, me.employeeId, access, route, adminLog, extra, sched.events, clientReviews.rounds, hrTime, punchTimes],
   );
 
   const unread = notices.filter((n) => !read.includes(n.id));
@@ -173,7 +200,7 @@ export function NotificationMenu({ variant = "top" }: { variant?: "top" | "bar" 
           </>
         ) : (
           <>
-            <BellIcon className="size-[18px]" />
+            {icon ?? <BellIcon className="size-[18px]" />}
             {unread.length > 0 && (
               <span className="num absolute -top-1.5 -right-1.5 grid min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
                 {unread.length}

@@ -25,7 +25,8 @@ import {
 } from "@/lib/attendance-store";
 import { leavesOnDate, useLeaveRecords } from "@/lib/leave-store";
 import { OT_MIN_HOURS } from "./ot-actual-fields";
-import { minutesOfDay, minutesOfTime, WORK_SCHEDULE } from "@/lib/work-schedule";
+import { companySchedule, minutesOfDay, minutesOfTime, type DaySchedule } from "@/lib/work-schedule";
+import { useMySchedule } from "@/lib/hr-link";
 import {
   CalendarIcon,
   ChevronDownIcon,
@@ -35,7 +36,8 @@ import {
 } from "./icons";
 
 /** วันทำงานเริ่มโอทีได้ 19:00 (หลังพักกินข้าว) ไม่ใช่ 18:00 ที่เพิ่งเลิกงาน */
-const otStart = () => minutesOfDay(WORK_SCHEDULE.otStart);
+/* เริ่มโอทีตามเวลาเลิกงานของคนที่ขอ — แม่บ้าน 18:00 (ผู้ใช้สั่ง 16 ต.ค. 2569) */
+const otStart = (sch: DaySchedule) => minutesOfDay(sch.otStart);
 const DAY_END = 24 * 60;
 const MIN_STEP = 15;
 
@@ -45,11 +47,11 @@ const TH_MONTHS_SHORT = [
 ];
 
 /** วันทำงานเริ่มโอทีได้หลังพักกินข้าว · วันหยุดทำได้ทั้งวัน */
-function boundsOf(iso: string) {
-  if (!iso) return { lo: otStart(), hi: DAY_END };
+function boundsOf(iso: string, sch: DaySchedule = companySchedule()) {
+  if (!iso) return { lo: otStart(sch), hi: DAY_END };
   return isOffDayKind(otKindOf(iso))
     ? { lo: 0, hi: DAY_END }
-    : { lo: otStart(), hi: DAY_END };
+    : { lo: otStart(sch), hi: DAY_END };
 }
 
 export function OtDialog({
@@ -67,6 +69,7 @@ export function OtDialog({
   /* เปิดกล่องได้หลัง hydrate เท่านั้น — ถ้าใช้ typeof document เซิร์ฟเวอร์จะวาดว่าง แต่เบราว์เซอร์วาดกล่อง
      ตอนที่กล่องเปิดมาตั้งแต่แรก (เช่นลิงก์ ?new=1) React จะฟ้อง hydration ไม่ตรงกัน */
   const hydrated = useHydrated();
+  const sch = useMySchedule();
   // กล่องนี้เปิดจากการกดปุ่มเท่านั้น จึงอ่านวันที่ตอน render ได้ ไม่ชนกับ SSR
   const today = useMemo(() => toIso(bkkNow()), []);
   const punches = useSyncExternalStore(
@@ -80,7 +83,7 @@ export function OtDialog({
   /*
    * ขอทีเดียวหลายวันได้ (เจ้าของถาม 25 ก.ย. 2569 — เสาร์+อาทิตย์)
    * ว่าง = วันเดียว · เลือกถึงวันที่แล้วระบบออกใบแยกทีละวัน
-   * ไม่รวมเป็นใบเดียว เพราะแต่ละวันเรตไม่เท่ากัน (เสาร์ 2 เท่า · วันหยุดบริษัท 3 เท่า)
+   * ไม่รวมเป็นใบเดียว เพราะแต่ละวันเรตไม่เท่ากัน (เสาร์/วันหยุดบริษัท 2 เท่า · วันแรงงาน 3 เท่า — ผู้ใช้สั่ง 13 ต.ค. 2569)
    * และผู้อนุมัติต้องตัดสินได้ทีละวัน
    */
   const [dateTo, setDateTo] = useState("");
@@ -90,8 +93,8 @@ export function OtDialog({
    * เก็บแยกตามวัน ไม่ใช่ตามลำดับ เปลี่ยนช่วงวันแล้วเวลาที่แก้ไว้จึงไม่เลื่อนตาม
    */
   const [dayTime, setDayTime] = useState<Record<string, { s: number; e: number }>>({});
-  const [startMin, setStartMin] = useState(() => boundsOf(start).lo);
-  const [endMin, setEndMin] = useState(() => boundsOf(start).lo + 60);
+  const [startMin, setStartMin] = useState(() => boundsOf(start, sch).lo);
+  const [endMin, setEndMin] = useState(() => boundsOf(start, sch).lo + 60);
   const [reason, setReason] = useState("");
 
   useEffect(() => {
@@ -123,15 +126,15 @@ export function OtDialog({
   const timeOf = (d: string) => dayTime[d] ?? { s: startMin, e: endMin };
   const setTimeOf = (d: string, patch: { s?: number; e?: number }) =>
     setDayTime((m) => ({ ...m, [d]: { ...timeOf(d), ...patch } }));
-  const totalHours = days.reduce((a, d) => a + otHours(timeOf(d).s, timeOf(d).e), 0);
+  const totalHours = days.reduce((a, d) => a + otHours(timeOf(d).s, timeOf(d).e, d, sch), 0);
 
   /* ช่วงเวลาที่เลือกได้ — มีวันทำงานอยู่ในช่วงด้วย ต้องเริ่มหลังเลิกงานตามกติกาของวันทำงาน */
   const bounds = days.some((d) => !isOffDayKind(otKindOf(d)))
-    ? { lo: boundsOf("x").lo, hi: DAY_END }
-    : boundsOf(date);
+    ? { lo: boundsOf("x", sch).lo, hi: DAY_END }
+    : boundsOf(date, sch);
   const kind = date ? otKindOf(date) : null;
-  const hours = otHours(startMin, endMin);
-  const breakMin = endMin > startMin ? breakMinutesIn(startMin, endMin) : 0;
+  const hours = otHours(startMin, endMin, date, sch);
+  const breakMin = endMin > startMin ? breakMinutesIn(startMin, endMin, date, sch) : 0;
 
   /* ใบที่ทับกันของแต่ละวันในช่วง — ขอหลายวันพร้อมกันก็ต้องตรวจครบทุกวัน */
   const overlaps = useMemo(
@@ -157,21 +160,21 @@ export function OtDialog({
     /* ตรวจทีละวันด้วยเวลาของวันนั้นเอง — แต่ละวันตั้งเวลาต่างกันได้ */
     for (const d of days) {
       const { s: ds, e: de } = timeOf(d);
-      const bd = boundsOf(d);
+      const bd = boundsOf(d, sch);
       const tag = multi ? `${thaiDate(d)} · ` : "";
       if (de <= ds) problems.push(`${tag}เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม`);
       if (ds < bd.lo || de > bd.hi)
         problems.push(
           `${tag}วัน${isOffDayKind(otKindOf(d)) ? "หยุด" : "ทำงาน"}ขอโอทีได้ช่วง ${hhmm(bd.lo)}–${hhmm(bd.hi)} น.`,
         );
-      const h = otHours(ds, de);
+      const h = otHours(ds, de, d, sch);
       if (de > ds && h === 0) problems.push(`${tag}ช่วงที่เลือกตกอยู่ในเวลาพักทั้งหมด ไม่นับเป็นโอที`);
       if (h > 0 && h < OT_MIN_HOURS)
         problems.push(`${tag}โอทีขั้นต่ำ ${OT_MIN_HOURS.toFixed(2)} ชั่วโมง — ช่วงที่เลือกได้ ${h.toFixed(2)} ชั่วโมง`);
     }
     for (const o of overlaps)
       problems.push(
-        `${multi ? `${thaiDate(o.day)} ` : ""}ทับกับคำขอ ${o.hit!.id} (${hhmm(o.hit!.startMin)}–${hhmm(o.hit!.endMin)} น.) ที่ยื่นไว้แล้ว`,
+        `${multi ? `${thaiDate(o.day)} ` : ""}ทับกับคำขอโอทีช่วง ${hhmm(o.hit!.startMin)}–${hhmm(o.hit!.endMin)} น. ที่ยื่นไว้แล้ว`,
       );
     /*
      * โอทีวันหยุดต้องยื่นล่วงหน้า (เจ้าของแจ้ง 25 ก.ย. 2569 — เสาร์-อาทิตย์ขอตั้งแต่วันศุกร์)
@@ -213,7 +216,7 @@ export function OtDialog({
     /* ออกใบแยกทีละวัน — เรตของแต่ละวันไม่เท่ากัน และผู้อนุมัติต้องตัดสินได้ทีละวัน */
     for (const d of days) {
       const { s, e } = timeOf(d);
-      addOtRequest({ date: d, startMin: s, endMin: e, hours: otHours(s, e), reason: reason.trim() });
+      addOtRequest({ date: d, startMin: s, endMin: e, hours: otHours(s, e, d, sch), reason: reason.trim() });
     }
     onSubmitted(totalHours, date);
     onClose();
@@ -249,7 +252,7 @@ export function OtDialog({
             quick={[{ label: "วันนี้", iso: today }]}
             onChange={(iso) => {
               setDate(iso);
-              const b = boundsOf(iso);
+              const b = boundsOf(iso, sch);
               setStartMin((v) => Math.min(Math.max(v, b.lo), b.hi - 15));
               setEndMin((v) => Math.min(Math.max(v, b.lo + 60), b.hi));
             }}
@@ -301,20 +304,20 @@ export function OtDialog({
                       {thaiDate(d)}
                       <em className="ml-1.5 font-normal text-muted-foreground not-italic">
                         โอที{OT_KIND[otKindOf(d)].label} {OT_KIND[otKindOf(d)].rate} เท่า ·{" "}
-                        {otHours(timeOf(d).s, timeOf(d).e).toFixed(2)} ชม.
+                        {otHours(timeOf(d).s, timeOf(d).e, d, sch).toFixed(2)} ชม.
                       </em>
                     </p>
                     <div className="grid gap-2.5 sm:grid-cols-2">
                       <TimeField
                         label="เริ่ม"
                         value={timeOf(d).s}
-                        bounds={boundsOf(d)}
+                        bounds={boundsOf(d, sch)}
                         onChange={(v) => setTimeOf(d, { s: v })}
                       />
                       <TimeField
                         label="ถึง"
                         value={timeOf(d).e}
-                        bounds={boundsOf(d)}
+                        bounds={boundsOf(d, sch)}
                         onChange={(v) => setTimeOf(d, { e: v })}
                       />
                     </div>
