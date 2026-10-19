@@ -667,7 +667,6 @@ function matchIn(items: NavItem[], pathname: string) {
 /* เลขที่เอกสารและประวัติการตั้งค่าเป็นแท็บในตั้งค่าระบบแล้ว (ผู้ใช้สั่ง 13 ต.ค. 2569) */
 const MOVED: Record<string, string> = {
   "/admin/roles": "/admin/settings",
-  "/admin/doc-numbers": "/admin/settings",
   "/admin/log": "/admin/settings",
   "/acc/receipts": "/acc/billing",
 };
