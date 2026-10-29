@@ -15,7 +15,7 @@
 import { useMemo } from "react";
 import { empReqLeaveHours, useEmpRequests } from "./emp-requests";
 import { fmtLeaveHours, leaveHoursOf } from "./leave-data";
-import { fuelAmount } from "./expense-data";
+import { CLAIM_TYPE_LABEL, fuelAmount, keyOf } from "./expense-data";
 import { useAllClaims } from "./expense-store";
 import { addDays, thaiMonth } from "./format";
 import { HR_LEAVE_LABEL, ROLE_EMPLOYEE, leaveRowHours } from "./hr-data";
@@ -155,7 +155,7 @@ export function useGmPending(): GmPending[] {
       if (kind === "expense")
         for (const v of claims[from])
           if (v.status === "รออนุมัติ")
-            out.push({ key: `ex-${from}-${v.month}`, kind, name, what: `ค่าน้ำมัน ${thaiMonth(v.month)}`, at: v.submittedAt || `${v.month}-01 00:00` });
+            out.push({ key: `ex-${from}-${keyOf(v)}`, kind, name, what: `${CLAIM_TYPE_LABEL[v.type]} ${thaiMonth(v.month)}`, at: v.submittedAt || `${v.month}-01 00:00` });
     }
     const nameOf = new Map(hr.emp.map((e) => [e.id, displayName(e)]));
     for (const r of extra) {

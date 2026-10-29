@@ -6,21 +6,25 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CLAIM_STATUS,
+  CLAIM_TYPE_LABEL,
+  TRAVEL_KIND,
   checkClaim,
+  claimKey,
   claimTotal,
   fuelRate,
   fuelAmount,
   fuelRowMiss,
   fuelTotal,
-  fuelRowsOf,
+  isFuelType,
+  keyOf,
   otherRowProblem,
   otherTotal,
   isLocked,
-  plateOf,
-  vehiclesIn,
+  parseClaimKey,
   VEHICLES,
   VEHICLE_LABEL,
   type ClaimStatus,
+  type ClaimType,
   type ExpenseClaim,
   type FuelMiss,
   type FuelRow,
@@ -72,15 +76,19 @@ import { stackNo } from "@/lib/stack-no";
  * ค่าคอมมิชชั่นคิดในเงินเดือนที่ฝ่ายบุคคลคำนวณจากดีลจริงแล้ว (payroll_line) ไม่ได้เบิกผ่านใบนี้ — กันได้ซ้ำสองทาง
  */
 
-/* หน้าแรกเป็นรายการใบเบิกที่ยื่นแล้ว กดดูรายละเอียดทีละใบ ฟอร์มเปิดจากปุ่มขอเบิก (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+/* หน้าแรกเป็นรายการใบเบิกที่ยื่นแล้ว กดดูรายละเอียดทีละใบ ฟอร์มเปิดจากปุ่มขอเบิก (ผู้ใช้สั่ง 9 ต.ค. 2569)
+   ck = กุญแจของใบ (เดือน + ประเภท) — หนึ่งใบหนึ่งประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 type Screen =
   | { kind: "list" }
-  | { kind: "view"; month: string }
-  | { kind: "form"; month: string; pick?: Pick };
+  | { kind: "view"; ck: string }
+  | { kind: "form"; ck: string; pick?: Pick };
 
 /* ประเภทที่เลือกก่อนเปิดฟอร์ม → ฟอร์มเดิม (ค่าน้ำมัน / ค่าใช้จ่ายอื่นพร้อมประเภท) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 /* vehicle — ค่าน้ำมันรถต้องเลือกรถยนต์/มอเตอร์ไซค์ต่อ เพราะคิดคนละอัตรา (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 type Pick = { key: "travel" | "fuel" | "other"; label: string; t: MType; kind: string; vehicle?: Vehicle };
+
+/** ประเภทใบเบิกของตัวเลือก — เลือกแล้วเปิดใบของประเภทนั้นในเดือนนั้น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+const pickType = (p: Pick): ClaimType => (p.key === "fuel" ? p.vehicle ?? "car" : p.key);
 
 /** ประเภทค่าน้ำมันของรถชนิดนั้น — ไปต่อที่ฟอร์มของรถคันนั้นเลย */
 const fuelPick = (p: Pick, v: Vehicle): Pick => ({ ...p, vehicle: v, label: `ค่าน้ำมัน${VEHICLE_LABEL[v]}` });
@@ -108,8 +116,8 @@ function PickDialog({ onPick, onClose }: { onPick: (p: Pick) => void; onClose: (
   const picks = usePicks();
   /* กดค่าน้ำมันรถ → เลือกรถยนต์/มอเตอร์ไซค์ต่อในกล่องเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   const [fuel, setFuel] = useState<Pick | null>(null);
-  const opts: { key: string; label: string; t: MType; go: () => void }[] = fuel
-    ? VEHICLES.map((v) => ({ key: v, label: VEHICLE_LABEL[v], t: "fuel", go: () => onPick(fuelPick(fuel, v)) }))
+  const opts: { key: string; label: string; t: MType; vehicle?: string; go: () => void }[] = fuel
+    ? VEHICLES.map((v) => ({ key: v, label: VEHICLE_LABEL[v], t: "fuel", vehicle: v, go: () => onPick(fuelPick(fuel, v)) }))
     : picks.map((p) => ({ key: p.key, label: p.label, t: p.t, go: () => (p.t === "fuel" ? setFuel(p) : onPick(p)) }));
   return (
     <Sheet
@@ -136,7 +144,7 @@ function PickDialog({ onPick, onClose }: { onPick: (p: Pick) => void; onClose: (
                 className="flex shrink-0 items-center justify-center rounded-full"
                 style={{ width: 38, height: 38, background: ty.bg, color: ty.fg }}
               >
-                <MSvg size={19}>{ty.ico}</MSvg>
+                <MSvg size={19}>{icoOf(p.t, p.vehicle)}</MSvg>
               </span>
               <span className="flex-1">{p.label}</span>
               <ChevronRightIcon className="size-4 text-muted-foreground" strokeWidth={2.2} />
@@ -172,14 +180,7 @@ function roundsOf(claims: ExpenseClaim[]) {
  * นับจากทุกรอบที่ยื่นแล้วก่อนกรองแท็บ เลขจึงไม่เปลี่ยนเมื่อยื่นใบใหม่ (ผู้ใช้สั่ง 12 ต.ค. 2569)
  */
 function roundNos(rounds: ExpenseClaim[]) {
-  return stackNo(rounds, (c) => c.submittedAt || c.month, (c) => c.month);
-}
-
-/** ประเภทในใบ เช่น "ค่าน้ำมันรถยนต์ · ค่าใช้จ่ายอื่น" — ค่าน้ำมันบอกชนิดรถ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-function typesOf(c: ExpenseClaim) {
-  return [...vehiclesIn(c.fuel).map((v) => `ค่าน้ำมัน${VEHICLE_LABEL[v]}`), c.other?.length ? "ค่าใช้จ่ายอื่น" : ""]
-    .filter(Boolean)
-    .join(" · ");
+  return stackNo(rounds, (c) => c.submittedAt || c.month, (c) => keyOf(c));
 }
 
 export function ExpensePage() {
@@ -205,25 +206,26 @@ export function ExpensePage() {
       {screen.kind === "list" && (
         <ClaimList
           flash={flash}
-          onOpen={(month) => setScreen({ kind: "view", month })}
-          onNew={(pick) => setScreen({ kind: "form", month: monthKey(bkkNow()), pick })}
+          onOpen={(ck) => setScreen({ kind: "view", ck })}
+          onNew={(pick) => setScreen({ kind: "form", ck: claimKey(monthKey(bkkNow()), pickType(pick)), pick })}
         />
       )}
       {screen.kind === "view" && (
         <ClaimView
-          month={screen.month}
+          ck={screen.ck}
           onBack={back}
-          onEdit={() => setScreen({ kind: "form", month: screen.month })}
+          onEdit={() => setScreen({ kind: "form", ck: screen.ck })}
         />
       )}
       {screen.kind === "form" && (
         <ClaimForm
-          key={screen.month}
-          initMonth={screen.month}
+          key={screen.ck}
+          initKey={screen.ck}
           pick={screen.pick}
           onBack={back}
-          onSent={(month) => {
-            setFlash(`ส่งขออนุมัติใบเบิกเดือน${mMonthName(month)}แล้ว`);
+          onSent={(ck) => {
+            const { month, type } = parseClaimKey(ck);
+            setFlash(`ส่งขออนุมัติใบเบิก${CLAIM_TYPE_LABEL[type]}เดือน${mMonthName(month)}แล้ว`);
             back();
           }}
         />
@@ -241,7 +243,7 @@ function ClaimList({
   onNew,
 }: {
   flash: string | null;
-  onOpen: (month: string) => void;
+  onOpen: (ck: string) => void;
   onNew: (pick: Pick) => void;
 }) {
   const claims = useExpenseClaims();
@@ -346,12 +348,13 @@ function ClaimList({
               ) : (
                 list.map((c) => {
                   const n = c.fuel.length + (c.other?.length ?? 0);
+                  const ck = keyOf(c);
                   return (
-                    <tr key={c.month} className="cursor-pointer" onClick={() => onOpen(c.month)}>
-                      <td className="c num muted">{noOf.get(c.month)}</td>
+                    <tr key={ck} className="cursor-pointer" onClick={() => onOpen(ck)}>
+                      <td className="c num muted">{noOf.get(ck)}</td>
                       <td className="whitespace-nowrap">{mMonthName(c.month)}</td>
                       <td>
-                        <span className="clip">{typesOf(c) || "—"}</span>
+                        <span className="clip">{CLAIM_TYPE_LABEL[c.type]}</span>
                         <span className="why">{n} รายการ</span>
                       </td>
                       <td className="r num">
@@ -376,12 +379,12 @@ function ClaimList({
                             type="button"
                             className="btn glass-thin btn-mini"
                             aria-label={`ดูใบเบิกเดือน${mMonthName(c.month)}`}
-                            onClick={() => onOpen(c.month)}
+                            onClick={() => onOpen(ck)}
                           >
                             <EyeIcon className="size-4" strokeWidth={2} />
                           </button>
                           {c.status === "รออนุมัติ" && (
-                            <button type="button" className="lnk" onClick={() => cancelClaim(c.month)}>
+                            <button type="button" className="lnk" onClick={() => cancelClaim(keyOf(c))}>
                               ยกเลิก
                             </button>
                           )}
@@ -440,18 +443,20 @@ function ClaimList({
   );
 }
 
-/* ── รายละเอียดใบเบิกหนึ่งรอบ อ่านอย่างเดียว พิมพ์ได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
-function ClaimView({ month, onBack, onEdit }: { month: string; onBack: () => void; onEdit: () => void }) {
+/* ── รายละเอียดใบเบิกหนึ่งใบ อ่านอย่างเดียว พิมพ์ได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
+function ClaimView({ ck, onBack, onEdit }: { ck: string; onBack: () => void; onEdit: () => void }) {
   const claims = useExpenseClaims();
-  const claim = useMemo(() => claimOf(claims, month), [claims, month]);
+  const claim = useMemo(() => claimOf(claims, ck), [claims, ck]);
+  /* เดือนเดียวกันมีหลายใบได้ ใบละประเภท — หัวเรื่องบอกประเภทด้วย (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const title = `ใบเบิก${CLAIM_TYPE_LABEL[claim.type]} ${mMonthName(claim.month)}`;
   /* ปุ่มย้อนกลับในหน้าย้ายไปเส้นทางบนแถบบน "เบิกค่าใช้จ่าย / ใบเบิก…" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
-  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: onBack, root: true }, `ใบเบิก${mMonthName(month)}`);
+  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: onBack, root: true }, title);
 
   return (
     <div className="space-y-4">
       <div className="bar no-print">
         <div>
-          <h1>ใบเบิก{mMonthName(month)}</h1>
+          <h1>{title}</h1>
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <button type="button" className="btn glass-thin" onClick={() => window.print()}>
@@ -460,14 +465,14 @@ function ClaimView({ month, onBack, onEdit }: { month: string; onBack: () => voi
           </button>
           {claim.status === "รออนุมัติ" && (
             <>
-              <button type="button" className="btn glass-thin" onClick={() => cancelClaim(month)}>
+              <button type="button" className="btn glass-thin" onClick={() => cancelClaim(ck)}>
                 ยกเลิก
               </button>
               <button
                 type="button"
                 className="btn glass-thin"
                 onClick={() => {
-                  withdrawClaim(month);
+                  withdrawClaim(ck);
                   onEdit();
                 }}
               >
@@ -491,37 +496,41 @@ function ClaimView({ month, onBack, onEdit }: { month: string; onBack: () => voi
         </p>
       )}
 
-      <ClaimSheet claim={claim} month={month} locked tried={false} />
+      <ClaimSheet claim={claim} locked tried={false} />
     </div>
   );
 }
 
 /* ── ฟอร์มขอเบิก (ฟอร์มเดิม ย้ายมาเปิดจากปุ่มขอเบิกค่าใช้จ่าย · ผู้ใช้สั่ง 9 ต.ค. 2569) ── */
 function ClaimForm({
-  initMonth,
+  initKey,
   pick,
   onBack: back0,
   onSent,
 }: {
-  initMonth: string;
+  /** กุญแจของใบที่เปิด (เดือน + ประเภท) — เลื่อนเดือนได้ ประเภทคงเดิม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  initKey: string;
   pick?: Pick;
   onBack: () => void;
-  onSent: (month: string) => void;
+  onSent: (ck: string) => void;
 }) {
   const claims = useExpenseClaims();
   const today = bkkNow();
+  const { type } = parseClaimKey(initKey);
   const [view, setView] = useState(() => {
-    const [y, m] = initMonth.split("-").map(Number);
+    const [y, m] = parseClaimKey(initKey).month.split("-").map(Number);
     return new Date(y, m - 1, 1);
   });
   /** โชว์ที่กรอกไม่ครบหลังกดยื่นครั้งแรก ไม่ขึ้นเตือนตั้งแต่ยังไม่ได้กรอก */
   const [tried, setTried] = useState(false);
 
   const month = monthKey(view);
-  const claim = useMemo(() => claimOf(claims, month), [claims, month]);
+  const ck = claimKey(month, type);
+  const claim = useMemo(() => claimOf(claims, ck), [claims, ck]);
   const locked = isLocked(claim.status);
+  const title = `ขอเบิก${pick?.label ?? CLAIM_TYPE_LABEL[type]}`;
   /* ปุ่มย้อนกลับในหน้าย้ายไปเส้นทางบนแถบบน "เบิกค่าใช้จ่าย / ขอเบิก…" (ผู้ใช้สั่ง 12 ต.ค. 2569) */
-  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: () => onBack(), root: true }, pick ? `ขอเบิก${pick.label}` : "ขอเบิกค่าใช้จ่าย");
+  useCrumb({ label: "เบิกค่าใช้จ่าย", onClick: () => onBack(), root: true }, title);
   /* ออกจากฟอร์มโดยไม่ยื่น — แถวที่ยังไม่ได้กรอกไม่เก็บ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const onBack = () => {
     dropBlankRows(claim);
@@ -530,10 +539,10 @@ function ClaimForm({
   /* เลือกค่าใช้จ่ายอื่นมา — เติมแถวแรกพร้อมประเภทให้เลย (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current || !pick || pick.t !== "other" || locked) return;
+    if (seeded.current || !pick || isFuelType(type) || locked) return;
     seeded.current = true;
-    if (!(claim.other ?? []).some((r) => !otherFilled(r))) addOtherRow(month, { kind: pick.kind });
-  }, [pick, locked, claim.other, month]);
+    if (!(claim.other ?? []).some((r) => !otherFilled(r))) addOtherRow(ck, { kind: pick.kind });
+  }, [pick, type, locked, claim.other, ck]);
   const monthLabel = `${TH_MONTHS_FULL[view.getMonth()]} ${view.getFullYear() + 543}`;
 
   /** เดือนหน้ายังมาไม่ถึง ไม่ให้เบิกล่วงหน้า */
@@ -566,10 +575,10 @@ function ClaimForm({
       return;
     }
     dropBlankRows(claim);
-    if (!submitClaim(month)) return;
+    if (!submitClaim(ck)) return;
     setTried(false);
     /* ส่งแล้วกลับไปหน้ารายการ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-    onSent(month);
+    onSent(ck);
   }
 
   function switchMonth(step: number) {
@@ -581,7 +590,7 @@ function ClaimForm({
     <div className="space-y-4">
       <div className="bar no-print">
         <div>
-          <h1>{pick ? `ขอเบิก${pick.label}` : "ขอเบิกค่าใช้จ่าย"}</h1>
+          <h1>{title}</h1>
           <ApproverNote kind="expense" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
@@ -612,7 +621,7 @@ function ClaimForm({
             <button
               type="button"
               className="btn glass-thin"
-              onClick={() => withdrawClaim(month)}
+              onClick={() => withdrawClaim(ck)}
             >
               <RotateIcon className="size-[15px]" strokeWidth={2.2} />
               ขอแก้ไข
@@ -659,68 +668,42 @@ function ClaimForm({
         </div>
       )}
 
-      <ClaimSheet claim={claim} month={month} locked={locked} tried={tried} only={pick?.t} kind={pick?.kind} vehicle={pick?.vehicle} />
+      <ClaimSheet claim={claim} locked={locked} tried={tried} />
     </div>
   );
 }
 
-/** ตัวใบเบิก (ค่าน้ำมัน + ค่าใช้จ่ายอื่น) ใช้ร่วมกันทั้งฟอร์มและหน้ารายละเอียด (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+/**
+ * ตัวใบเบิก ใช้ร่วมกันทั้งฟอร์มและหน้ารายละเอียด (ผู้ใช้สั่ง 9 ต.ค. 2569)
+ * หนึ่งใบหนึ่งประเภท — แสดงเฉพาะส่วนของประเภทใบ ไม่มีส่วนของประเภทอื่นในใบเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ */
 function ClaimSheet({
   claim,
-  month,
   locked,
   tried,
-  only,
-  kind = "",
-  vehicle,
 }: {
   claim: ExpenseClaim;
-  month: string;
   locked: boolean;
   tried: boolean;
-  /** ฟอร์มที่เปิดจากการเลือกประเภท — แสดงเฉพาะส่วนนั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  only?: MType;
-  kind?: string;
-  /** ฟอร์มค่าน้ำมันที่เลือกรถมาแล้ว — แสดงเฉพาะฟอร์มของรถชนิดนั้น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-  vehicle?: Vehicle;
 }) {
   const me = useProfile();
-  const fuelSum = fuelTotal(claim.fuel);
-  const otherSum = otherTotal(claim.other);
-  /* รถยนต์กับมอเตอร์ไซค์คนละฟอร์ม คิดคนละอัตรา · ไม่ได้เลือกรถมา = แสดงทุกชนิดที่มีรายการ
-     ยังไม่มีรายการเลยแสดงฟอร์มรถยนต์ไว้ตามเดิม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-  const has = vehiclesIn(claim.fuel);
-  const vehicles: Vehicle[] = vehicle ? [vehicle] : has.length ? has : ["car"];
+  if (!isFuelType(claim.type)) return <OtherCard claim={claim} locked={locked} tried={tried} />;
 
+  const ck = keyOf(claim);
+  const month = claim.month;
+  const v = claim.type;
+  const rows = claim.fuel;
+  const label = VEHICLE_LABEL[v];
+  const plate = claim.plate;
   return (
-    <>
-      {only !== "other" && vehicles.map((v, vi) => {
-      const rows = fuelRowsOf(claim.fuel, v);
-      const label = VEHICLE_LABEL[v];
-      const plateKey = v === "moto" ? "motoPlate" : "plate";
-      const plate = plateOf(claim, v);
-      return (
-      <section key={v} className={`panel glass flex flex-col ${vi ? "mt-4" : ""}`}>
+      <section className="panel glass flex flex-col">
         <div className="strip no-print">
           <div className="tabs">
             <button type="button" className="on">
               ค่าน้ำมัน{label} <b>{rows.length}</b>
             </button>
           </div>
-          <span className="flex items-center gap-2.5 py-2">
-            <span className={`tag ${CLAIM_STATUS[claim.status]}`}>
-              <i />
-              {claim.status}
-            </span>
-            {/* ใบที่อนุมัติแล้วจ่ายคืนพร้อมเงินเดือน (ERD HR-BR-18) — บอกว่าจ่ายแล้วรอบไหน หรือยังรอรอบถัดไป */}
-            {claim.status === "อนุมัติแล้ว" && (
-              <span className="text-[12px] text-muted-foreground">
-                {claim.paidIn
-                  ? `จ่ายคืนพร้อมเงินเดือนรอบ ${thaiMonthName(claim.paidIn)} แล้ว`
-                  : "รอจ่ายคืนพร้อมเงินเดือนงวดถัดไป"}
-              </span>
-            )}
-          </span>
+          <ClaimStatusTag claim={claim} />
         </div>
 
           <div className="claim">
@@ -748,14 +731,14 @@ function ClaimSheet({
                 <b>{me.department}</b>
               </div>
               <div className="mrow">
-                <label htmlFor={plateKey}>ป้ายทะเบียนรถ</label>
+                <label htmlFor="plate">ป้ายทะเบียนรถ</label>
                 <input
-                  id={plateKey}
+                  id="plate"
                   className={`field-control ${tried && rows.length && !plate.trim() ? "border-destructive" : ""}`}
                   value={plate}
                   disabled={locked}
                   placeholder="เช่น 1กก 1234 เชียงใหม่"
-                  onChange={(e) => setClaimField(month, plateKey, e.target.value)}
+                  onChange={(e) => setClaimField(ck, "plate", e.target.value)}
                 />
               </div>
             </div>
@@ -764,6 +747,7 @@ function ClaimSheet({
             <FuelTable
               rows={rows}
               vehicle={v}
+              ck={ck}
               month={month}
               locked={locked}
               tried={tried}
@@ -776,8 +760,8 @@ function ClaimSheet({
                 className="btn glass-thin no-print mt-3"
                 onClick={() => {
                   /* ยังไม่มีรายการ = มีแถวว่างที่เติมให้อยู่แล้ว เก็บแถวนั้นไว้ก่อนแล้วค่อยเพิ่มแถวใหม่ (ตาม mockup) */
-                  if (!rows.length) addFuelRow(month, { id: fuelBlankId(month, v), vehicle: v });
-                  addFuelRow(month, { vehicle: v });
+                  if (!rows.length) addFuelRow(ck, { id: fuelBlankId(month, v) });
+                  addFuelRow(ck);
                 }}
               >
                 <PlusIcon className="size-[15px]" strokeWidth={2.2} />
@@ -790,60 +774,68 @@ function ClaimSheet({
             <SignBlock />
           </div>
 
-        {/* ยอดทั้งใบบอกครั้งเดียวท้ายฟอร์มค่าน้ำมันอันสุดท้าย */}
-        {vi === vehicles.length - 1 && (
         <div className="foot no-print flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
-          <span>
-            ค่าน้ำมัน {claim.fuel.length} รายการ
-            {claim.other?.length ? ` · ค่าใช้จ่ายอื่น ${claim.other.length} รายการ` : ""}
-          </span>
-          {/* ยอดนี้เป็นค่าน้ำมันอย่างเดียว — ค่าคอมมิชชั่นย้ายไปคิดในเงินเดือนแล้ว
-              กระดิ่งแจ้งเตือนอ่านยอดเดียวกันนี้ผ่าน claimTotal() ตัวเลขสองที่จึงตรงกัน */}
+          <span>ค่าน้ำมัน {rows.length} รายการ</span>
+          {/* ยอดนี้เป็นยอดทั้งใบ — กระดิ่งแจ้งเตือนอ่านยอดเดียวกันนี้ผ่าน claimTotal() ตัวเลขสองที่จึงตรงกัน */}
           <span className="sum sm:ml-auto">
-            รวมที่ขอเบิกทั้งใบ<b>{baht(fuelSum + otherSum)}</b> บาท
+            รวมที่ขอเบิกทั้งใบ<b>{baht(claimTotal(claim))}</b> บาท
           </span>
         </div>
-        )}
       </section>
-      );
-      })}
-
-      {/* ค่าใช้จ่ายอื่นนอกจากค่าน้ำมัน (Full Proposal · M6) — ประเภทมาจากข้อมูลหลัก */}
-      {only !== "fuel" && (
-        <OtherCard rows={claim.other ?? []} month={month} locked={locked} tried={tried} total={otherSum} kind0={kind} />
-      )}
-    </>
   );
 }
 
+/** ป้ายสถานะของใบ + รอบที่จ่ายคืน (ERD HR-BR-18) */
+function ClaimStatusTag({ claim }: { claim: ExpenseClaim }) {
+  return (
+    <span className="flex items-center gap-2.5 py-2">
+      <span className={`tag ${CLAIM_STATUS[claim.status]}`}>
+        <i />
+        {claim.status}
+      </span>
+      {/* ใบที่อนุมัติแล้วจ่ายคืนพร้อมเงินเดือน (ERD HR-BR-18) — บอกว่าจ่ายแล้วรอบไหน หรือยังรอรอบถัดไป */}
+      {claim.status === "อนุมัติแล้ว" && (
+        <span className="text-[12px] text-muted-foreground">
+          {claim.paidIn
+            ? `จ่ายคืนพร้อมเงินเดือนรอบ ${thaiMonthName(claim.paidIn)} แล้ว`
+            : "รอจ่ายคืนพร้อมเงินเดือนงวดถัดไป"}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ใบค่าเดินทาง / ค่าใช้จ่ายอื่น — ใบละประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 function OtherCard({
-  rows,
-  month,
+  claim,
   locked,
   tried,
-  total,
-  kind0 = "",
 }: {
-  rows: OtherRow[];
-  month: string;
+  claim: ExpenseClaim;
   locked: boolean;
   tried: boolean;
-  total: number;
-  /** ประเภทที่เลือกมาก่อนเปิดฟอร์ม — แถวใหม่ตั้งประเภทนี้ให้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  kind0?: string;
 }) {
+  const ck = keyOf(claim);
+  const month = claim.month;
+  const rows = claim.other ?? [];
+  const total = otherTotal(rows);
+  /** ใบค่าเดินทางตั้งหัวข้อให้ทุกแถว · อื่นๆ ผู้ขอพิมพ์หัวข้อเอง (ผู้ใช้สั่ง 9 ต.ค. 2569) */
+  const kind0 = claim.type === "travel" ? TRAVEL_KIND : "";
   const kinds = optionsOf("expenseKind");
   /* เพิ่มประเภทค่าใช้จ่ายใหม่ได้จากใบเบิกเลย — เพิ่มแล้วเลือกให้แถวที่กำลังกรอก */
   const [adding, setAdding] = useState("");
-  const addKind = useAddOption({ list: "expenseKind" }, (v) => adding && updateOtherRow(month, adding, { kind: v }));
+  const addKind = useAddOption({ list: "expenseKind" }, (v) => adding && updateOtherRow(ck, adding, { kind: v }));
   const { min, max } = monthRange(month);
 
   if (locked && !rows.length) return null;
 
   return (
-    <section className="panel glass mt-4 px-4 py-4 sm:px-6 sm:py-5">
+    <section className="panel glass px-4 py-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-[15px] font-bold">ค่าใช้จ่ายอื่น</h2>
+        <h2 className="text-[15px] font-bold">{CLAIM_TYPE_LABEL[claim.type]}</h2>
+        <span className="no-print ml-auto">
+          <ClaimStatusTag claim={claim} />
+        </span>
       </div>
 
       {rows.length === 0 ? (
@@ -867,7 +859,7 @@ function OtherCard({
                       value={r.kind}
                       disabled={locked}
                       placeholder="เช่น ค่าบัญชี Google, ค่าซื้อคอมพิวเตอร์"
-                      onChange={(e) => updateOtherRow(month, r.id, { kind: e.target.value })}
+                      onChange={(e) => updateOtherRow(ck, r.id, { kind: e.target.value })}
                       className="field-control"
                     />
                   </label>
@@ -879,7 +871,7 @@ function OtherCard({
                     min={min}
                     max={max}
                     disabled={locked}
-                    onChange={(iso) => updateOtherRow(month, r.id, { date: iso })}
+                    onChange={(iso) => updateOtherRow(ck, r.id, { date: iso })}
                     label={`วันที่ของค่าใช้จ่ายลำดับ ${i + 1}`}
                     placeholder="เลือกวันที่"
                     className="h-[38px] rounded-[10px] text-[13.5px]"
@@ -892,7 +884,7 @@ function OtherCard({
                     disabled={locked}
                     inputMode="decimal"
                     aria-label={`จำนวนเงินของค่าใช้จ่ายลำดับ ${i + 1}`}
-                    onChange={(e) => updateOtherRow(month, r.id, { amount: e.target.value })}
+                    onChange={(e) => updateOtherRow(ck, r.id, { amount: e.target.value })}
                     className="field-control num text-right"
                   />
                 </label>
@@ -901,7 +893,7 @@ function OtherCard({
                     type="button"
                     aria-label={`ลบค่าใช้จ่ายลำดับ ${i + 1}`}
                     className="btn glass-thin btn-mini self-end"
-                    onClick={() => removeOtherRow(month, r.id)}
+                    onClick={() => removeOtherRow(ck, r.id)}
                   >
                     <TrashIcon className="size-4" strokeWidth={2.2} />
                   </button>
@@ -912,7 +904,7 @@ function OtherCard({
                     value={r.note}
                     disabled={locked}
                     aria-label={`รายละเอียดของค่าใช้จ่ายลำดับ ${i + 1}`}
-                    onChange={(e) => updateOtherRow(month, r.id, { note: e.target.value })}
+                    onChange={(e) => updateOtherRow(ck, r.id, { note: e.target.value })}
                     className="field-control"
                   />
                 </label>
@@ -926,7 +918,7 @@ function OtherCard({
                       accept="image/*,application/pdf"
                       aria-label={`ไฟล์หลักฐานของค่าใช้จ่ายลำดับ ${i + 1}`}
                       /* ยังไม่มี backend — เก็บแค่ชื่อไฟล์ไว้ให้ผู้อนุมัติเห็นว่าแนบอะไรมา */
-                      onChange={(e) => updateOtherRow(month, r.id, { file: e.target.files?.[0]?.name ?? "" })}
+                      onChange={(e) => updateOtherRow(ck, r.id, { file: e.target.files?.[0]?.name ?? "" })}
                       className="field-control py-1.5 text-[12.5px]"
                     />
                   )}
@@ -942,13 +934,13 @@ function OtherCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {!locked && (
-          <button type="button" className="btn glass-thin" onClick={() => addOtherRow(month, { kind: kind0 })}>
+          <button type="button" className="btn glass-thin" onClick={() => addOtherRow(ck, { kind: kind0 })}>
             <PlusIcon className="size-[15px]" strokeWidth={2.2} />
             เพิ่มค่าใช้จ่าย
           </button>
         )}
         <span className="sum ml-auto text-[13px]">
-          รวมค่าใช้จ่ายอื่น<b>{baht(total)}</b> บาท
+          รวม{CLAIM_TYPE_LABEL[claim.type]}<b>{baht(total)}</b> บาท
         </span>
       </div>
     </section>
@@ -995,14 +987,17 @@ const onlyNumber = (v: string) => {
 function FuelTable({
   rows,
   vehicle,
+  ck,
   month,
   locked,
   tried,
   total,
 }: {
-  /** แถวของรถชนิดเดียว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  /** แถวของใบค่าน้ำมันรถชนิดเดียว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   rows: FuelRow[];
   vehicle: Vehicle;
+  /** กุญแจของใบ (เดือน + ประเภท) */
+  ck: string;
   month: string;
   locked: boolean;
   tried: boolean;
@@ -1019,8 +1014,8 @@ function FuelTable({
       : [{ id: blankId, date: "", place: "", km: "", work: "", note: "", vehicle }];
   const set = (id: string, patch: Partial<Omit<FuelRow, "id">>) =>
     rows.some((r) => r.id === id)
-      ? updateFuelRow(month, id, patch)
-      : addFuelRow(month, { ...patch, id, vehicle });
+      ? updateFuelRow(ck, id, patch)
+      : addFuelRow(ck, { ...patch, id });
   const { min, max } = monthRange(month);
 
   if (!shown.length) {
@@ -1090,7 +1085,7 @@ function FuelTable({
                   </td>
                   <td className="c no-print">
                     {!locked && (
-                      <button type="button" className="del" aria-label={`ลบครั้งที่ ${i + 1}`} onClick={() => removeFuelRow(month, r.id)}>
+                      <button type="button" className="del" aria-label={`ลบครั้งที่ ${i + 1}`} onClick={() => removeFuelRow(ck, r.id)}>
                         <TrashIcon className="size-3.5" strokeWidth={2} />
                       </button>
                     )}
@@ -1125,7 +1120,7 @@ function FuelTable({
                   ครั้งที่ {i + 1}
                 </b>
                 {!locked && (
-                  <button type="button" className="del" aria-label={`ลบครั้งที่ ${i + 1}`} onClick={() => removeFuelRow(month, r.id)}>
+                  <button type="button" className="del" aria-label={`ลบครั้งที่ ${i + 1}`} onClick={() => removeFuelRow(ck, r.id)}>
                     <TrashIcon className="size-3.5" strokeWidth={2} />
                   </button>
                 )}
@@ -1193,7 +1188,7 @@ function MiniField({ label, children }: { label: string; children: React.ReactNo
  * มือถือ (ต่ำกว่า md) — ต้นแบบ expense.html "มือถือ: เบิกค่าใช้จ่าย"
  * 1) รายการใบเบิกของฉันแยกตามเดือนและประเภท  2) ปุ่ม + เลือกประเภท  3) ฟอร์มเต็มจอแล้วส่งขออนุมัติ
  * ใช้สโตร์ ตัวตรวจ (checkClaim) และการยื่น (submitClaim) ชุดเดียวกับจอใหญ่
- * สถานะเก็บเป็นรายเดือน (หนึ่งใบต่อเดือน) — ส่งจากประเภทไหนก็ยื่นทั้งใบของเดือนนั้น
+ * หนึ่งใบหนึ่งประเภท (เดือน + ประเภท) — ฟอร์มแสดงเฉพาะประเภทของใบ ไม่มีแท็บสลับประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569)
  * ค่าคอมมิชชั่นไม่มีในใบเบิกแล้ว (คิดในเงินเดือน) จึงมีแค่ค่าน้ำมันกับค่าใช้จ่ายอื่น
  * =================================================================================== */
 
@@ -1237,6 +1232,30 @@ const M_TYPES: Record<MType, { name: string; desc: string; bg: string; fg: strin
   },
 };
 
+/* ไอคอนบอกชนิดรถ แทนปั๊มน้ำมัน — ใบค่าน้ำมันรถยนต์/มอเตอร์ไซค์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+const VEHICLE_ICO: Record<"car" | "moto", React.ReactNode> = {
+  car: (
+    <>
+      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" />
+      <circle cx="7" cy="17" r="2" />
+      <path d="M9 17h6" />
+      <circle cx="17" cy="17" r="2" />
+    </>
+  ),
+  moto: (
+    <>
+      <circle cx="5.5" cy="16.5" r="3" />
+      <circle cx="18.5" cy="16.5" r="3" />
+      <path d="M5.5 16.5 9 10h5l4.5 6.5" />
+      <path d="M14 10 12.8 6.5H16" />
+      <path d="M8.5 13.5h6" />
+    </>
+  ),
+};
+/** ไอคอนของใบ/ตัวเลือก — รู้ชนิดรถแล้วใช้ไอคอนรถ ไม่งั้นใช้ไอคอนประเภท */
+const icoOf = (t: MType, vehicle?: string) =>
+  vehicle === "car" || vehicle === "moto" ? VEHICLE_ICO[vehicle] : M_TYPES[t].ico;
+
 const mRate = (t: MType) =>
   t === "fuel" ? `คิดกิโลเมตรละ ${fuelRate()} บาท` : "เบิกตามจำนวนเงินจริง แนบใบเสร็จได้";
 
@@ -1264,14 +1283,15 @@ function mMonthName(month: string) {
 /** ลบแถวว่างล้วนของเดือนนั้นทิ้ง — ไม่ให้แถวที่กด "เพิ่ม" ไว้เฉย ๆ ค้างจนยื่นไม่ได้ */
 function dropBlankRows(claim: ExpenseClaim) {
   if (isLocked(claim.status)) return;
-  for (const r of claim.fuel) if (!fuelFilled(r)) removeFuelRow(claim.month, r.id);
-  for (const r of claim.other ?? []) if (!otherFilled(r)) removeOtherRow(claim.month, r.id);
+  for (const r of claim.fuel) if (!fuelFilled(r)) removeFuelRow(keyOf(claim), r.id);
+  for (const r of claim.other ?? []) if (!otherFilled(r)) removeOtherRow(keyOf(claim), r.id);
 }
 
 function ExpenseMobile() {
   const claims = useExpenseClaims();
   const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState<{ month: string; t: MType; kind?: string; label?: string; vehicle?: Vehicle } | null>(null);
+  /* ck = กุญแจของใบ (เดือน + ประเภท) — หนึ่งใบหนึ่งประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [form, setForm] = useState<{ ck: string; label?: string } | null>(null);
   const picks = usePicks();
   /* กดค่าน้ำมันรถ → เลือกรถยนต์/มอเตอร์ไซค์ต่อในแผ่นเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   const [fuelStep, setFuelStep] = useState<Pick | null>(null);
@@ -1326,22 +1346,23 @@ function ExpenseMobile() {
         <p className="exm-empty">ไม่มีรายการ</p>
       ) : (
         shown.map((c) => {
-          const t: MType = c.fuel.length ? "fuel" : "other";
+          const t: MType = isFuelType(c.type) ? "fuel" : "other";
           const ty = M_TYPES[t];
+          const ck = keyOf(c);
           return (
             <button
-              key={c.month}
+              key={ck}
               type="button"
               className="exm-card"
-              onClick={() => setForm({ month: c.month, t, vehicle: vehiclesIn(c.fuel)[0] })}
+              onClick={() => setForm({ ck })}
             >
               <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
-                <MSvg size={19}>{ty.ico}</MSvg>
+                <MSvg size={19}>{icoOf(t, c.type)}</MSvg>
               </span>
               <b>{mMonthName(c.month)}</b>
               <span className="amt">{baht(claimTotal(c))} ฿</span>
               <span className="meta">
-                #{noOf.get(c.month)} · {typesOf(c)} · ยื่น {thaiStamp(c.submittedAt)}
+                #{noOf.get(ck)} · {CLAIM_TYPE_LABEL[c.type]} · ยื่น {thaiStamp(c.submittedAt)}
               </span>
               <span className={`exm-chip ${M_STATUS[c.status]}`}>{c.status}</span>
             </button>
@@ -1382,11 +1403,11 @@ function ExpenseMobile() {
                       }
                       setSheet(false);
                       /* เบิกใหม่เป็นของเดือนปัจจุบันเสมอ — เดือนหน้ายังมาไม่ถึง ไม่ให้เบิกล่วงหน้า */
-                      setForm({ month: monthKey(bkkNow()), t: p.t, kind: p.kind, label: p.label, vehicle: p.vehicle });
+                      setForm({ ck: claimKey(monthKey(bkkNow()), pickType(p)), label: p.label });
                     }}
                   >
                     <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
-                      <MSvg size={21}>{ty.ico}</MSvg>
+                      <MSvg size={21}>{icoOf(p.t, p.vehicle)}</MSvg>
                     </span>
                     <span className="tx">
                       <b>{fuelStep && p.vehicle ? VEHICLE_LABEL[p.vehicle] : p.label}</b>
@@ -1405,11 +1426,8 @@ function ExpenseMobile() {
       {form &&
         createPortal(
           <ExpenseMobileForm
-            key={`${form.month}-${form.t}-${form.kind ?? ""}-${form.vehicle ?? ""}`}
-            month={form.month}
-            t={form.t}
-            vehicle0={form.vehicle}
-            kind0={form.kind}
+            key={form.ck}
+            ck={form.ck}
             label={form.label}
             onClose={() => setForm(null)}
             onSent={(msg) => {
@@ -1432,41 +1450,28 @@ function ExpenseMobile() {
 }
 
 function ExpenseMobileForm({
-  month,
-  t: t0,
-  vehicle0 = "car",
-  kind0 = "",
+  ck,
   label,
   onClose,
   onSent,
 }: {
-  month: string;
-  t: MType;
-  /** รถของฟอร์มค่าน้ำมัน — ไม่มี = รถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-  vehicle0?: Vehicle;
-  /** ประเภทค่าใช้จ่ายที่เลือกมา และชื่อหัวฟอร์ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  kind0?: string;
+  /** กุญแจของใบ (เดือน + ประเภท) — ฟอร์มแสดงเฉพาะประเภทของใบ ไม่มีแท็บสลับประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  ck: string;
+  /** ชื่อหัวฟอร์มจากตัวเลือกที่กดมา (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   label?: string;
   onClose: () => void;
   onSent: (msg: string) => void;
 }) {
+  const { month, type } = parseClaimKey(ck);
   const claims = useExpenseClaims();
-  const claim = claimOf(claims, month);
+  const claim = claimOf(claims, ck);
   const locked = isLocked(claim.status);
-  /* ใบที่มีทั้งค่าน้ำมันและค่าใช้จ่ายอื่น สลับดูทีละประเภทได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-  const [t, setT] = useState<MType>(t0);
-  /* ค่าน้ำมันรถยนต์กับมอเตอร์ไซค์เป็นคนละฟอร์ม สลับดูแยกกันเหมือนค่าใช้จ่ายอื่น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-  const [veh, setVeh] = useState<Vehicle>(vehicle0);
-  const tabs: { key: string; t: MType; v: Vehicle; name: string }[] = [
-    ...vehiclesIn(claim.fuel).map((v) => ({ key: v, t: "fuel" as MType, v, name: `ค่าน้ำมัน${VEHICLE_LABEL[v]}` })),
-    ...((claim.other ?? []).length ? [{ key: "other", t: "other" as MType, v: veh, name: M_TYPES.other.name }] : []),
-  ];
-  const tabOn = (x: (typeof tabs)[number]) => x.t === t && (t === "other" || x.v === veh);
-  const both = tabs.length > 1 && tabs.some(tabOn);
-  const ty = M_TYPES[t];
-  const plateKey = veh === "moto" ? "motoPlate" : "plate";
-  const plate = plateOf(claim, veh);
-  const vehRows = fuelRowsOf(claim.fuel, veh);
+  const t: MType = isFuelType(type) ? "fuel" : "other";
+  const veh: Vehicle = isFuelType(type) ? type : "car";
+  /* ใบค่าเดินทางตั้งหัวข้อให้ทุกแถว · อื่นๆ ผู้ขอพิมพ์หัวข้อเอง */
+  const kind0 = type === "travel" ? TRAVEL_KIND : "";
+  const plate = claim.plate;
+  const vehRows = claim.fuel;
   const noApprover = hasNoApprover(useRole(), "expense", useApprovalRoute());
   const [tried, setTried] = useState(false);
   const [err, setErr] = useState<string[]>([]);
@@ -1484,11 +1489,11 @@ function ExpenseMobileForm({
       ? claim.other ?? []
       : [{ id: otherBlank, kind: kind0, date: "", amount: "", note: "" }];
   const setFuel = (id: string, patch: Partial<Omit<FuelRow, "id">>) =>
-    claim.fuel.some((r) => r.id === id) ? updateFuelRow(month, id, patch) : addFuelRow(month, { ...patch, id, vehicle: veh });
+    claim.fuel.some((r) => r.id === id) ? updateFuelRow(ck, id, patch) : addFuelRow(ck, { ...patch, id });
   const setOther = (id: string, patch: Partial<Omit<OtherRow, "id">>) =>
     (claim.other ?? []).some((r) => r.id === id)
-      ? updateOtherRow(month, id, patch)
-      : addOtherRow(month, { kind: kind0, ...patch, id });
+      ? updateOtherRow(ck, id, patch)
+      : addOtherRow(ck, { kind: kind0, ...patch, id });
 
   const total = t === "fuel" ? fuelTotal(vehRows) : otherTotal(claim.other);
   const count = t === "fuel" ? fuelRows.length : otherRows.length;
@@ -1517,11 +1522,11 @@ function ExpenseMobileForm({
 
   function add() {
     if (t === "fuel") {
-      if (!vehRows.length) addFuelRow(month, { id: fuelBlank, vehicle: veh });
-      addFuelRow(month, { vehicle: veh });
+      if (!vehRows.length) addFuelRow(ck, { id: fuelBlank });
+      addFuelRow(ck);
     } else {
-      if (!(claim.other ?? []).length) addOtherRow(month, { id: otherBlank, kind: kind0 });
-      addOtherRow(month, { kind: kind0 });
+      if (!(claim.other ?? []).length) addOtherRow(ck, { id: otherBlank, kind: kind0 });
+      addOtherRow(ck, { kind: kind0 });
     }
     requestAnimationFrame(() => {
       const boxes = bodyRef.current?.querySelectorAll("[data-i]");
@@ -1533,7 +1538,7 @@ function ExpenseMobileForm({
     setTried(true);
     const fuel = claim.fuel.filter(fuelFilled);
     const other = (claim.other ?? []).filter(otherFilled);
-    if (!(t === "fuel" ? fuelRowsOf(fuel, veh) : other).length) {
+    if (!(t === "fuel" ? fuel : other).length) {
       setErr([
         t === "fuel"
           ? "กรอกวันที่และระยะทางอย่างน้อย 1 รายการ"
@@ -1541,7 +1546,7 @@ function ExpenseMobileForm({
       ]);
       return;
     }
-    /* ตรวจด้วยกติกาเดียวกับจอใหญ่ (ทั้งใบของเดือน) โดยไม่นับแถวว่างล้วน */
+    /* ตรวจด้วยกติกาเดียวกับจอใหญ่ (ทั้งใบ) โดยไม่นับแถวว่างล้วน */
     const reasons = checkClaim({ ...claim, fuel, other }).reasons;
     if (noApprover) reasons.push("ใบนี้ยังไม่มีผู้อนุมัติ — ให้ผู้ดูแลระบบแก้สายอนุมัติก่อน");
     if (reasons.length) {
@@ -1549,7 +1554,7 @@ function ExpenseMobileForm({
       return;
     }
     dropBlankRows(claim);
-    if (!submitClaim(month)) {
+    if (!submitClaim(ck)) {
       setErr(["ยังยื่นไม่ได้ — ตรวจรายการอีกครั้ง"]);
       return;
     }
@@ -1565,7 +1570,7 @@ function ExpenseMobileForm({
           </MSvg>
         </button>
         <div>
-          <b id="exmFormT">{t === "fuel" ? `ค่าน้ำมัน${VEHICLE_LABEL[veh]}` : label && t === t0 ? label : ty.name}</b>
+          <b id="exmFormT">{label ?? CLAIM_TYPE_LABEL[type]}</b>
           <small>
             {mMonthName(month)}
           </small>
@@ -1574,25 +1579,6 @@ function ExpenseMobileForm({
       </div>
 
       <div className="exm-fbody" ref={bodyRef}>
-        {both && (
-          <div className="exm-filter" role="tablist">
-            {tabs.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                role="tab"
-                aria-selected={tabOn(x)}
-                className={tabOn(x) ? "on" : ""}
-                onClick={() => {
-                  setT(x.t);
-                  setVeh(x.v);
-                }}
-              >
-                {x.name}
-              </button>
-            ))}
-          </div>
-        )}
         {(locked || claim.status === "ไม่อนุมัติ" || claim.status === "ยกเลิก") && (
           <p style={{ textAlign: "center", margin: "0 0 10px" }}>
             <span className={`exm-chip ${M_STATUS[claim.status]}`}>{claim.status}</span>
@@ -1623,7 +1609,7 @@ function ExpenseMobileForm({
                 value={plate}
                 disabled={locked}
                 placeholder="เช่น 1กก 1234 เชียงใหม่"
-                onChange={(e) => setClaimField(month, plateKey, e.target.value)}
+                onChange={(e) => setClaimField(ck, "plate", e.target.value)}
               />
             </label>
           </div>
@@ -1641,7 +1627,7 @@ function ExpenseMobileForm({
                 <div className="exm-ent-h">
                   <b>ครั้งที่ {i + 1}</b>
                   {!locked && (
-                    <button type="button" className="exm-del" aria-label={`ลบรายการที่ ${i + 1}`} onClick={() => removeFuelRow(month, r.id)}>
+                    <button type="button" className="exm-del" aria-label={`ลบรายการที่ ${i + 1}`} onClick={() => removeFuelRow(ck, r.id)}>
                       <TrashIcon className="size-[17px]" strokeWidth={2} />
                     </button>
                   )}
@@ -1695,7 +1681,7 @@ function ExpenseMobileForm({
                 <div className="exm-ent-h">
                   <b>รายการที่ {i + 1}</b>
                   {!locked && (
-                    <button type="button" className="exm-del" aria-label={`ลบรายการที่ ${i + 1}`} onClick={() => removeOtherRow(month, r.id)}>
+                    <button type="button" className="exm-del" aria-label={`ลบรายการที่ ${i + 1}`} onClick={() => removeOtherRow(ck, r.id)}>
                       <TrashIcon className="size-[17px]" strokeWidth={2} />
                     </button>
                   )}
@@ -1778,7 +1764,7 @@ function ExpenseMobileForm({
           </button>
         )}
         {claim.status === "รออนุมัติ" && (
-          <button type="button" className="exm-send ghost" onClick={() => withdrawClaim(month)}>
+          <button type="button" className="exm-send ghost" onClick={() => withdrawClaim(ck)}>
             ขอแก้ไข
           </button>
         )}
@@ -1787,7 +1773,7 @@ function ExpenseMobileForm({
             type="button"
             className="exm-send ghost"
             onClick={() => {
-              cancelClaim(month);
+              cancelClaim(ck);
               onSent(`ยกเลิกใบเบิกเดือน${mMonthName(month)}แล้ว`);
             }}
           >

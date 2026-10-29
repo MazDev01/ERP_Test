@@ -62,7 +62,7 @@ export function closePayrunFlow(
   today: string,
   group: PayGroup,
   sum: CycleSum,
-  reimbursed: { role: Role; month: string }[],
+  reimbursed: { role: Role; key: string }[],
 ) {
   /* ยังไม่ผ่าน CEO = ปิดไม่สำเร็จ ใบเบิกยังไม่นับว่าจ่าย (ผู้ใช้สั่ง 19 ต.ค. 2569) */
   if (closePayrun(month, today, group, sum)) markReimbursed(reimbursed, month);
@@ -73,7 +73,7 @@ export function closeDailyPayFlow(
   id: string,
   today: string,
   sum: CycleSum,
-  reimbursed: { role: Role; month: string }[],
+  reimbursed: { role: Role; key: string }[],
 ) {
   if (closeDailyPay(id, today, sum)) markReimbursed(reimbursed, id);
 }

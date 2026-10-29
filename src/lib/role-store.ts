@@ -31,6 +31,11 @@ export function createRoleStore<T>(
    * ต้องเติมเฉพาะที่ยังไม่มี ห้ามทับหรือลบของที่ผู้ใช้แก้ไว้ — ส่งชุดตั้งต้นของบทบาทนั้นมาให้เทียบ
    */
   addMissing?: (have: T, seed: T) => T,
+  /**
+   * ปรับข้อมูลเก่าทั้งก้อน (ทุกบทบาทพร้อมกัน) ก่อนขั้นอื่น — ใช้เมื่อต้องเห็นข้อมูลของทุกบทบาท
+   * เช่นแยกใบเบิกที่ปนหลายประเภทแล้วออกเลขที่ใหม่ที่ไม่ซ้ำทั้งบริษัท (ผู้ใช้สั่ง 29 ต.ค. 2569)
+   */
+  fixAll?: (all: Partial<ByRole<T>>) => Partial<ByRole<T>>,
 ) {
   /* บทบาทที่เพิ่มทีหลัง (เช่น ceo, gm) ยังไม่มีส่วนของตัวเองในข้อมูลที่เก็บไว้ก่อน
      จึงตรวจเฉพาะส่วนที่มีอยู่ แล้วค่อยเติมส่วนที่ขาดจากชุดตั้งต้น — ไม่งั้นข้อมูลเดิมทั้งก้อนถูกทิ้ง */
@@ -42,7 +47,7 @@ export function createRoleStore<T>(
   }
 
   function fill(all: ByRole<T>): ByRole<T> {
-    const out = { ...all };
+    const out = { ...(fixAll ? (fixAll(all) as ByRole<T>) : all) };
     for (const r of ROLES) {
       if (!(r.key in out)) out[r.key] = seed[r.key];
       if (fixSlice) out[r.key] = fixSlice(out[r.key]);

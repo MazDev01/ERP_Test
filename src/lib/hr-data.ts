@@ -1114,7 +1114,8 @@ export type ComSource = {
    * อนุมัติภายในวันตัดรอบ (25) เข้างวดนั้น หลังจากนั้นเข้างวดถัดไป = วันที่อนุมัติตกอยู่ในช่วงวันของรอบไหน
    */
   /* no/label = เลขที่ใบเบิกและชื่อรายการ ใช้แสดงในหัวข้อ "ค่าใช้จ่ายคืน" ของหน้าคำนวณเงินเดือน (ต้นแบบ) */
-  reimb?: { emp: string; date: string; total: number; paidIn?: string; role?: Role; claim?: string; no?: string; label?: string }[];
+  /* key = กุญแจใบเบิกของบทบาท (เดือน + ประเภท) ใช้บันทึกว่าจ่ายแล้วทีละใบ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  reimb?: { emp: string; date: string; total: number; paidIn?: string; role?: Role; claim?: string; key?: string; no?: string; label?: string }[];
 };
 
 /**

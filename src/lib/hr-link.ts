@@ -46,7 +46,7 @@ import {
   type TimeRec,
 } from "./hr-data";
 import { useCrm } from "./crm-store";
-import { claimTotal, fuelTotal } from "./expense-data";
+import { CLAIM_TYPE_LABEL, claimTotal, fuelTotal, keyOf } from "./expense-data";
 import { useAllClaims } from "./expense-store";
 import { useAcc } from "./acc-store";
 import { resubmitPayApproval, useHr } from "./hr-store";
@@ -676,8 +676,10 @@ export function useComSource(): ComSource {
             paidIn: c.paidIn ?? closedAt(date),
             role: role as Role,
             claim: c.month,
+            key: keyOf(c),
             no: c.no,
-            label: `${c.other?.length ? "ค่าใช้จ่าย" : "ค่าน้ำมัน"} ${thaiMonth(c.month)}`,
+            /* หนึ่งใบหนึ่งประเภท — บอกประเภทของใบ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+            label: `${CLAIM_TYPE_LABEL[c.type]} ${thaiMonth(c.month)}`,
           };
         })
         .filter((x) => x.total > 0),

@@ -1,6 +1,7 @@
 /*
- * ใบเบิกค่าใช้จ่ายรายเดือน — ค่าน้ำมันรถ กับค่าใช้จ่ายอื่น
- * หนึ่งเดือนมีหนึ่งใบ ยื่นทีเดียวทั้งสองส่วน
+ * ใบเบิกค่าใช้จ่ายรายเดือน — ค่าน้ำมันรถยนต์ ค่าน้ำมันมอเตอร์ไซค์ ค่าเดินทาง และค่าใช้จ่ายอื่น
+ * หนึ่งใบหนึ่งประเภท ไม่ปนกัน · เดือนเดียวกันมีได้หลายใบ ใบละประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ * ในใบเดียวเพิ่มได้หลายแถวของประเภทนั้น เช่น ค่าน้ำมันหลายเที่ยวในเดือน
  * ค่าคอมมิชชั่น/อินเซนทีฟเบิกผ่านใบนี้ไม่ได้แล้ว ผู้บริหารให้ในรอบเงินเดือน (ผู้ใช้สั่ง 14 ต.ค. 2569)
  * ช่อง income ของใบเก่ายังเก็บไว้อ่านเป็นประวัติ
  * TODO: ย้ายไปตาราง expense_claim เมื่อต่อ backend
@@ -19,6 +20,34 @@ export type Vehicle = "car" | "moto";
 export const VEHICLES: Vehicle[] = ["car", "moto"];
 export const VEHICLE_LABEL: Record<Vehicle, string> = { car: "รถยนต์", moto: "มอเตอร์ไซค์" };
 export const vehicleOf = (row: { vehicle?: Vehicle }): Vehicle => row.vehicle ?? "car";
+
+/*
+ * ประเภทของใบเบิก — หนึ่งใบหนึ่งประเภท ห้ามปนกัน (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ * car / moto = ค่าน้ำมันของรถชนิดนั้น (แถว fuel) · travel = ค่าเดินทาง · other = อื่นๆ (แถว other)
+ * กุญแจของใบ = เดือน + ประเภท (claimKey) — ใช้แก้ ยื่น อนุมัติ และจ่ายคืนทีละใบ
+ */
+export type ClaimType = Vehicle | "travel" | "other";
+export const CLAIM_TYPES: ClaimType[] = ["car", "moto", "travel", "other"];
+export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
+  car: "ค่าน้ำมันรถยนต์",
+  moto: "ค่าน้ำมันมอเตอร์ไซค์",
+  travel: "ค่าเดินทาง",
+  other: "ค่าใช้จ่ายอื่น",
+};
+/** หัวข้อของแถวค่าเดินทาง — ใบค่าเดินทางตั้งให้ทุกแถว */
+export const TRAVEL_KIND = "ค่าเดินทาง";
+export const isFuelType = (t: ClaimType): t is Vehicle => t === "car" || t === "moto";
+
+export function claimKey(month: string, type: ClaimType) {
+  return `${month}:${type}`;
+}
+export function keyOf(c: { month: string; type: ClaimType }) {
+  return claimKey(c.month, c.type);
+}
+export function parseClaimKey(key: string): { month: string; type: ClaimType } {
+  const [month, t = ""] = key.split(":");
+  return { month, type: (CLAIM_TYPES as string[]).includes(t) ? (t as ClaimType) : "car" };
+}
 
 /** จ่ายคืนกิโลเมตรละกี่บาท ตามชนิดรถ — ฝ่ายบุคคลตั้งได้ที่ /admin/rates (Full Proposal · M5) */
 export const fuelRate = (v: Vehicle = "car") =>
@@ -85,10 +114,12 @@ export type OtherRow = {
 export type ExpenseClaim = {
   /** เดือนของใบเบิก รูปแบบ yyyy-mm */
   month: string;
+  /** ประเภทของใบ — หนึ่งใบหนึ่งประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  type: ClaimType;
   status: ClaimStatus;
-  /** ป้ายทะเบียนรถยนต์ */
+  /** ป้ายทะเบียนของรถในใบค่าน้ำมัน (รถยนต์หรือมอเตอร์ไซค์ตามประเภทใบ) */
   plate: string;
-  /** ป้ายทะเบียนมอเตอร์ไซค์ — ใบที่บันทึกไว้ก่อนมีช่องนี้ยังไม่มี (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  /** ป้ายทะเบียนมอเตอร์ไซค์ของใบเก่าที่ปนหลายประเภท — อ่านตอนแยกใบเท่านั้น (splitClaim) */
   motoPlate?: string;
   nickname: string;
   fuel: FuelRow[];
@@ -127,9 +158,48 @@ export function vehiclesIn(rows: { vehicle?: Vehicle }[]) {
   return VEHICLES.filter((v) => rows.some((r) => vehicleOf(r) === v));
 }
 
-/** ป้ายทะเบียนของรถชนิดนั้นในใบ */
-export function plateOf(c: Pick<ExpenseClaim, "plate" | "motoPlate">, v: Vehicle) {
-  return v === "moto" ? c.motoPlate ?? "" : c.plate;
+/** ใบเก่าก่อนมีประเภท — อาจปนค่าน้ำมันหลายชนิดรถกับค่าใช้จ่ายอื่นในใบเดียว */
+export type LegacyClaim = Omit<ExpenseClaim, "type"> & { type?: ClaimType };
+
+/**
+ * แยกใบที่ปนหลายประเภทเป็นใบละประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ * ทุกใบที่แยกได้สถานะ วันยื่น วันตัดสิน คำอธิบาย และรอบที่จ่ายคืนเดิม
+ * ใบแรก (หรือใบของประเภทเดิม) เก็บเลขที่เดิม · ใบที่แยกออกไปของใบที่มีเลขแล้วได้เลขใหม่จาก nextNo
+ * ใบที่มีประเภทเดียวอยู่แล้วคืนตามเดิม
+ */
+export function splitClaim(c: LegacyClaim, nextNo: () => string): ExpenseClaim[] {
+  const own = c.type;
+  const fuel = c.fuel ?? [];
+  const other = c.other ?? [];
+  /* ใบที่มีประเภทแล้ว แถว other ทั้งหมดเป็นของประเภทนั้น — หัวข้อที่ผู้ใช้พิมพ์เองว่า "ค่าเดินทาง" ไม่ถูกย้าย */
+  const otherOwn = own === "travel" || own === "other";
+  const groups = [
+    ...VEHICLES.map((v) => ({ type: v as ClaimType, fuel: fuelRowsOf(fuel, v), other: [] as OtherRow[] })),
+    { type: "travel" as ClaimType, fuel: [] as FuelRow[], other: otherOwn ? (own === "travel" ? other : []) : other.filter((r) => r.kind === TRAVEL_KIND) },
+    { type: "other" as ClaimType, fuel: [] as FuelRow[], other: otherOwn ? (own === "other" ? other : []) : other.filter((r) => r.kind !== TRAVEL_KIND) },
+  ].filter((g) => g.fuel.length || g.other.length);
+
+  const { motoPlate, ...base } = c;
+  const plateFor = (t: ClaimType) =>
+    t === "moto" ? (own === "moto" ? c.plate : motoPlate ?? "") : t === "car" && (!own || own === "car") ? c.plate : "";
+
+  if (!groups.length) {
+    /* ใบว่าง — ใบเก่าถือเป็นค่าน้ำมันรถยนต์ (ฟอร์มตั้งต้นเดิม) · มีแต่แถวค่าคอมเก่าถือเป็นอื่นๆ */
+    const t: ClaimType = own ?? (c.income?.length ? "other" : "car");
+    return [{ ...base, type: t, plate: plateFor(t) }];
+  }
+  if (own && groups.length === 1 && groups[0].type === own && motoPlate === undefined) return [c as ExpenseClaim];
+
+  const main = Math.max(0, groups.findIndex((g) => g.type === own));
+  return groups.map((g, i) => ({
+    ...base,
+    type: g.type,
+    plate: plateFor(g.type),
+    fuel: g.fuel,
+    other: g.other,
+    income: i === main ? c.income ?? [] : [],
+    no: i === main ? c.no : c.no ? nextNo() : undefined,
+  }));
 }
 
 /** ค่าคอมของแถวเดียว = มูลค่าดีล × เปอร์เซ็นต์ — เก็บไว้อ่านใบเก่าที่ยังมีแถวค่าคอมติดมา ไม่เข้ายอดที่ขอเบิกแล้ว */
@@ -198,6 +268,7 @@ export function claimTotal(claim: ExpenseClaim) {
 const SALES_CLAIMS: ExpenseClaim[] = [
   {
     month: "2026-09",
+    type: "car",
     status: "ร่าง",
     plate: "1กจ 4471 เชียงใหม่",
     nickname: "ชม",
@@ -214,6 +285,7 @@ const SALES_CLAIMS: ExpenseClaim[] = [
   },
   {
     month: "2026-08",
+    type: "car",
     status: "อนุมัติแล้ว",
     no: "EX-2569-0001",
     plate: "1กจ 4471 เชียงใหม่",
@@ -233,6 +305,7 @@ const SALES_CLAIMS: ExpenseClaim[] = [
 const PM_CLAIMS: ExpenseClaim[] = [
   {
     month: "2026-09",
+    type: "car",
     status: "รออนุมัติ",
     no: "EX-2569-0009",
     plate: "2กท 8890 เชียงใหม่",
@@ -246,6 +319,7 @@ const PM_CLAIMS: ExpenseClaim[] = [
   },
   {
     month: "2026-08",
+    type: "car",
     status: "อนุมัติแล้ว",
     no: "EX-2569-0002",
     plate: "2กท 8890 เชียงใหม่",
@@ -262,25 +336,28 @@ const PM_CLAIMS: ExpenseClaim[] = [
 
 /* บัญชีกับบุคคลเป็นคนเดียวกัน (E12) — ใบร่างเดือนปัจจุบันอยู่ที่ HR_CLAIMS
    ประวัติใบที่ยื่นแล้วคนละเดือนกับฝั่งบุคคล ให้หน้ารายการใบเบิกมีข้อมูลครบทุกสถานะ (ผู้ใช้สั่ง 9 ต.ค. 2569)
-   เลขที่ EX-2569-0030 ถึง 0033 ไม่ชนกับเลขเดิม (สูงสุด 0029 ใน emp-requests) */
+   เลขที่ EX-2569-0030 ถึง 0033 ไม่ชนกับเลขเดิม (สูงสุด 0029 ใน emp-requests)
+   0034–0036 = ใบที่แยกออกจากใบปนประเภทเดิม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 const ACC_CLAIMS: ExpenseClaim[] = [
-  { month: "2026-09", status: "รออนุมัติ", no: "EX-2569-0033", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "2026-10-02 16:10",
+  { month: "2026-09", type: "car", status: "รออนุมัติ", no: "EX-2569-0033", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "2026-10-02 16:10",
     fuel: [
       { id: "F171", date: "2026-09-11", place: "ออฟฟิศ → ธนาคารกสิกรไทย สาขานิมมานเหมินท์", km: "7", work: "นำฝากเช็คค่างวดจากลูกค้า", note: "" },
       { id: "F172", date: "2026-09-25", place: "ออฟฟิศ → สำนักงานสรรพากรพื้นที่เชียงใหม่ 1", km: "11", work: "ยื่นแบบ ภ.พ.30 ประจำเดือนสิงหาคม", note: "" },
-    ],
+    ] },
+  /* ค่าเดินทางแยกเป็นใบของตัวเอง — หนึ่งใบหนึ่งประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  { month: "2026-09", type: "travel", status: "รออนุมัติ", no: "EX-2569-0034", plate: "", nickname: "อร", income: [], comment: "", submittedAt: "2026-10-02 16:10", fuel: [],
     other: [{ id: "O171", kind: "ค่าเดินทาง", date: "2026-09-25", amount: "40", note: "ค่าจอดรถสำนักงานสรรพากร", file: "ใบเสร็จค่าจอดรถ.jpg" }] },
-  { month: "2026-08", status: "อนุมัติแล้ว", no: "EX-2569-0032", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "2026-09-01 11:30", decidedAt: "2026-09-03 10:20", paidIn: "2026-09",
+  { month: "2026-08", type: "car", status: "อนุมัติแล้ว", no: "EX-2569-0032", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "2026-09-01 11:30", decidedAt: "2026-09-03 10:20", paidIn: "2026-09",
     fuel: [
       { id: "F173", date: "2026-08-07", place: "ออฟฟิศ → สำนักงานประกันสังคมจังหวัดเชียงใหม่", km: "9", work: "ยื่นเงินสมทบประกันสังคมเดือนกรกฎาคม", note: "" },
       { id: "F174", date: "2026-08-20", place: "ออฟฟิศ → มั่นคงก่อสร้าง สำนักงานใหญ่", km: "26", work: "วางบิลและรับเช็คงวดที่ 2", note: "" },
     ] },
-  { month: "2026-07", status: "ไม่อนุมัติ", no: "EX-2569-0031", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], submittedAt: "2026-08-01 09:05", decidedAt: "2026-08-04 14:30",
+  { month: "2026-07", type: "car", status: "ไม่อนุมัติ", no: "EX-2569-0031", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], submittedAt: "2026-08-01 09:05", decidedAt: "2026-08-04 14:30",
     comment: "ระยะทางวันที่ 18 ก.ค. สูงกว่าเส้นทางจริง ตรวจเลขไมล์แล้วยื่นใหม่",
     fuel: [
       { id: "F175", date: "2026-07-18", place: "ออฟฟิศ → สยามพลาสติก อ.เมือง", km: "96", work: "วางบิลและรับเช็คค่าบริการ", note: "" },
     ] },
-  { month: "2026-06", status: "ยกเลิก", no: "EX-2569-0030", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "2026-07-02 10:40",
+  { month: "2026-06", type: "other", status: "ยกเลิก", no: "EX-2569-0030", plate: "", nickname: "อร", income: [], comment: "", submittedAt: "2026-07-02 10:40",
     fuel: [],
     other: [{ id: "O172", kind: "ค่าอุปกรณ์และวัสดุ", date: "2026-06-26", amount: "320", note: "ซื้อแฟ้มเก็บเอกสารภาษี", file: "ใบเสร็จ.jpg" }] },
 ];
@@ -293,6 +370,7 @@ const STAFF_CLAIMS: ExpenseClaim[] = [];
 const HR_CLAIMS: ExpenseClaim[] = [
   {
     month: "2026-09",
+    type: "car",
     status: "ร่าง",
     plate: "2กจ 8841 เชียงใหม่",
     nickname: "อร",
@@ -307,60 +385,63 @@ const HR_CLAIMS: ExpenseClaim[] = [
 
 /*
  * ตัวอย่างใบเบิกรอบปัจจุบัน (ก.ย. – ต.ค. 2569) สำหรับสาธิต (เจ้าของสั่ง 8 ต.ค. 2569)
- * ใบเบิกหนึ่งใบต่อหนึ่งเดือน — เครื่องที่เก็บข้อมูลไว้แล้วได้ใบของ "เดือนที่ยังไม่มี" เพิ่มผ่าน addMissingClaims
+ * ใบเบิกหนึ่งใบต่อหนึ่งประเภท — เครื่องที่เก็บข้อมูลไว้แล้วได้ใบของ "เดือนที่ยังไม่มี" เพิ่มผ่าน addMissingClaims
  * เดือนที่ผู้ใช้มีใบอยู่แล้ว (แม้เป็นใบร่าง) ไม่ถูกแตะ
  */
 const CLAIMS_OCT_2569: Partial<Record<Role, ExpenseClaim[]>> = {
   sales: [
-    { month: "2026-10", status: "ร่าง", plate: "1กจ 4471 เชียงใหม่", nickname: "ชม", income: [], comment: "", submittedAt: "",
+    { month: "2026-10", type: "car", status: "ร่าง", plate: "1กจ 4471 เชียงใหม่", nickname: "ชม", income: [], comment: "", submittedAt: "",
       fuel: [
         { id: "F101", date: "2026-10-01", place: "ออฟฟิศ – เอ็มเทคเอ็นจิเนียริ่ง อ.สารภี", km: "34", work: "นำเสนอใบเสนอราคาระบบ ERP", note: "" },
         { id: "F102", date: "2026-10-06", place: "ออฟฟิศ – บุญมีฟาร์ม อ.สันทราย", km: "41", work: "เข้าพบลูกค้าเก็บความต้องการ", note: "" },
-      ],
+      ] },
+    { month: "2026-10", type: "other", status: "ร่าง", plate: "", nickname: "ชม", income: [], comment: "", submittedAt: "", fuel: [],
       other: [{ id: "O101", kind: "ค่ารับรองลูกค้า", date: "2026-10-06", amount: "850", note: "เลี้ยงกาแฟลูกค้าหลังประชุม", file: "ใบเสร็จร้านกาแฟ.jpg" }] },
   ],
   ps: [
-    { month: "2026-09", status: "รออนุมัติ", no: "EX-2569-0026", plate: "1กจ 4471 เชียงใหม่", nickname: "ปุ๊ก", income: [], comment: "", submittedAt: "2026-10-01 09:40",
+    { month: "2026-09", type: "car", status: "รออนุมัติ", no: "EX-2569-0026", plate: "1กจ 4471 เชียงใหม่", nickname: "ปุ๊ก", income: [], comment: "", submittedAt: "2026-10-01 09:40",
       fuel: [
         { id: "F111", date: "2026-09-16", place: "ออฟฟิศ – สยามพลาสติก อ.เมือง", km: "48", work: "สาธิตระบบให้ทีมลูกค้า", note: "" },
         { id: "F112", date: "2026-09-24", place: "ออฟฟิศ – มั่นคงก่อสร้าง ไซต์งาน", km: "76", work: "สำรวจระบบเครือข่ายหน้างาน", note: "" },
       ] },
   ],
   pm: [
-    { month: "2026-10", status: "ร่าง", plate: "2กท 8890 เชียงใหม่", nickname: "กร", income: [], comment: "", submittedAt: "",
+    { month: "2026-10", type: "car", status: "ร่าง", plate: "2กท 8890 เชียงใหม่", nickname: "กร", income: [], comment: "", submittedAt: "",
       fuel: [
         { id: "F121", date: "2026-10-03", place: "ออฟฟิศ → บุญมีฟาร์ม อ.สันทราย", km: "41", work: "คุมงานติดตั้งระบบหน้างาน", note: "" },
       ] },
   ],
   hr: [
-    { month: "2026-10", status: "ร่าง", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "",
+    { month: "2026-10", type: "car", status: "ร่าง", plate: "2กจ 8841 เชียงใหม่", nickname: "อร", income: [], comment: "", submittedAt: "",
       fuel: [
         { id: "F131", date: "2026-10-05", place: "ออฟฟิศ → สำนักงานสรรพากรพื้นที่", km: "11", work: "ยื่นแบบ ภ.ง.ด.1 ประจำเดือนกันยายน", note: "" },
       ] },
   ],
   staff: [
-    { month: "2026-10", status: "ร่าง", plate: "ขค 8812 เชียงใหม่", nickname: "มายด์", income: [], comment: "", submittedAt: "",
+    { month: "2026-10", type: "car", status: "ร่าง", plate: "ขค 8812 เชียงใหม่", nickname: "มายด์", income: [], comment: "", submittedAt: "",
       fuel: [
         { id: "F141", date: "2026-10-02", place: "ออฟฟิศ – ครัวคุณจิ ถ.ช้างคลาน", km: "22", work: "ถ่ายภาพเมนูใหม่ทำเนื้อหาเว็บไซต์", note: "" },
       ] },
-    { month: "2026-09", status: "รออนุมัติ", no: "EX-2569-0023", plate: "ขค 8812 เชียงใหม่", nickname: "มายด์", income: [], comment: "", submittedAt: "2026-10-01 10:15",
+    { month: "2026-09", type: "car", status: "รออนุมัติ", no: "EX-2569-0023", plate: "ขค 8812 เชียงใหม่", nickname: "มายด์", income: [], comment: "", submittedAt: "2026-10-01 10:15",
       fuel: [
         { id: "F142", date: "2026-09-15", place: "ออฟฟิศ – อัลฟ่าคอร์ป สาขาเชียงใหม่", km: "12", work: "อบรมการใช้งานระบบหลังบ้านเว็บไซต์", note: "" },
         { id: "F143", date: "2026-09-23", place: "ออฟฟิศ – พูลผลอะไหล่ อ.หางดง", km: "29", work: "เก็บข้อมูลสินค้าทำแคตตาล็อกออนไลน์", note: "" },
-      ],
+      ] },
+    { month: "2026-09", type: "other", status: "รออนุมัติ", no: "EX-2569-0035", plate: "", nickname: "มายด์", income: [], comment: "", submittedAt: "2026-10-01 10:15", fuel: [],
       other: [{ id: "O141", kind: "ค่าอุปกรณ์และวัสดุ", date: "2026-09-23", amount: "390", note: "ซื้อฉากถ่ายภาพสินค้า", file: "ใบเสร็จ.jpg" }] },
   ],
   gm: [
-    { month: "2026-09", status: "รออนุมัติ", no: "EX-2569-0025", plate: "1กข 2025 เชียงใหม่", nickname: "เสริฐ", income: [], comment: "", submittedAt: "2026-10-02 08:50",
+    { month: "2026-09", type: "car", status: "รออนุมัติ", no: "EX-2569-0025", plate: "1กข 2025 เชียงใหม่", nickname: "เสริฐ", income: [], comment: "", submittedAt: "2026-10-02 08:50",
       fuel: [
         { id: "F151", date: "2026-09-18", place: "ออฟฟิศ – มั่นคงก่อสร้าง สำนักงานใหญ่", km: "26", work: "ประชุมผู้บริหารลูกค้าเรื่องสัญญาบำรุงรักษา", note: "" },
-      ],
+      ] },
+    { month: "2026-09", type: "other", status: "รออนุมัติ", no: "EX-2569-0036", plate: "", nickname: "เสริฐ", income: [], comment: "", submittedAt: "2026-10-02 08:50", fuel: [],
       other: [{ id: "O151", kind: "ค่ารับรองลูกค้า", date: "2026-09-18", amount: "2450", note: "รับประทานอาหารกลางวันกับผู้บริหารลูกค้า", file: "ใบกำกับภาษีร้านอาหาร.pdf" }] },
   ],
   maid: [
-    { month: "2026-10", status: "ร่าง", plate: "", nickname: "ป้าเรือน", income: [], comment: "", submittedAt: "", fuel: [],
+    { month: "2026-10", type: "other", status: "ร่าง", plate: "", nickname: "ป้าเรือน", income: [], comment: "", submittedAt: "", fuel: [],
       other: [{ id: "O161", kind: "ค่าอุปกรณ์และวัสดุ", date: "2026-10-05", amount: "640", note: "น้ำยาถูพื้นและถุงขยะ", file: "ใบเสร็จ.jpg" }] },
-    { month: "2026-09", status: "อนุมัติแล้ว", no: "EX-2569-0024", plate: "", nickname: "ป้าเรือน", income: [], comment: "", submittedAt: "2026-09-26 15:20", decidedAt: "2026-09-28 10:05", fuel: [],
+    { month: "2026-09", type: "other", status: "อนุมัติแล้ว", no: "EX-2569-0024", plate: "", nickname: "ป้าเรือน", income: [], comment: "", submittedAt: "2026-09-26 15:20", decidedAt: "2026-09-28 10:05", fuel: [],
       other: [
         { id: "O162", kind: "ค่าอุปกรณ์และวัสดุ", date: "2026-09-10", amount: "520", note: "กระดาษชำระและสบู่ล้างมือ", file: "ใบเสร็จ.jpg" },
         { id: "O163", kind: "อื่นๆ", date: "2026-09-22", amount: "180", note: "น้ำดื่มต้อนรับลูกค้า", file: "ใบเสร็จ.jpg" },
@@ -368,7 +449,7 @@ const CLAIMS_OCT_2569: Partial<Record<Role, ExpenseClaim[]>> = {
   ],
 };
 
-/** เติมใบเบิกของเดือนที่ยังไม่มีในเครื่อง — เดือนที่มีใบอยู่แล้วไม่ถูกแตะ */
+/** เติมใบเบิกของเดือนที่ยังไม่มีในเครื่อง — เดือนที่มีใบอยู่แล้ว (ประเภทใดก็ตาม) ไม่ถูกแตะ */
 export function addMissingClaims(have: ExpenseClaim[], seed: ExpenseClaim[]): ExpenseClaim[] {
   const months = new Set(have.map((c) => c.month));
   const add = seed.filter((c) => !months.has(c.month));
@@ -452,11 +533,14 @@ export function checkClaim(claim: ExpenseClaim): ClaimCheck {
   if (!claim.fuel.length && !claim.income.length && !claim.other?.length) {
     reasons.push("ยังไม่มีรายการในใบนี้");
   }
-  /* รถยนต์กับมอเตอร์ไซค์แยกฟอร์ม — ป้ายทะเบียนและลำดับครั้งที่นับแยกตามชนิดรถ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-  for (const v of vehiclesIn(claim.fuel)) {
-    const label = VEHICLE_LABEL[v];
-    if (!plateOf(claim, v).trim()) reasons.push(`เบิกค่าน้ำมัน${label}ต้องกรอกป้ายทะเบียนรถ`);
-    const badFuel = fuelRowsOf(claim.fuel, v)
+  /* หนึ่งใบหนึ่งประเภท — กันที่ชั้นตรวจด้วย ไม่ใช่แค่หน้าจอ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const fuelType = isFuelType(claim.type);
+  if (fuelType ? claim.fuel.some((r) => vehicleOf(r) !== claim.type) || claim.other?.length : claim.fuel.length)
+    reasons.push("ใบนี้มีรายการต่างประเภทปนอยู่");
+  if (fuelType && claim.fuel.length) {
+    const label = VEHICLE_LABEL[claim.type as Vehicle];
+    if (!claim.plate.trim()) reasons.push(`เบิกค่าน้ำมัน${label}ต้องกรอกป้ายทะเบียนรถ`);
+    const badFuel = claim.fuel
       .map((r, i) => ({ i: i + 1, why: fuelRowProblem(r, claim.month) }))
       .filter((x) => x.why);
     /* บอกเป็นรายแถวพร้อมชื่อช่อง — อ่านแล้วเดินไปแก้ได้เลยว่าแถวไหนช่องไหน */
@@ -466,7 +550,7 @@ export function checkClaim(claim: ExpenseClaim): ClaimCheck {
   const badOther = (claim.other ?? [])
     .map((r, i) => ({ i: i + 1, why: otherRowProblem(r, claim.month) }))
     .filter((x) => x.why);
-  for (const x of badOther) reasons.push(`ค่าใช้จ่ายอื่นลำดับ ${x.i}: ${x.why}`);
+  for (const x of badOther) reasons.push(`${CLAIM_TYPE_LABEL[claim.type]}ลำดับ ${x.i}: ${x.why}`);
 
   const badIncome = claim.income
     .map((r, i) => ({ i: i + 1, why: incomeRowProblem(r) }))

@@ -19,7 +19,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { VEHICLE_LABEL, claimApproveBlock, claimTotal, fuelRowsOf, plateOf, vehiclesIn } from "@/lib/expense-data";
+import { CLAIM_TYPE_LABEL, claimApproveBlock, claimTotal, isFuelType, keyOf } from "@/lib/expense-data";
 import { useAllClaims } from "@/lib/expense-store";
 import { baht, bkkStamp, thaiDate, thaiMonth, thaiStamp } from "@/lib/format";
 import { ROLE_EMPLOYEE, empOf, hrPos } from "@/lib/hr-data";
@@ -179,8 +179,8 @@ export function useCeoRequests(): Item[] {
             emp,
             src: "role",
             role: from,
-            id: `${from}-${v.month}`,
-            key: v.month,
+            id: `${from}-${keyOf(v)}`,
+            key: keyOf(v),
             no: v.no ?? "",
             status: statusOf(v.status),
             at: v.submittedAt || `${v.month}-01 00:00`,
@@ -191,13 +191,10 @@ export function useCeoRequests(): Item[] {
             big: `${baht(total)} บาท`,
             lines: [
               `รอบ ${thaiMonth(v.month)}`,
-              /* แยกบรรทัดตามชนิดรถ พร้อมทะเบียนของรถคันนั้น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-              ...(v.fuel.length
-                ? vehiclesIn(v.fuel).map((x) => {
-                    const plate = plateOf(v, x);
-                    return `${VEHICLE_LABEL[x]} ${fuelRowsOf(v.fuel, x).length} เที่ยว${plate ? ` · ทะเบียน ${plate}` : ""}`;
-                  })
-                : [`0 เที่ยว${v.plate ? ` · ทะเบียน ${v.plate}` : ""}`]),
+              /* หนึ่งใบหนึ่งประเภท — บอกประเภทของใบ ค่าน้ำมันบอกจำนวนเที่ยวและทะเบียน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+              isFuelType(v.type)
+                ? `${CLAIM_TYPE_LABEL[v.type]} ${v.fuel.length} เที่ยว${v.plate ? ` · ทะเบียน ${v.plate}` : ""}`
+                : `${CLAIM_TYPE_LABEL[v.type]} ${(v.other ?? []).length} รายการ`,
             ],
             note: "",
             reason: v.comment,

@@ -15,7 +15,7 @@ import {
 } from "./crm-data";
 import type { CrmState } from "./crm-store";
 import type { ContractDoc } from "./contract-data";
-import { claimTotal, isLocked, type ExpenseClaim } from "./expense-data";
+import { CLAIM_TYPE_LABEL, claimTotal, isLocked, keyOf, type ExpenseClaim } from "./expense-data";
 import { baht, daysBetween, thaiDate, thaiMonth, toIsoDate } from "./format";
 import {
   HR_LEAVE_LABEL,
@@ -1525,21 +1525,24 @@ export function buildNotices(input: {
   }
 
   // ── ใบเบิกค่าใช้จ่ายที่ยังค้าง ──
+  /* หนึ่งใบหนึ่งประเภท — แจ้งทีละใบ ด้วยกุญแจเดือน + ประเภท (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   for (const c of myClaims) {
     const total = claimTotal(c);
+    const ck = keyOf(c);
+    const label = CLAIM_TYPE_LABEL[c.type];
     if (c.status === "รออนุมัติ") {
       out.push({
-        id: `claim-${c.month}`,
+        id: `claim-${ck}`,
         level: "info",
         group: "รออนุมัติ",
         title: `ใบเบิกค่าใช้จ่าย ${thaiMonth(c.month)}`,
-        detail: `ค่าน้ำมัน ${baht(total)} บาท · รอหัวหน้าอนุมัติ`,
+        detail: `${label} ${baht(total)} บาท · รอหัวหน้าอนุมัติ`,
         href: "/expense",
         date: c.month + "-01",
       });
     } else if (c.status === "ไม่อนุมัติ") {
       out.push({
-        id: `claim-rej-${c.month}`,
+        id: `claim-rej-${ck}`,
         level: "late",
         group: "ใบเบิกไม่ผ่าน",
         event: "leave",
@@ -1556,22 +1559,22 @@ export function buildNotices(input: {
       daysBetween(c.decidedAt.slice(0, 10), today) <= DECIDED_DAYS
     ) {
       out.push({
-        id: `claim-ok-${c.month}`,
+        id: `claim-ok-${ck}`,
         level: "info",
         group: "ใบเบิกอนุมัติแล้ว",
         event: "leaveok",
         title: `ใบเบิกค่าใช้จ่าย ${thaiMonth(c.month)}`,
-        detail: `${baht(total)} บาท · ${c.comment || "หัวหน้าอนุมัติแล้ว รอจ่ายพร้อมรอบเงินเดือน"}`,
+        detail: `${label} ${baht(total)} บาท · ${c.comment || "หัวหน้าอนุมัติแล้ว รอจ่ายพร้อมรอบเงินเดือน"}`,
         href: "/expense",
         date: c.decidedAt.slice(0, 10),
       });
     } else if (!isLocked(c.status) && total > 0) {
       out.push({
-        id: `claim-draft-${c.month}`,
+        id: `claim-draft-${ck}`,
         level: "info",
         group: "ใบเบิกยังไม่ได้ยื่น",
         title: `ใบเบิกค่าใช้จ่าย ${thaiMonth(c.month)}`,
-        detail: `กรอกค่าน้ำมันไว้ ${baht(total)} บาท แต่ยังไม่ได้ส่งขออนุมัติ`,
+        detail: `กรอก${label}ไว้ ${baht(total)} บาท แต่ยังไม่ได้ส่งขออนุมัติ`,
         href: "/expense",
         date: c.month + "-01",
       });

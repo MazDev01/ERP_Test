@@ -677,7 +677,7 @@ export function HrPayrollPage() {
           emp={hr.emp}
           /* ใบเบิกที่จ่ายคืนในรอบนี้ของคนในกลุ่ม — บันทึกว่าจ่ายแล้วพร้อมกับการปิดรอบ */
           reimbursed={groupLines.flatMap(({ e }) =>
-            reimbItems(e, calcRange, src).flatMap((x) => (x.role && x.claim && !x.paidIn ? [{ role: x.role, month: x.claim }] : [])),
+            reimbItems(e, calcRange, src).flatMap((x) => (x.role && x.key && !x.paidIn ? [{ role: x.role, key: x.key }] : [])),
           )}
           /* ยอดที่บันทึกตอนปิด คิดจากคนในกลุ่มนี้เท่านั้น */
           sum={groupSum}
@@ -1193,7 +1193,7 @@ function CloseDialog({
   clashes: ClashItem[];
   dayHref: (id: string) => string;
   emp: Employee[];
-  reimbursed: { role: Role; month: string }[];
+  reimbursed: { role: Role; key: string }[];
   sum: CycleSum;
   today: string;
   onClose: () => void;

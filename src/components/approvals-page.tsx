@@ -33,11 +33,14 @@ import { useHydrated } from "@/lib/pwa";
 import { lockScroll } from "@/lib/scroll-lock";
 import { decideEmpRequest, useEmpRequests, type EmpRequest } from "@/lib/emp-requests";
 import {
+  CLAIM_TYPE_LABEL,
   VEHICLE_LABEL,
   claimApproveBlock,
   claimTotal,
   fuelAmount,
   fuelRowsOf,
+  isFuelType,
+  keyOf,
   vehiclesIn,
   type ExpenseClaim,
   type Vehicle,
@@ -1153,17 +1156,23 @@ function fuelKmLines(rows: { km: string | number; vehicle?: Vehicle }[]) {
   return vs.map((x) => `${VEHICLE_LABEL[x]} รวม ${km(fuelRowsOf(rows, x)).toFixed(2)} กม.`);
 }
 
+/* หนึ่งใบหนึ่งประเภท — key = เดือน + ประเภท ไม่ซ้ำกันแม้เดือนเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 function fromClaim(role: Role, v: ExpenseClaim, as: Role): Request {
-  const lines = [`ค่าน้ำมัน ${thaiMonth(v.month)}`, ...fuelKmLines(v.fuel), `เป็นเงิน ${baht(claimTotal(v))} บาท`];
+  const label = CLAIM_TYPE_LABEL[v.type];
+  const lines = [
+    `${label} ${thaiMonth(v.month)}`,
+    ...(isFuelType(v.type) ? fuelKmLines(v.fuel) : [`${(v.other ?? []).length} รายการ`]),
+    `เป็นเงิน ${baht(claimTotal(v))} บาท`,
+  ];
   return {
     kind: "expense",
     ...who(role),
     as,
-    key: v.month,
+    key: keyOf(v),
     no: v.no ?? "",
     status: statusOf(v.status),
     at: stampOf(v.submittedAt, `${v.month}-01`),
-    topic: "ค่าน้ำมัน",
+    topic: label,
     line: `${v.no ?? ""} ${lines.join(" ")}`,
     lines,
     why: v.comment,
