@@ -14,7 +14,7 @@
 import { useSyncExternalStore } from "react";
 import { createPersistedStore } from "./persisted-store";
 import { settings } from "./system-settings";
-import { HR_EMP, ROLE_EMPLOYEE } from "./hr-data";
+import { HR_EMP, ROLE_EMPLOYEE, posFullName } from "./hr-data";
 
 /*
  * บริษัทไม่มีผู้ดูแลระบบแยก ฝ่ายบุคคลดูแลการตั้งค่าทั้งหมด (Full Proposal · M5)
@@ -29,19 +29,20 @@ export const ROLES: { key: Role; label: string; note: string; en: string }[] = [
     en: "Sales" },
   /* ทีมก่อนการขาย (SA/BD) — รับคำขอก่อนการขายจากฝ่ายขาย ทำข้อเสนอแล้วส่งกลับ (ต้นแบบ presales-work.html) */
   { key: "ps", label: "ทีมก่อนการขาย", note: "รับคำขอจากฝ่ายขาย จัดทำข้อเสนอแล้วส่งกลับ",
-    en: "Presales (SA/BD)" },
+    en: "Presales (System Analysis/Business Development)" },
   { key: "pm", label: "ผู้จัดการโครงการ", note: "รับใบงานแล้วมอบหมายให้ทีม",
     en: "Project Manager" },
   { key: "acc", label: "พนักงานบัญชี", note: "วางบิล ติดตามหนี้ ออกใบเสร็จ และยื่นภาษี",
     en: "Accountant" },
   { key: "hr", label: "ฝ่ายบุคคล", note: "ดูแลข้อมูลพนักงาน เวลาทำงาน และเงินเดือน",
     en: "Human Resources" },
-  { key: "staff", label: "ทีมงาน", note: "รับงานจาก PM ลงมือทำ แล้วส่งผลงานให้ตรวจ",
+  { key: "staff", label: "ทีมงาน", note: "รับงานจาก Project Manager ลงมือทำ แล้วส่งผลงานให้ตรวจ",
     en: "Team Member" },
-  { key: "gm", label: "ผู้จัดการทั่วไป (GM)", note: "อนุมัติใบลาของพนักงานทั่วไป",
+  /* ตำแหน่งในวงเล็บใช้ชื่อเต็ม ไม่ใช้ตัวย่อ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  { key: "gm", label: "ผู้จัดการทั่วไป (General Manager)", note: "อนุมัติใบลาของพนักงานทั่วไป",
     en: "General Manager" },
   { key: "ceo", label: "ผู้บริหาร", note: "อนุมัติคำขอที่ขึ้นถึงผู้บริหาร และอนุมัติยอดเงินเดือน",
-    en: "CEO" },
+    en: "Chief Executive Officer" },
   { key: "intern", label: "นักศึกษาฝึกงาน", note: "ลงเวลาเข้า-ออกงาน และยื่นใบลา",
     en: "Intern" },
   /* แม่บ้าน (ผู้ใช้สั่ง 2 ต.ค. 2569) — ลงเวลา เบิกค่าใช้จ่าย ลา และดูสลิปเงินเดือน */
@@ -178,12 +179,13 @@ export type ApproverKey = "pm" | "acc" | "hr" | "gm" | "exec";
 /** ผู้อนุมัติทั้งหมด — ชื่อ/ตำแหน่งอ่านจากการตั้งค่าทุกครั้ง (ผู้ดูแลระบบแก้ได้ที่ /admin/settings?s=staff&t=positions) */
 export function approvers(): Record<ApproverKey, Approver> {
   const n = settings().approvers;
+  /* ตำแหน่งที่บันทึกไว้เป็นตัวย่อ (เช่น "GM") โชว์เป็นชื่อเต็ม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   return {
-    pm: { role: APPROVER_ROLE.pm, ...n.pm },
-    acc: { role: APPROVER_ROLE.acc, ...n.acc },
-    hr: { role: APPROVER_ROLE.hr, ...n.hr },
-    gm: { role: APPROVER_ROLE.gm, ...n.gm },
-    exec: { role: APPROVER_ROLE.exec, ...n.exec },
+    pm: { role: APPROVER_ROLE.pm, ...n.pm, title: posFullName(n.pm.title) },
+    acc: { role: APPROVER_ROLE.acc, ...n.acc, title: posFullName(n.acc.title) },
+    hr: { role: APPROVER_ROLE.hr, ...n.hr, title: posFullName(n.hr.title) },
+    gm: { role: APPROVER_ROLE.gm, ...n.gm, title: posFullName(n.gm.title) },
+    exec: { role: APPROVER_ROLE.exec, ...n.exec, title: posFullName(n.exec.title) },
   };
 }
 
@@ -302,7 +304,8 @@ export function positionOfRole(role: Role) {
  * ตำแหน่งไหนยังไม่ได้ตั้ง ก็ตกมาใช้ค่าตามบทบาทเหมือนเดิม
  */
 function routeKeyOf(role: Role, kind: RequestKind, route: ApprovalRoute): ApproverKey {
-  const byPos = settings().posRoute[positionOfRole(role)]?.[kind];
+  /* เด็กฝึกงานไม่ใช้สายรายตำแหน่ง ใช้สายของบทบาทฝึกงานเสมอ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const byPos = role === "intern" ? undefined : settings().posRoute[positionOfRole(role)]?.[kind];
   return byPos && byPos in APPROVER_ROLE ? (byPos as ApproverKey) : route[kind][role];
 }
 

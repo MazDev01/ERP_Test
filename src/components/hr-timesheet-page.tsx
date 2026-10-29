@@ -840,7 +840,7 @@ function DayDetail({
                     <span className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] font-normal text-muted-foreground">
                       <span className="tag t-ok align-middle text-[11.5px] font-semibold">
                         <i />
-                        HR ยืนยันแล้ว
+                        Human Resources ยืนยันแล้ว
                       </span>
                       <span>
                         โดย {whoName(done.by)} · {thaiDate(done.at.slice(0, 10))} {done.at.slice(11)} น.
@@ -898,7 +898,7 @@ function DayDetail({
         }
         detail={
           <span className="font-semibold text-destructive">
-            ยืนยันแล้วจะยกเลิกหรือแก้ไขไม่ได้อีก ข้อมูลนี้จะส่งต่อถึง CEO
+            ยืนยันแล้วจะยกเลิกหรือแก้ไขไม่ได้อีก ข้อมูลนี้จะส่งต่อถึง Chief Executive Officer
           </span>
         }
         confirmLabel="ยืนยัน"

@@ -36,6 +36,7 @@ import {
   dailyRoundRange,
   GROUP_LABEL,
   type PayGroup,
+  posFullName,
 } from "./hr-data";
 import type { HrState } from "./hr-store";
 import type { HolidayReq } from "./system-settings";
@@ -193,7 +194,7 @@ export function buildNotices(input: {
       /* ชุดของ CEO ตามตารางแจ้งเตือน (ผู้ใช้สั่ง 16 ต.ค. 2569) */
       detail:
         role === "ceo"
-          ? "ลาของ GM และบัญชีและบุคคล · โอทีของ SA/Dev — อนุมัติหรือไม่อนุมัติ"
+          ? "ลาของ General Manager และบัญชีและบุคคล · โอทีของ System Analysis/Developer — อนุมัติหรือไม่อนุมัติ"
           : "ใบลา โอที และใบเบิกของทีมที่คุณดูแล — อนุมัติหรือไม่อนุมัติ",
       /* ผู้บริหารตัดสินที่หน้าคำขออนุมัติของตัวเอง ไม่มีเมนู /approvals กลาง */
       href: role === "ceo" ? "/ceo/approvals" : "/approvals",
@@ -267,7 +268,7 @@ export function buildNotices(input: {
       out.push({
         id: `hrhol-${hq.status}-${hq.at}`,
         level: rej ? "late" : "info",
-        group: rej ? "CEO ตีกลับวันหยุด" : "CEO อนุมัติวันหยุดแล้ว",
+        group: rej ? "Chief Executive Officer ตีกลับวันหยุด" : "Chief Executive Officer อนุมัติวันหยุดแล้ว",
         event: rej ? "holidayback" : "holidayok",
         title: "วันหยุดบริษัท",
         detail: rej ? `เหตุผล: ${hq.reason || "—"} · แก้แล้วส่งใหม่` : "วันหยุดชุดใหม่มีผลกับทุกหน้าแล้ว",
@@ -415,7 +416,7 @@ export function buildNotices(input: {
         title: cus,
         detail:
           r.seq === 1
-            ? `ชำระ ${baht(r.total)} บาท · ส่งงานให้ PM เริ่มโปรเจคแล้ว`
+            ? `ชำระ ${baht(r.total)} บาท · ส่งงานให้ Project Manager เริ่มโปรเจคแล้ว`
             : `งวดที่ ${r.seq} · ชำระ ${baht(r.total)} บาท`,
         href: `/deals?find=${encodeURIComponent(d.no)}`,
         date: r.date,
@@ -428,7 +429,7 @@ export function buildNotices(input: {
         level: "info",
         group: "ส่งมอบงานครบแล้ว",
         title: cus,
-        detail: "PM ตรวจงานสุดท้ายผ่านแล้ว ใบงานขึ้น \"ส่งมอบ\"",
+        detail: "Project Manager ตรวจงานสุดท้ายผ่านแล้ว ใบงานขึ้น \"ส่งมอบ\"",
         href: `/deals?find=${encodeURIComponent(d.no)}`,
         date: proj.updated,
       });
@@ -546,7 +547,7 @@ export function buildNotices(input: {
         level: "late",
         group: "คำขอก่อนการขายยังไม่มีใครรับ",
         title: cus,
-        detail: `ประเภท ${p.kind} · ${psOwner(p)} · ค้างมา ${days} วัน · ต้องส่งงาน ${thaiDate(p.due)}`,
+        detail: `ประเภท ${posFullName(p.kind)} · ${psOwner(p)} · ค้างมา ${days} วัน · ต้องส่งงาน ${thaiDate(p.due)}`,
         href: `/presales-work?find=${encodeURIComponent(p.no)}`,
         date: p.createdAt,
       });
@@ -628,7 +629,7 @@ export function buildNotices(input: {
         out.push({
           id: `pmin-${j.pj}`,
           level: waiting > 2 ? "late" : "soon",
-          group: "งานเข้าใหม่รอมอบหมาย PM",
+          group: "งานเข้าใหม่รอมอบหมาย Project Manager",
           event: "pmjob",
           title: j.cus,
           detail: `${j.scope} · เข้ามา ${waiting > 0 ? `${waiting} วันแล้ว` : "วันนี้"}`,
@@ -643,7 +644,7 @@ export function buildNotices(input: {
         out.push({
           id: `pmas-${j.pj}-${j.assignedAt ?? ""}`,
           level: "soon",
-          group: "GM มอบหมายงานใหม่ให้คุณ",
+          group: "General Manager มอบหมายงานใหม่ให้คุณ",
           event: "pmassigned",
           title: j.cus,
           detail: `${j.scope}${j.assignNote ? ` · ${j.assignNote}` : ""}`,
@@ -935,7 +936,7 @@ export function buildNotices(input: {
           out.push({
             id: `mytask-nudge-${p.pj}-${i}`,
             level: "late",
-            group: "PM ทวงงาน",
+            group: "Project Manager ทวงงาน",
             title: `${p.cus} · ${t.name}`,
             detail: nudge.tx,
             href: `${findLink("/my-tasks", t.name)}&stage=${t.status === "revise" ? "revise" : "recv"}`,
@@ -957,7 +958,7 @@ export function buildNotices(input: {
               group: "งานก่อนหน้าเลยกำหนด",
               event: "taskprevlate",
               title: `${p.cus} · ${t.name}`,
-              detail: `รอ ${late.map((w) => w.name).join(", ")} · เลยกำหนด ${daysBetween(worst.due, today)} วัน — แจ้ง PM แล้ว`,
+              detail: `รอ ${late.map((w) => w.name).join(", ")} · เลยกำหนด ${daysBetween(worst.due, today)} วัน — แจ้ง Project Manager แล้ว`,
               href: `${findLink("/my-tasks", t.name)}&stage=recv`,
               date: worst.due,
             });
@@ -1100,7 +1101,7 @@ export function buildNotices(input: {
       out.push({
         id: `hrpay${rej ? "rej" : "ok"}-${key}-${ap.at ?? ""}`,
         level: rej ? "late" : "soon",
-        group: rej ? "CEO ไม่อนุมัติเงินเดือน" : "CEO อนุมัติเงินเดือนแล้ว",
+        group: rej ? "Chief Executive Officer ไม่อนุมัติเงินเดือน" : "Chief Executive Officer อนุมัติเงินเดือนแล้ว",
         event: rej ? "payback" : "payok",
         title: label,
         detail: rej
@@ -1148,9 +1149,9 @@ export function buildNotices(input: {
           detail:
             st === "waiting"
               ? (payApproval(hr.payApprove, month, "month").ver ?? 0) > 0
-                ? "แก้ไขแล้ว ส่งให้ CEO อนุมัติใหม่ให้เอง — รอ CEO อนุมัติ"
-                : "ส่งยอดให้ CEO แล้ว — รอ CEO อนุมัติ"
-              : "ปิดรอบเวลาทำงานแล้ว — คำนวณเงินเดือน แล้วส่งให้ CEO อนุมัติ",
+                ? "แก้ไขแล้ว ส่งให้ Chief Executive Officer อนุมัติใหม่ให้เอง — รอ Chief Executive Officer อนุมัติ"
+                : "ส่งยอดให้ Chief Executive Officer แล้ว — รอ Chief Executive Officer อนุมัติ"
+              : "ปิดรอบเวลาทำงานแล้ว — คำนวณเงินเดือน แล้วส่งให้ Chief Executive Officer อนุมัติ",
           href: `/hr/payroll?g=month&m=${month}`,
           date: per.closedAt || today,
         });
@@ -1184,9 +1185,9 @@ export function buildNotices(input: {
         detail:
           st === "waiting"
             ? (payApproval(hr.payApprove, r.id, "day").ver ?? 0) > 0
-              ? "แก้ไขแล้ว ส่งให้ CEO อนุมัติใหม่ให้เอง — รอ CEO อนุมัติ"
-              : "ส่งยอดให้ CEO แล้ว — รอ CEO อนุมัติ"
-            : "คำนวณเงินเดือน แล้วส่งให้ CEO อนุมัติ",
+              ? "แก้ไขแล้ว ส่งให้ Chief Executive Officer อนุมัติใหม่ให้เอง — รอ Chief Executive Officer อนุมัติ"
+              : "ส่งยอดให้ Chief Executive Officer แล้ว — รอ Chief Executive Officer อนุมัติ"
+            : "คำนวณเงินเดือน แล้วส่งให้ Chief Executive Officer อนุมัติ",
         href: `/hr/payroll?g=daily&r=${r.id}`,
         date: r.closedAt.slice(0, 10),
       });

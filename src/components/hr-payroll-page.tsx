@@ -251,9 +251,9 @@ export function HrPayrollPage() {
           (!approved
             ? ap.status === "waiting"
               ? (ap.ver ?? 0) > 0
-                ? "แก้ไขแล้ว รอ CEO อนุมัติยอดใหม่ก่อนจึงปิดรอบได้"
-                : "รอ CEO อนุมัติยอดก่อนจึงปิดรอบได้"
-              : "ต้องส่งให้ CEO อนุมัติยอดก่อนจึงปิดรอบได้"
+                ? "แก้ไขแล้ว รอ Chief Executive Officer อนุมัติยอดใหม่ก่อนจึงปิดรอบได้"
+                : "รอ Chief Executive Officer อนุมัติยอดก่อนจึงปิดรอบได้"
+              : "ต้องส่งให้ Chief Executive Officer อนุมัติยอดก่อนจึงปิดรอบได้"
             : ""));
   /* ส่ง/ส่งใหม่ได้เมื่อรอบเวลาปิดแล้ว ยังไม่ปิดเงินเดือน และยังไม่มีใบค้างเข้ารอบ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
   const canSend =
@@ -350,7 +350,7 @@ export function HrPayrollPage() {
             <div className="my-2 ml-auto flex flex-wrap items-center gap-2 max-md:my-0 max-md:ml-0 max-md:w-full max-md:justify-center max-md:hidden">
               {canSend && (
                 <button type="button" className="btn glass-thin" style={{ height: 38 }} onClick={sendToCeo}>
-                  {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
+                  {ap.status === "draft" && !ap.reason ? "ส่งให้ Chief Executive Officer อนุมัติ" : "ส่งใหม่"}
                 </button>
               )}
               <CeoTag ap={ap} drifted={drifted} />
@@ -589,7 +589,7 @@ export function HrPayrollPage() {
             <CeoTag ap={ap} drifted={drifted} />
             {canSend && (
               <button type="button" className="btn glass-thin" onClick={sendToCeo}>
-                {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
+                {ap.status === "draft" && !ap.reason ? "ส่งให้ Chief Executive Officer อนุมัติ" : "ส่งใหม่"}
               </button>
             )}
             <button
@@ -1316,7 +1316,7 @@ function CeoTag({ ap, drifted }: { ap: PayApproval; drifted: boolean }) {
     return (
       <span className="tag t-late">
         <i />
-        ยอดเปลี่ยนหลัง CEO อนุมัติ กำลังส่งใหม่
+        ยอดเปลี่ยนหลัง Chief Executive Officer อนุมัติ กำลังส่งใหม่
       </span>
     );
   }
@@ -1324,7 +1324,7 @@ function CeoTag({ ap, drifted }: { ap: PayApproval; drifted: boolean }) {
     return (
       <span className="tag t-early">
         <i />
-        {(ap.ver ?? 0) > 0 ? `แก้ไขแล้ว รออนุมัติใหม่ (ส่งใหม่ครั้งที่ ${ap.ver})` : "รอ CEO อนุมัติ"}
+        {(ap.ver ?? 0) > 0 ? `แก้ไขแล้ว รออนุมัติใหม่ (ส่งใหม่ครั้งที่ ${ap.ver})` : "รอ Chief Executive Officer อนุมัติ"}
       </span>
     );
   }
@@ -1332,7 +1332,7 @@ function CeoTag({ ap, drifted }: { ap: PayApproval; drifted: boolean }) {
     return (
       <span className="tag t-ok">
         <i />
-        CEO อนุมัติแล้ว {ap.at ? thaiStamp(ap.at) : ""}
+        Chief Executive Officer อนุมัติแล้ว {ap.at ? thaiStamp(ap.at) : ""}
       </span>
     );
   }
@@ -1340,7 +1340,7 @@ function CeoTag({ ap, drifted }: { ap: PayApproval; drifted: boolean }) {
     return (
       <span className="tag t-late">
         <i />
-        CEO ไม่อนุมัติ: {ap.reason}
+        Chief Executive Officer ไม่อนุมัติ: {ap.reason}
       </span>
     );
   }

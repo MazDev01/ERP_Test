@@ -72,7 +72,7 @@ const LOOK: Record<Stage, { label: string; icon: typeof InboxIcon; tone: string 
     tone: "bg-[var(--success-soft)] text-[var(--success)]",
   },
   ask: {
-    label: "รอ PM อนุมัติ",
+    label: "รอ Project Manager อนุมัติ",
     icon: SendIcon,
     tone: "bg-[var(--info-soft)] text-[var(--info)]",
   },
@@ -422,7 +422,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
           onClose={() => setTalking(null)}
           onSent={() => {
             setTalking(null);
-            setToast("ส่งข้อความถึง PM แล้ว");
+            setToast("ส่งข้อความถึง Project Manager แล้ว");
           }}
         />
       )}
@@ -434,7 +434,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
           onSent={() => {
             setProposing(false);
             setStage("ask");
-            setToast("ส่งให้ PM อนุมัติแล้ว");
+            setToast("ส่งให้ Project Manager อนุมัติแล้ว");
           }}
         />
       )}
@@ -446,7 +446,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
           onClose={() => setWaitingRow(null)}
           onSaved={() => {
             setWaitingRow(null);
-            setToast("แจ้งรอข้อมูลแล้ว · PM เห็นแล้ว");
+            setToast("แจ้งรอข้อมูลแล้ว · Project Manager เห็นแล้ว");
           }}
         />
       )}
@@ -584,7 +584,7 @@ function TaskCard({
       {/* งานที่ต้องแก้ไข ไม่แสดงรายละเอียดงานเดิม — เห็นแค่สิ่งที่ต้องแก้ (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
       {stage !== "revise" && (
         <p className="line-clamp-2 text-[13px] leading-[1.45] text-[#6E6164]">
-          {t.brief || "ยังไม่มีรายละเอียดงานจาก PM"}
+          {t.brief || "ยังไม่มีรายละเอียดงานจาก Project Manager"}
         </p>
       )}
 
@@ -596,7 +596,7 @@ function TaskCard({
           {stage === "revise" && <BackNote back={t.back} />}
           {nudge && (
             <div className="rounded-[13px] bg-[var(--warning-soft)] px-3.5 py-2.5">
-              <p className="text-[12.5px] font-bold text-[var(--warning)]">PM ทวงงานนี้</p>
+              <p className="text-[12.5px] font-bold text-[var(--warning)]">Project Manager ทวงงานนี้</p>
               <p className="mt-1 text-[13px] leading-relaxed break-words">{nudge.tx}</p>
             </div>
           )}
@@ -608,7 +608,7 @@ function TaskCard({
       {nudge && (
         <span className="relative z-[2] col-span-2 flex flex-wrap items-center gap-2.5 justify-self-start">
           <button type="button" onClick={onTalk} className="text-[12.5px] font-semibold text-[#C8102E]">
-            ตอบ PM{talks.length > 0 ? ` (${talks.length})` : ""}
+            ตอบ Project Manager{talks.length > 0 ? ` (${talks.length})` : ""}
           </button>
         </span>
       )}
@@ -680,7 +680,7 @@ function TaskCard({
           {stage === "revise" ? null : t.brief ? (
             <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t.brief}</p>
           ) : (
-            <p className="mt-1 text-[13px] text-muted-foreground/70">ยังไม่มีรายละเอียดงานจาก PM</p>
+            <p className="mt-1 text-[13px] text-muted-foreground/70">ยังไม่มีรายละเอียดงานจาก Project Manager</p>
           )}
 
           {/* เหตุผลที่ถูกตีกลับอยู่บนการ์ด ไม่ใช่หลังการกดเปิดดู —
@@ -693,7 +693,7 @@ function TaskCard({
           {/* PM ทวงงานใบนี้ — ต้องเห็นบนการ์ด ไม่ใช่รอให้ไปตามกันในไลน์ */}
           {nudge && (
             <div className="mt-2 rounded-[13px] bg-[var(--warning-soft)] px-3.5 py-2.5">
-              <p className="text-[12.5px] font-bold text-[var(--warning)]">PM ทวงงานนี้</p>
+              <p className="text-[12.5px] font-bold text-[var(--warning)]">Project Manager ทวงงานนี้</p>
               <p className="mt-1 text-[13px] leading-relaxed break-words">{nudge.tx}</p>
               <em className="num mt-1 block text-[11.5px] text-muted-foreground not-italic">
                 {thaiStamp(nudge.at)} น.
@@ -733,7 +733,7 @@ function TaskCard({
             <span className="ml-auto flex flex-wrap items-center justify-end gap-2.5 max-sm:w-full">
               {nudge && (
                 <button type="button" onClick={onTalk} className="text-[12.5px] font-semibold text-primary hover:underline">
-                  ตอบ PM{talks.length > 0 ? ` (${talks.length})` : ""}
+                  ตอบ Project Manager{talks.length > 0 ? ` (${talks.length})` : ""}
                 </button>
               )}
               {!isLoose(p.pj) && <ChatButton onClick={onChat} />}
@@ -918,7 +918,7 @@ function WaitSheet({
         />
       </Field>
       <p className="text-[12px] leading-relaxed text-muted-foreground">
-        ระบบแจ้ง PM ว่างานนี้รอข้อมูล · ยังส่งงานได้ตามปกติ และช่วงที่รอจะไม่นับเป็นความช้าของคุณ
+        ระบบแจ้ง Project Manager ว่างานนี้รอข้อมูล · ยังส่งงานได้ตามปกติ และช่วงที่รอจะไม่นับเป็นความช้าของคุณ
       </p>
     </Sheet>
   );
@@ -1026,11 +1026,11 @@ function DetailDialog({
         <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">{t.brief}</p>
       ) : (
         <p className="mt-1.5 text-[13.5px] text-muted-foreground/70">
-          PM ยังไม่ได้เขียนรายละเอียดงานใบนี้
+          Project Manager ยังไม่ได้เขียนรายละเอียดงานใบนี้
         </p>
       )}
 
-      <p className="mt-5 mb-2 text-[11.5px] text-muted-foreground">ไฟล์จาก PM</p>
+      <p className="mt-5 mb-2 text-[11.5px] text-muted-foreground">ไฟล์จาก Project Manager</p>
       <FileList names={t.files.map((f) => ({ n: f.n, sz: f.sz }))} empty="ไม่มีไฟล์แนบ" />
       <ProjectDocs p={p} />
 
@@ -1302,7 +1302,7 @@ function SubmitDialog({
             <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">{t.brief}</p>
           ) : (
             <p className="mt-1.5 text-[13.5px] text-muted-foreground/70">
-              PM ยังไม่ได้เขียนรายละเอียดงานใบนี้
+              Project Manager ยังไม่ได้เขียนรายละเอียดงานใบนี้
             </p>
           )}
           {revise && (
@@ -1310,7 +1310,7 @@ function SubmitDialog({
               <BackNote back={t.back} pj={p.pj} task={t.name} />
             </div>
           )}
-          <p className="mt-5 mb-2 text-[11.5px] text-muted-foreground">ไฟล์จาก PM</p>
+          <p className="mt-5 mb-2 text-[11.5px] text-muted-foreground">ไฟล์จาก Project Manager</p>
           <FileList names={t.files.map((f) => ({ n: f.n, sz: f.sz }))} empty="ไม่มีไฟล์แนบ" />
           <ProjectDocs p={p} />
           <dl className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -1415,7 +1415,7 @@ function TalkDialog({
               onSent();
             }}
           >
-            ส่งถึง PM
+            ส่งถึง Project Manager
           </button>
         </>
       }
@@ -1426,7 +1426,7 @@ function TalkDialog({
       <TalkList talks={talks} pmName={p.pm} />
       <div className="mt-4">
         <label htmlFor="talk-tx" className="mb-1.5 block text-[12.5px] font-semibold text-muted-foreground">
-          ตอบ PM
+          ตอบ Project Manager
         </label>
         <textarea
           id="talk-tx"
@@ -1463,14 +1463,14 @@ function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string;
   if (!back) {
     return (
       <p className="rounded-[14px] bg-muted px-4 py-3 text-[13px] text-muted-foreground">
-        PM ตีกลับโดยไม่ได้เขียนเหตุผล · ถาม PM ก่อนส่งใหม่
+        Project Manager ตีกลับโดยไม่ได้เขียนเหตุผล · ถาม Project Manager ก่อนส่งใหม่
       </p>
     );
   }
   const by = (
     <em className="num mt-1.5 block text-[11.5px] text-muted-foreground not-italic">
       {/* บางใบเก็บเป็นรหัสพนักงาน — คนอ่านต้องเห็นชื่อ ไม่ใช่รหัส */}
-      {back.by ? nameOf(memberName(back.by)) : "PM"}
+      {back.by ? nameOf(memberName(back.by)) : "Project Manager"}
       {/* บนการ์ดวันที่อยู่บรรทัดล่างแล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
       {pj ? ` · ${thaiDate(back.at.split(" ")[0])}` : ""}
     </em>
@@ -1493,7 +1493,7 @@ function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string;
   }
   return (
     <div className="rounded-[14px] bg-[var(--destructive-soft)] px-4 py-3.5">
-      <h5 className="text-[13px] font-bold text-destructive">สิ่งที่ต้องแก้ตามที่ PM ตีกลับ</h5>
+      <h5 className="text-[13px] font-bold text-destructive">สิ่งที่ต้องแก้ตามที่ Project Manager ตีกลับ</h5>
       {back.why && <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line text-destructive">{back.why}</p>}
       {/* คอมเมนต์ของ PM บนไฟล์ — แยกตามไฟล์ กดไฟล์เปิดดูหมุด (ผู้ใช้สั่ง 29 ต.ค. 2569)
           บนการ์ดมีแค่ข้อความ เห็นไฟล์เต็มเมื่อเปิดรายละเอียดงาน (การ์ดไม่ส่ง pj มา — ผู้ใช้สั่ง 29 ต.ค. 2569) */}

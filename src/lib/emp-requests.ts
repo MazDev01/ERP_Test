@@ -20,6 +20,7 @@ import { bkkStamp } from "./format";
 import { createPersistedStore } from "./persisted-store";
 import { companySchedule, minutesOfDay } from "./work-schedule";
 import { fmtLeaveHours, leaveHoursOfDays } from "./leave-data";
+import type { Vehicle } from "./expense-data";
 
 export type EmpRequest = {
   id: string;
@@ -44,7 +45,8 @@ export type EmpRequest = {
   /** รอบเดือน yyyy-mm */
   month?: string;
   plate?: string;
-  fuel?: { date: string; place: string; km: number; work: string; note: string }[];
+  /** vehicle ไม่มี = รถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  fuel?: { date: string; place: string; km: number; work: string; note: string; vehicle?: Vehicle }[];
   /* โอที */
   date?: string;
   start?: string;
@@ -214,7 +216,7 @@ export function empRequestIds(kind: EmpRequest["kind"]) {
   return store.get().filter((r) => r.kind === kind).map((r) => r.id);
 }
 
-/** ยอดเบิกค่าน้ำมันของใบเบิก — ระยะรวม × อัตราต่อกิโลเมตร */
+/** ระยะรวมของใบเบิกค่าน้ำมัน — ยอดเงินคิดรายแถวตามชนิดรถด้วย fuelAmount (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 export function empFuelKm(r: EmpRequest) {
   return (r.fuel ?? []).reduce((a, x) => a + (Number(x.km) || 0), 0);
 }

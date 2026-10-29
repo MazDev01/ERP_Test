@@ -295,7 +295,7 @@ export function TransferDialog({ project, onClose }: { project: Project; onClose
       <label className="mt-4 block text-[12.5px] font-semibold">โอนให้</label>
       {people.length === 0 ? (
         <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-          ยังไม่มีพนักงานตำแหน่ง PM หรือ SA คนอื่นในทะเบียน
+          ยังไม่มีพนักงานตำแหน่ง Project Manager หรือ System Analysis คนอื่นในทะเบียน
         </p>
       ) : (
         <select

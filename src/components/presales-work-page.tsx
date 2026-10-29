@@ -37,6 +37,7 @@ import { Sheet } from "./lead-dialogs";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { SearchBox } from "./sales-ui";
 import { useNameOf } from "@/lib/emp-name";
+import { posFullName } from "@/lib/hr-data";
 
 /*
  * งานก่อนการขายของ SA และ BD — ตามต้นแบบ presales-work.html (บทบาท ps)
@@ -73,7 +74,7 @@ function StatusTag({ status }: { status: PresalesStatus }) {
 function KindTag({ kind, full }: { kind: PresalesRequest["kind"]; full?: boolean }) {
   return (
     <span className={`tag ${kind === "BD" ? "t-job" : "t-info"}`} title={psKindText(kind)}>
-      {full ? psKindText(kind) : kind}
+      {full ? psKindText(kind) : posFullName(kind)}
     </span>
   );
 }

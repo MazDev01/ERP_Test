@@ -116,6 +116,8 @@ export type RateSettings = {
   probationMonths: number;
   /** จ่ายคืนค่าน้ำมันกิโลเมตรละกี่บาท (Full Proposal · M5 การคำนวณเงินเดือน) */
   fuelPerKm: number;
+  /** จ่ายคืนค่าน้ำมันมอเตอร์ไซค์กิโลเมตรละกี่บาท — คนละอัตรากับรถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  fuelMotoPerKm: number;
   /** ลาพักร้อนที่เหลือยกไปปีถัดไปได้สูงสุดกี่วัน — 0 = ไม่ยกยอด หมดสิ้นปี (ตั้งที่ /admin/leave) */
   vacationCarryMax: number;
   /** วันเริ่มรอบปีการลา "MM-DD" — รอบขึ้นใหม่เองทุกปีในวันนี้ (ตั้งที่ /admin/leave) */
@@ -383,6 +385,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     lateFreeMinutes: 0,
     probationMonths: 3,
     fuelPerKm: 5,
+    fuelMotoPerKm: 2.5,
     /* ตั้งต้นไม่ยกยอด ตาม ERD (HR-BR-13 ไม่สะสมข้ามปี) — ผู้ดูแลเปิดได้ที่หน้าประเภทการลา */
     vacationCarryMax: 0,
     leaveYearStart: "01-01",
@@ -427,7 +430,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     pm: { name: "ชนิกานต์ วัฒนกุล", title: "ผู้จัดการโครงการ" },
     acc: { name: "อรอนงค์ พรหมมา", title: "บัญชีและบุคคล" },
     hr: { name: "อรอนงค์ พรหมมา", title: "ฝ่ายบุคคล" },
-    gm: { name: "ประเสริฐ มั่นคงดี", title: "GM" },
+    gm: { name: "ประเสริฐ มั่นคงดี", title: "General Manager" },
     exec: { name: "CEO", title: "ผู้บริหาร" },
   },
 };
@@ -527,7 +530,10 @@ function fill(v: SystemSettings): SystemSettings {
     posRoute: v.posRoute ?? {},
     /* presalesRoute (ประเภทงาน → ตำแหน่ง) เลิกใช้แล้ว — คำขอก่อนการขายกลับไปเลือกตัวคน
        ค่าที่ค้างในเครื่องเก่าไม่ถูกอ่าน ไม่มีผลอะไร (ผู้ใช้สั่ง 14 ต.ค. 2569) */
-    rateHistory: Array.isArray(v.rateHistory) ? v.rateHistory : [],
+    /* ชุดอัตราที่บันทึกไว้ก่อนมีช่องใหม่ (เช่น ค่าน้ำมันมอเตอร์ไซค์) เติมจากค่าตั้งต้น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+    rateHistory: Array.isArray(v.rateHistory)
+      ? v.rateHistory.map((h) => ({ ...h, rates: { ...DEFAULT_SETTINGS.rates, ...h.rates } }))
+      : [],
     /* หมวดนี้เพิ่ม 29 ก.ย. 2569 — เครื่องที่บันทึกไว้ก่อนยังไม่มีประวัติเวลาทำงาน */
     attHistory: Array.isArray(v.attHistory) ? v.attHistory : [],
     ssCeiling: Array.isArray(v.ssCeiling) && v.ssCeiling.length ? v.ssCeiling : DEFAULT_SETTINGS.ssCeiling,

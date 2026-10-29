@@ -88,7 +88,7 @@ export const PUSH_SCENARIOS: PushScenario[] = [
     checks: "เรื่อง presales · ลิงก์เจาะถึงรายการเดียว (?find=)",
     build: () => ({
       title: "คำขอก่อนการขายส่งกลับมาแล้ว",
-      body: "สยามพลาสติก — SA ส่งข้อเสนอกลับมาให้คุณตรวจ",
+      body: "สยามพลาสติก — System Analysis ส่งข้อเสนอกลับมาให้คุณตรวจ",
       url: "/presales?find=PS-2569-0031",
       tag: "maz-presales",
       level: "info",

@@ -10,6 +10,7 @@
 
 import type { PresalesRequest, PresalesRound } from "@/lib/crm-data";
 import { thaiDate } from "@/lib/format";
+import { withFullPos } from "@/lib/hr-data";
 import { DownloadIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 
@@ -65,7 +66,7 @@ export function ProposalDialog({
         <div className="mt-4 grid grid-cols-2 gap-5">
           <div>
             <Label>จัดทำโดย</Label>
-            <p className="mt-1 text-[13px] font-semibold">{round.by}</p>
+            <p className="mt-1 text-[13px] font-semibold">{withFullPos(round.by)}</p>
           </div>
           <div>
             <Label>เสนอต่อ</Label>

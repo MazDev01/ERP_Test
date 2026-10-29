@@ -400,7 +400,7 @@ export function dealTrack(dealNo: string, acc: AccState, pm: PmState): DealTrack
       return { label: "ยกเลิกแล้ว", cls: "t-miss", detail: `งานหยุด · ${project.cancelled?.why ?? ""}`, href };
     return project.status === "done"
       ? { label: "ส่งมอบแล้ว", cls: "t-ok", detail: `งานย่อยครบ ${project.tasks.length} ใบ`, href }
-      : { label: `กำลังดำเนินงาน ${pct}%`, cls: "t-job", detail: `เสร็จ ${done}/${project.tasks.length} ใบ · PM ${nameOf(project.pm)}`, href };
+      : { label: `กำลังดำเนินงาน ${pct}%`, cls: "t-job", detail: `เสร็จ ${done}/${project.tasks.length} ใบ · Project Manager ${nameOf(project.pm)}`, href };
   }
 
   const job = pm.inbox.find((j) => j.deal === dealNo);
@@ -409,11 +409,11 @@ export function dealTrack(dealNo: string, acc: AccState, pm: PmState): DealTrack
       ? {
           label: "กำลังวางแผนงาน",
           cls: "t-info",
-          detail: "PM กำลังจัดงานย่อยและผู้รับผิดชอบ",
+          detail: "Project Manager กำลังจัดงานย่อยและผู้รับผิดชอบ",
           href: planHref(job.pj),
         }
       : {
-          label: "รอ GM มอบหมาย PM", // PM กดรับงานเองไม่ได้แล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569)
+          label: "รอ General Manager มอบหมาย Project Manager", // PM กดรับงานเองไม่ได้แล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569)
           cls: "t-early",
           detail: `ชำระงวดแรกเมื่อ ${job.paidAt}`,
           href: `/pm/inbox?find=${encodeURIComponent(job.pj)}`,
@@ -430,7 +430,7 @@ export function dealTrack(dealNo: string, acc: AccState, pm: PmState): DealTrack
   const paid = acc.invoices.filter((v) => v.deal === dealNo && invoiceStatus(acc, v) === "paid").length;
   return paid > 0
     ? { label: `ชำระแล้ว ${paid}/${deal.plan.length} งวด`, cls: "t-info", detail: "รอชำระงวดถัดไป", href: bill }
-    : { label: "รอชำระงวดแรก", cls: "t-early", detail: "งานยังไม่เข้าคิวของ PM", href: bill };
+    : { label: "รอชำระงวดแรก", cls: "t-early", detail: "งานยังไม่เข้าคิวของ Project Manager", href: bill };
 }
 
 /** ยอดที่เก็บได้แล้วของดีลหนึ่ง — ฝั่ง PM ใช้ดูว่างานนี้เก็บเงินไปถึงไหน */

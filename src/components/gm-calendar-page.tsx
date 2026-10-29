@@ -114,7 +114,7 @@ export function GmCalendarPage() {
         end: p.due,
         title: `ส่งมอบ · ${name}`,
         bar: `ส่งมอบ ${name}`,
-        sub: `${p.cus} · PM ${empNameOf(p.pm)}`,
+        sub: `${p.cus} · Project Manager ${empNameOf(p.pm)}`,
         href: projectHref(p.pj),
         ...paintOf("due"),
         data: null,

@@ -87,7 +87,7 @@ export function PmInboxPage() {
 
   const job = viewing ? pm.inbox.find((j) => j.pj === viewing) : undefined;
   const assignJob = assigning ? pm.inbox.find((j) => j.pj === assigning) : undefined;
-  const empty = q ? "ไม่พบงานที่ค้นหา" : filter ? "ไม่พบงานของโปรเจคนี้" : gm ? "ไม่มีงานรอมอบหมาย" : "ยังไม่มีงานที่ GM มอบหมายให้คุณ";
+  const empty = q ? "ไม่พบงานที่ค้นหา" : filter ? "ไม่พบงานของโปรเจคนี้" : gm ? "ไม่มีงานรอมอบหมาย" : "ยังไม่มีงานที่ General Manager มอบหมายให้คุณ";
 
   /* ปุ่มตา "ดูรายละเอียด" — เปิดเอกสารดูอย่างเดียวทุกงาน · PM เปิดงานของตัวเองแล้วถือว่าอ่านแล้ว */
   function view(j: InboxJob) {
@@ -126,7 +126,7 @@ export function PmInboxPage() {
             setAssigning(j.pj);
           }}
         >
-          {isAssignedJob(j) ? "เปลี่ยน PM" : "มอบหมาย PM"}
+          {isAssignedJob(j) ? "เปลี่ยน Project Manager" : "มอบหมาย Project Manager"}
         </button>
       );
     }
@@ -191,7 +191,7 @@ export function PmInboxPage() {
 
       <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap">
         <div className="min-w-0 max-sm:w-full">
-          <SearchBox value={q} onChange={setQ} placeholder={gm ? "ค้นหางาน ลูกค้า หรือ PM" : "ค้นหางาน หรือลูกค้า"} />
+          <SearchBox value={q} onChange={setQ} placeholder={gm ? "ค้นหางาน ลูกค้า หรือ Project Manager" : "ค้นหางาน หรือลูกค้า"} />
         </div>
         <select
           value={svc}
@@ -246,7 +246,7 @@ export function PmInboxPage() {
                 </span>
                 <span className="ib-m-cus">
                   #{noOf.get(j.pj)} · {j.cus}
-                  {gm && (done && j.takenBy ? ` · PM ${nameOfEmp(j.takenBy)}` : " · รอมอบหมาย")}
+                  {gm && (done && j.takenBy ? ` · Project Manager ${nameOfEmp(j.takenBy)}` : " · รอมอบหมาย")}
                 </span>
                 <b className="ib-m-name">
                   {/* จุดแดง = GM เพิ่งมอบหมายมาและ PM ยังไม่ได้เปิดดู (ผู้ใช้สั่ง 27 ต.ค. 2569) */}
@@ -377,7 +377,7 @@ function AssignSheet({ job, onClose }: { job: InboxJob; onClose: () => void }) {
 
   return (
     <Sheet
-      title={again ? "เปลี่ยน PM" : "มอบหมาย PM"}
+      title={again ? "เปลี่ยน Project Manager" : "มอบหมาย Project Manager"}
       onClose={onClose}
       footer={
         <>
@@ -385,7 +385,7 @@ function AssignSheet({ job, onClose }: { job: InboxJob; onClose: () => void }) {
             ยกเลิก
           </button>
           <button type="button" className="btn solid btn-solid" onClick={save}>
-            {again ? "เปลี่ยน PM" : "มอบหมาย"}
+            {again ? "เปลี่ยน Project Manager" : "มอบหมาย"}
           </button>
         </>
       }
@@ -400,11 +400,11 @@ function AssignSheet({ job, onClose }: { job: InboxJob; onClose: () => void }) {
         )}
       </p>
 
-      <p className="mt-4 text-[12.5px] font-semibold">เลือก PM</p>
+      <p className="mt-4 text-[12.5px] font-semibold">เลือก Project Manager</p>
       {people.length === 0 ? (
-        <p className="mt-1.5 text-[12.5px] text-muted-foreground">ยังไม่มีพนักงานตำแหน่ง PM ในทะเบียน</p>
+        <p className="mt-1.5 text-[12.5px] text-muted-foreground">ยังไม่มีพนักงานตำแหน่ง Project Manager ในทะเบียน</p>
       ) : (
-        <div role="radiogroup" aria-label="เลือก PM" className="mt-1.5 flex flex-col gap-2">
+        <div role="radiogroup" aria-label="เลือก Project Manager" className="mt-1.5 flex flex-col gap-2">
           {people.map((e) => {
             const running = pm.projects.filter((p) => p.status === "running" && pmIdOf(p.pm) === e.id).length;
             const waiting = pm.inbox.filter((j) => j.pj !== job.pj && isJobOf(j, e.name)).length;
@@ -438,11 +438,11 @@ function AssignSheet({ job, onClose }: { job: InboxJob; onClose: () => void }) {
         </div>
       )}
       {touched && missTo && (
-        <p className="mt-1.5 text-[12px] font-semibold text-destructive">เลือก PM ก่อน</p>
+        <p className="mt-1.5 text-[12px] font-semibold text-destructive">เลือก Project Manager ก่อน</p>
       )}
 
       <label htmlFor="asNote" className="mt-4 block text-[12.5px] font-semibold">
-        ข้อความถึง PM <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
+        ข้อความถึง Project Manager <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
       </label>
       <textarea
         id="asNote"
@@ -485,7 +485,7 @@ function DetailSheet({
         <div className="mb-3.5 rounded-[11px] border border-border bg-muted px-3.5 py-3 text-[13px]">
           <p className="font-semibold">{ownerText}</p>
           {job.assignNote && (
-            <p className="mt-1 whitespace-pre-line leading-relaxed text-muted-foreground">ข้อความจาก GM: {job.assignNote}</p>
+            <p className="mt-1 whitespace-pre-line leading-relaxed text-muted-foreground">ข้อความจาก General Manager: {job.assignNote}</p>
           )}
         </div>
       )}

@@ -7,6 +7,7 @@
 import { quotationTotals, quotationValidUntil, type CustomerStatus } from "./crm-data";
 import type { CrmState } from "./crm-store";
 import { nameOf as empNameOf } from "./emp-name";
+import { posFullName } from "./hr-data";
 import { parseIsoDate, TH_MONTHS_FULL, TH_MONTHS_SHORT, toIsoDate } from "./format";
 
 export type RangeKey = "m" | "q" | "y";
@@ -316,7 +317,7 @@ export function buildAgenda(crm: CrmState): AgendaEvent[] {
       type: "presale",
       title: `คำขอข้อเสนอ ${nameOf.get(p.customerCode) ?? ""} ครบกำหนด`,
       /* "SA ปิยะวัฒน์" — ประเภทงานกับชื่อผู้รับผิดชอบ ไม่เอาวงเล็บตำแหน่งซ้ำ */
-      detail: `${p.kind} ${empNameOf(p.assignee.replace(/\s*\(.*\)$/, ""))}`,
+      detail: `${posFullName(p.kind)} ${empNameOf(p.assignee.replace(/\s*\(.*\)$/, ""))}`,
       href: `/presales?find=${encodeURIComponent(p.no)}`,
     });
   }

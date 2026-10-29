@@ -41,26 +41,26 @@ export const NOTIFY_EVENTS = [
   { key: "checkout", title: "ถึงเวลาเลิกงาน", action: "เช็คเอาท์", level: "act", audience: "employees" },
   { key: "leave", title: "คำขอลา/โอที/เบิกค่าใช้จ่าย ไม่อนุมัติ", action: "อ่านเหตุผล แล้วยื่นใหม่ถ้าต้องการ", level: "act", audience: "employees" },
   { key: "leaveok", title: "คำขอลา/โอที/เบิกค่าใช้จ่าย อนุมัติแล้ว", action: "", level: "info", audience: "employees" },
-  { key: "leaveedit", title: "GM แก้ผลการลาที่อนุมัติไปแล้ว (มีเหตุผลแนบ)", action: "", level: "info", audience: "employees" },
+  { key: "leaveedit", title: "General Manager แก้ผลการลาที่อนุมัติไปแล้ว (มีเหตุผลแนบ)", action: "", level: "info", audience: "employees" },
   { key: "payslip", title: "สลิปเงินเดือนออกแล้ว", action: "", level: "info", audience: "employees", noIntern: true },
 
   // ── ทีมงานที่รับงานโปรเจค ──
-  { key: "tasknew", title: "PM มอบหมายงานใหม่", action: "เริ่มทำ", level: "act", audience: "staff" },
-  { key: "taskback", title: "PM ส่งงานกลับแก้", action: "แก้ แล้วส่งใหม่", level: "act", audience: "staff" },
+  { key: "tasknew", title: "Project Manager มอบหมายงานใหม่", action: "เริ่มทำ", level: "act", audience: "staff" },
+  { key: "taskback", title: "Project Manager ส่งงานกลับแก้", action: "แก้ แล้วส่งใหม่", level: "act", audience: "staff" },
   /* เตือนล่วงหน้า 2 วันแทน "พรุ่งนี้" — PM ขอ (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 8) */
   { key: "taskduesoon", title: "งานจะครบกำหนดใน 2 วัน ยังไม่ส่ง", action: "ส่งงาน", level: "act", audience: "staff" },
   { key: "taskready", title: "งานก่อนหน้าผ่านแล้ว เริ่มงานได้", action: "เริ่มทำ", level: "act", audience: "staff" },
   { key: "taskprevlate", title: "งานก่อนหน้าที่รออยู่เลยกำหนด", action: "", level: "info", audience: "staff" },
   { key: "taskoverdue", title: "งานเลยกำหนด ยังไม่ส่ง", action: "ส่งงาน", level: "act", audience: "staff" },
-  { key: "eventinvite", title: "PM เพิ่มเข้านัดหมาย", action: "เข้าร่วม", level: "act", audience: "staff" },
+  { key: "eventinvite", title: "Project Manager เพิ่มเข้านัดหมาย", action: "เข้าร่วม", level: "act", audience: "staff" },
   { key: "chatnew", title: "มีข้อความใหม่ในแชทโปรเจค", action: "ตอบ", level: "act", audience: "staff" },
   { key: "taskok", title: "งานผ่านการตรวจ", action: "", level: "info", audience: "staff" },
   /* ทีมงานที่สั่งงานคนอื่นเป็นผู้ตรวจงานนั้น — ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 21 · 27 ต.ค. 2569) */
   { key: "taskreview", title: "มีงานส่งมาให้คุณตรวจ", action: "ตรวจ แล้วให้ผ่านหรือส่งกลับแก้", level: "act", audience: "staff" },
-  { key: "eventchange", title: "PM เปลี่ยนเวลาหรือยกเลิกนัดหมาย", action: "", level: "info", audience: "staff" },
+  { key: "eventchange", title: "Project Manager เปลี่ยนเวลาหรือยกเลิกนัดหมาย", action: "", level: "info", audience: "staff" },
 
   // ── พนักงานขาย ──
-  { key: "presales", title: "BD/SA ส่ง proposal กลับมา", action: "ทำใบเสนอราคา", level: "act", audience: "sales" },
+  { key: "presales", title: "Business Development/System Analysis ส่ง proposal กลับมา", action: "ทำใบเสนอราคา", level: "act", audience: "sales" },
   { key: "followup", title: "ถึงวันนัดติดตามผู้สนใจ", action: "ติดต่อลูกค้า แล้วบันทึกการติดต่อ", level: "act", audience: "sales" },
   { key: "quotexp", title: "ใบเสนอราคาใกล้หมดกำหนดยืนราคา ยังไม่เกิดดีล", action: "ติดตามลูกค้า", level: "act", audience: "sales" },
   { key: "dealcancelacc", title: "บัญชียกเลิกดีล (ลูกค้าจ่ายไปแล้ว)", action: "", level: "info", audience: "sales" },
@@ -84,31 +84,31 @@ export const NOTIFY_EVENTS = [
   { key: "timereview", title: "ระบบพบรายการที่ต้องตรวจ (ไม่มีบันทึกเวลา / ไม่ได้เช็คเอาท์ / ลาแล้วแต่มีเช็คอิน)", action: "ตรวจ แล้วบันทึกผล", level: "act", audience: "hr" },
   { key: "cutoff", title: "ถึงวันตัดรอบ", action: "ปิดรอบเวลาทำงาน แล้วคำนวณเงินเดือน", level: "act", audience: "hr" },
   /* CEO อนุมัติยอดเงินเดือนกลับมา (ผู้ใช้สั่ง 19 ต.ค. 2569) */
-  { key: "payok", title: "CEO อนุมัติเงินเดือนแล้ว", action: "สร้างและเผยแพร่สลิป", level: "act", audience: "hr" },
-  { key: "payback", title: "CEO ไม่อนุมัติเงินเดือน", action: "แก้ไขแล้วส่งใหม่", level: "act", audience: "hr" },
+  { key: "payok", title: "Chief Executive Officer อนุมัติเงินเดือนแล้ว", action: "สร้างและเผยแพร่สลิป", level: "act", audience: "hr" },
+  { key: "payback", title: "Chief Executive Officer ไม่อนุมัติเงินเดือน", action: "แก้ไขแล้วส่งใหม่", level: "act", audience: "hr" },
   { key: "slipmake", title: "ปิดรอบเงินเดือนแล้ว", action: "สร้างและเผยแพร่สลิป", level: "act", audience: "hr" },
-  { key: "holidayback", title: "CEO ตีกลับวันหยุด", action: "แก้ แล้วส่งใหม่", level: "act", audience: "hr" },
-  { key: "holidayok", title: "CEO อนุมัติวันหยุดแล้ว", action: "", level: "info", audience: "hr" },
+  { key: "holidayback", title: "Chief Executive Officer ตีกลับวันหยุด", action: "แก้ แล้วส่งใหม่", level: "act", audience: "hr" },
+  { key: "holidayok", title: "Chief Executive Officer อนุมัติวันหยุดแล้ว", action: "", level: "info", audience: "hr" },
   { key: "probation", title: "พนักงานทดลองงานใกล้ครบกำหนด", action: "ประเมิน แล้วเปลี่ยนเป็นพนักงานประจำ", level: "act", audience: "hr" },
 
   // ── PM (GM ได้ชุดนี้ด้วย) ──
   /* GM มอบหมายงานให้ PM — PM รับงานเองไม่ได้แล้ว คีย์ pmjob ย้ายไปเป็นของ GM (ผู้ใช้สั่ง 27 ต.ค. 2569) */
-  { key: "pmassigned", title: "GM มอบหมายงานใหม่ให้คุณ", action: "วางแผนงาน", level: "act", audience: "pm" },
+  { key: "pmassigned", title: "General Manager มอบหมายงานใหม่ให้คุณ", action: "วางแผนงาน", level: "act", audience: "pm" },
   { key: "pmreview", title: "พนักงานส่งงาน", action: "ตรวจ แล้วให้ผ่านหรือส่งกลับแก้", level: "act", audience: "pm" },
   { key: "pmlate", title: "งานในโปรเจคเลยกำหนด", action: "ติดตามคนทำ", level: "act", audience: "pm" },
   { key: "pmprevlate", title: "งานเลยกำหนดและมีงานอื่นรออยู่", action: "ติดตามคนทำ หรือเลื่อนกำหนดงานที่รอ", level: "act", audience: "pm" },
-  { key: "pmtransfer", title: "PM อีกคนโอนโปรเจคมาให้", action: "รับโปรเจค", level: "act", audience: "pm" },
+  { key: "pmtransfer", title: "Project Manager อีกคนโอนโปรเจคมาให้", action: "รับโปรเจค", level: "act", audience: "pm" },
   { key: "pmevent", title: "ใกล้ถึงเวลานัดหมายของตัวเอง", action: "เข้าร่วม", level: "act", audience: "pm" },
   { key: "pmcancel", title: "ดีลของโปรเจคที่ตัวเองดูแลถูกยกเลิก", action: "", level: "info", audience: "pm" },
 
   // ── GM ──
-  { key: "gmapprove", title: "มีคำขอลา/โอที/เบิกค่าใช้จ่าย ที่ต้องให้ GM อนุมัติ", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "gm" },
+  { key: "gmapprove", title: "มีคำขอลา/โอที/เบิกค่าใช้จ่าย ที่ต้องให้ General Manager อนุมัติ", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "gm" },
   /* คีย์เดิม pmjob — งานเข้าใหม่ (งวด 1 ชำระแล้ว) ตอนนี้ GM เป็นคนมอบหมาย PM (ผู้ใช้สั่ง 27 ต.ค. 2569) */
-  { key: "pmjob", title: "มีงานใหม่เข้า (งวด 1 ชำระแล้ว) รอมอบหมาย PM", action: "มอบหมาย PM", level: "act", audience: "gm" },
+  { key: "pmjob", title: "มีงานใหม่เข้า (งวด 1 ชำระแล้ว) รอมอบหมาย Project Manager", action: "มอบหมาย Project Manager", level: "act", audience: "gm" },
 
   // ── CEO (ไม่อยู่ในชุดพนักงานทุกคน) ──
-  { key: "ceoapprove", title: "มีคำขอรออนุมัติ: ลาของ GM และบัญชีและบุคคล · โอทีของ SA/Dev · ค่าน้ำ ค่าไฟ อินเทอร์เน็ต", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "ceo" },
-  { key: "ceoholiday", title: "HR ส่งวันหยุดมาให้อนุมัติ", action: "อนุมัติหรือตีกลับ", level: "act", audience: "ceo" },
+  { key: "ceoapprove", title: "มีคำขอรออนุมัติ: ลาของ General Manager และบัญชีและบุคคล · โอทีของ System Analysis/Developer · ค่าน้ำ ค่าไฟ อินเทอร์เน็ต", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "ceo" },
+  { key: "ceoholiday", title: "Human Resources ส่งวันหยุดมาให้อนุมัติ", action: "อนุมัติหรือตีกลับ", level: "act", audience: "ceo" },
   /* ยอดเงินเดือนรออนุมัติ (ผู้ใช้สั่ง 19 ต.ค. 2569) */
   { key: "ceopaywait", title: "ยอดเงินเดือนรออนุมัติ", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "ceo" },
   { key: "ceopayroll", title: "ปิดรอบเงินเดือนแล้ว", action: "เปิดดูยอดเงินเดือนรอบนั้นเพื่อโอนเงินเดือน", level: "act", audience: "ceo" },

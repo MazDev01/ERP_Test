@@ -28,8 +28,20 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { decideEmpRequest, empFuelKm, useEmpRequests, type EmpRequest } from "@/lib/emp-requests";
-import { claimApproveBlock, claimTotal, fuelRate, type ExpenseClaim } from "@/lib/expense-data";
+import { createPortal } from "react-dom";
+import { useHydrated } from "@/lib/pwa";
+import { lockScroll } from "@/lib/scroll-lock";
+import { decideEmpRequest, useEmpRequests, type EmpRequest } from "@/lib/emp-requests";
+import {
+  VEHICLE_LABEL,
+  claimApproveBlock,
+  claimTotal,
+  fuelAmount,
+  fuelRowsOf,
+  vehiclesIn,
+  type ExpenseClaim,
+  type Vehicle,
+} from "@/lib/expense-data";
 import { HR_LEAVE_LABEL, hrPos, type InternLeave } from "@/lib/hr-data";
 import { decideInternLeave, useHr } from "@/lib/hr-store";
 import { approveClaim, rejectClaim, useAllClaims } from "@/lib/expense-store";
@@ -53,10 +65,9 @@ import { approvesFor, roleLabel, useApprovalRoute, type Role } from "@/lib/role"
 import { useMyRoles } from "@/lib/hr-link";
 import { useSearchParams } from "next/navigation";
 import { formatMinutesOfDay, minutesOfDay } from "@/lib/work-schedule";
-import { Sheet } from "./lead-dialogs";
 import { OT_MIN_HOURS, OtActualFields, useOtDecision, type OtReq } from "./ot-actual-fields";
 import { SearchBox } from "./sales-ui";
-import { EyeIcon } from "./icons";
+import { CalendarIcon, CheckIcon, ClockIcon, CloseIcon, ReceiptIcon } from "./icons";
 import { stackNo } from "@/lib/stack-no";
 import { nameOf } from "@/lib/emp-name";
 
@@ -130,6 +141,11 @@ const KIND: Record<Kind, string> = {
 
 type Tab = { key: "all" | Kind; label: string };
 
+const VIEWS: { key: "req" | "hist"; label: string }[] = [
+  { key: "req", label: "คำขอ" },
+  { key: "hist", label: "ประวัติ" },
+];
+
 export const TABS: Tab[] = [
   { key: "all", label: "ทั้งหมด" },
   { key: "leave", label: "ลา" },
@@ -145,8 +161,8 @@ const ROLE_TABS: Partial<Record<Role, Kind[]>> = {
   hr: ["leave"],
 };
 
+/* แท็บคำขอ = รออนุมัติเท่านั้น · ตัวกรองสถานะใช้ในแท็บประวัติ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 const STATUS_OPTS: { value: Status | ""; label: string }[] = [
-  { value: "pending", label: "รออนุมัติ" },
   { value: "approved", label: "อนุมัติแล้ว" },
   { value: "rejected", label: "ไม่อนุมัติ" },
   { value: "", label: "ทุกสถานะ" },
@@ -297,7 +313,9 @@ export function ApprovalsBoard({
   const [tab, setTab] = useState<"all" | Kind>(
     wantKind === "leave" || wantKind === "ot" || wantKind === "expense" ? wantKind : "all",
   );
-  const [status, setStatus] = useState<Status | "">("pending");
+  /* แท็บคำขอ / ประวัติ — ประเภท (ลา โอที ค่าใช้จ่าย) เป็นตัวกรองแทนแท็บ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [view, setView] = useState<"req" | "hist">("req");
+  const [status, setStatus] = useState<Status | "">("");
   const [q, setQ] = useState("");
   const [viewing, setViewing] = useState<Request | null>(null);
   /* กล่องรายละเอียดเปิดมาเพื่ออะไร — ดูอย่างเดียว · ใส่เหตุผลไม่อนุมัติ · ยืนยันชั่วโมงโอทีก่อนอนุมัติ (ผู้ใช้สั่ง 5 ต.ค. 2569) */
@@ -312,7 +330,10 @@ export function ApprovalsBoard({
     if (!hit) return;
     opened.current = openId;
     /* ใบที่ตัดสินแล้วต้องเห็นในรายการด้วย — ขยายตัวกรองเป็นทุกสถานะ */
-    if (hit.status !== "pending") setStatus("");
+    if (hit.status !== "pending") {
+      setView("hist");
+      setStatus("");
+    }
     setMode("view");
     setViewing(hit);
   }, [openId, all]);
@@ -325,8 +346,9 @@ export function ApprovalsBoard({
    */
   const rowKey = (r: Request) => `${r.kind}-${r.src}-${r.role ?? ""}-${r.key}`;
   const noOf = stackNo(all, (r) => r.at, rowKey);
-  const byStatus = all.filter((r) => !status || r.status === status);
-  const count = (k: "all" | Kind) => byStatus.filter((r) => k === "all" || r.kind === k).length;
+  const inView = (r: Request, v: "req" | "hist") => (v === "req" ? r.status === "pending" : r.status !== "pending");
+  const byStatus = all.filter((r) => inView(r, view) && (view === "req" || !status || r.status === status));
+  const count = (v: "req" | "hist") => all.filter((r) => inView(r, v) && (cur === "all" || r.kind === cur)).length;
   const term = q.trim().toLowerCase();
   const rows = byStatus.filter(
     (r) =>
@@ -353,7 +375,7 @@ export function ApprovalsBoard({
     <>
       <button
         type="button"
-        className={`btn justify-center border border-[rgba(192,18,31,.35)] bg-transparent !text-destructive hover:!border-destructive hover:bg-[var(--destructive-soft)] ${big ? "h-10 w-full rounded-[10px]" : "h-[30px] px-3"}`}
+        className={`btn solid justify-center !bg-[#be123c] !text-white hover:!bg-[#9f1239] ${big ? "h-10 w-full rounded-[10px]" : "h-[30px] px-3"}`}
         onClick={(e) => {
           e.stopPropagation();
           open(item, "reject");
@@ -389,14 +411,14 @@ export function ApprovalsBoard({
       {/* แถบแท็บและตัวกรองอยู่นอกการ์ดตาราง ตามต้นแบบ (.apbar) */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="tabs">
-          {tabs.map((t) => (
+          {VIEWS.map((v) => (
             <button
-              key={t.key}
+              key={v.key}
               type="button"
-              className={cur === t.key ? "on" : ""}
-              onClick={() => setTab(t.key)}
+              className={view === v.key ? "on" : ""}
+              onClick={() => setView(v.key)}
             >
-              {t.label} <b>{count(t.key)}</b>
+              {v.label} <b>{count(v.key)}</b>
             </button>
           ))}
         </div>
@@ -405,6 +427,21 @@ export function ApprovalsBoard({
           <div className="w-full max-sm:min-w-0 max-sm:flex-1 sm:w-[260px]">
             <SearchBox value={q} onChange={setQ} placeholder="ค้นหาผู้ขอหรือรายละเอียด" />
           </div>
+          {tabs.length > 1 && (
+            <select
+              value={cur}
+              onChange={(e) => setTab(e.target.value as "all" | Kind)}
+              aria-label="กรองตามประเภท"
+              className="field-control h-9 !w-[150px] flex-none cursor-pointer pr-8 text-[13px] max-sm:h-10 max-sm:!w-[124px]"
+            >
+              {tabs.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.key === "all" ? "ทุกประเภท" : t.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {view === "hist" && (
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as Status | "")}
@@ -417,6 +454,7 @@ export function ApprovalsBoard({
               </option>
             ))}
           </select>
+          )}
         </div>
       </div>
 
@@ -491,19 +529,21 @@ export function ApprovalsBoard({
             <thead>
               <tr>
                 <th className="c" style={{ width: 60 }}>ลำดับ</th>
-                <th style={{ width: 210 }}>ผู้ขอ</th>
-                <th>คำขอ</th>
+                {/* ตำแหน่งแยกคอลัมน์หน้าชื่อผู้ขอ (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+                <th style={{ width: 150 }}>ตำแหน่ง</th>
+                <th style={{ width: 170 }}>ผู้ขอ</th>
+                <th style={{ width: 240 }}>คำขอ</th>
                 {/* วันที่ส่งแยกคอลัมน์ · ไม่แสดงรหัสคำขอ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                 <th style={{ width: 140 }}>วันที่ส่ง</th>
                 <th style={{ width: 130 }}>ส่งเมื่อ</th>
                 {/* คอลัมน์ปุ่ม: ดูรายละเอียด · ไม่อนุมัติ · อนุมัติ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
-                <th style={{ width: 260 }} aria-label="จัดการ" />
+                <th aria-label="จัดการ" />
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-[30px] text-center text-muted-foreground">
+                  <td colSpan={7} className="py-[30px] text-center text-muted-foreground">
                     ไม่มีคำขอตามเงื่อนไขที่เลือก
                   </td>
                 </tr>
@@ -529,9 +569,9 @@ export function ApprovalsBoard({
                       }}
                     >
                       <td data-label="ลำดับ" className="c num muted">{noOf.get(rowKey(item))}</td>
+                      <td data-label="ตำแหน่ง" className="text-muted-foreground">{item.sub}</td>
                       <td data-label="ผู้ขอ">
                         <b className="block font-semibold">{item.name}</b>
-                        <span className="why">{item.sub}</span>
                       </td>
                       <td data-label="คำขอ">
                         {item.topic}
@@ -557,15 +597,13 @@ export function ApprovalsBoard({
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            aria-label="ดูรายละเอียด"
-                            title="ดูรายละเอียด"
-                            className="grid size-[30px] flex-none place-items-center rounded-[8px] border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                            className="h-[30px] flex-none rounded-[8px] border border-border px-3 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                             onClick={(e) => {
                               e.stopPropagation();
                               open(item);
                             }}
                           >
-                            <EyeIcon className="size-4" strokeWidth={1.9} />
+                            ดูรายละเอียด
                           </button>
                           {item.status === "pending" ? (
                             decide(item, false)
@@ -657,24 +695,27 @@ function RequestDialog({
   }
 
   return (
-    <Sheet
+    <ApprModal
       title={`${KIND[item.kind]} ${item.name}`}
+      icon={<KindIcon kind={item.kind} />}
       onClose={onClose}
       footer={
-        done || mode === "view" ? null : (
+        done || mode === "view" ? (
+          <>
+            <button type="button" className="inline-flex h-[42px] min-w-[110px] items-center justify-center rounded-lg bg-[#0f172a] px-4 text-[14px] font-medium text-white hover:bg-[#1e293b] max-md:flex-1" onClick={onClose}>
+              ปิดหน้าต่าง
+            </button>
+          </>
+        ) : (
           /* มีแค่ปุ่มของงานที่เปิดมาทำ + ยกเลิก */
-          <div className="grid w-full grid-cols-2 gap-3">
-            <button
-              type="button"
-              className="btn glass-thin h-12 w-full justify-center rounded-[12px] text-[15px]"
-              onClick={onClose}
-            >
+          <>
+            <button type="button" className="inline-flex h-[42px] min-w-[120px] items-center justify-center rounded-lg border border-[#cbd5e1] bg-white px-4 text-[14px] font-medium text-[#334155] hover:bg-[#f8fafc] max-md:flex-1" onClick={onClose}>
               ยกเลิก
             </button>
             {mode === "reject" ? (
             <button
               type="button"
-              className="btn solid h-12 w-full justify-center rounded-[12px] !bg-primary text-[15px] !text-white hover:!bg-[#B00018]"
+              className="inline-flex h-[42px] min-w-[110px] items-center justify-center rounded-lg bg-[#be123c] px-4 text-[14px] font-medium text-white hover:bg-[#9f1239] max-md:flex-1"
               onClick={reject}
             >
               {rejecting ? "ยืนยันไม่อนุมัติ" : "ไม่อนุมัติ"}
@@ -682,34 +723,49 @@ function RequestDialog({
             ) : (
             <button
               type="button"
-              className="btn solid h-12 w-full justify-center rounded-[12px] !bg-[#14875A] text-[15px] !text-white hover:!bg-[#0F7049] disabled:opacity-40"
+              className="inline-flex h-[42px] min-w-[110px] items-center justify-center rounded-lg bg-[#047857] px-4 text-[14px] font-medium text-white hover:bg-[#065f46] disabled:opacity-40 max-md:flex-1"
               onClick={approve}
               disabled={Boolean(item.block) || (item.kind === "ot" && Boolean(item.ot) && (fixedOt ? ot.tooSmall : !ot.ready))}
             >
               อนุมัติ
             </button>
             )}
-          </div>
+          </>
         )
       }
     >
-      <dl className="mt-1 grid grid-cols-[104px_minmax(0,1fr)] gap-x-3.5 gap-y-2 text-[13.5px]">
-        <Kv label="ผู้ยื่น" value={item.name} />
+      {/* รูปแบบตามดีไซน์ Stitch — แถวคั่นเส้น หัวข้อซ้ายจาง ค่าขวา (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+      <dl className="space-y-4 text-[14px]">
+        <Kv
+          label="ผู้ยื่น"
+          value={
+            <>
+              <span className="font-semibold">{item.name}</span>
+              {item.sub && <span className="ml-1.5 text-[12px] text-[#94a3b8]">({item.sub})</span>}
+            </>
+          }
+        />
         {/* ใบลา: แถว "วันที่" (ช่วงวันลา + ช่วงเวลาของลาไม่เต็มวัน) แทน "ประเภท: การลา" (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
         {item.kind === "leave" && item.when ? (
           <Kv label="วันที่" value={<span className="num">{item.when}</span>} />
         ) : (
-          <Kv label="ประเภท" value={KIND[item.kind]} />
+          <Kv label="ประเภท" value={item.topic ? `${KIND[item.kind]} (${item.topic})` : KIND[item.kind]} />
         )}
         <Kv
           label="รายการ"
           value={
             <span className="block leading-[1.8]">
-              {item.lines.map((l) => (
-                <span key={l} className="block">
-                  <NumBold text={l} />
-                </span>
-              ))}
+              {item.lines.map((l) =>
+                item.kind === "ot" && l.startsWith("รวม ") ? (
+                  <span key={l} className="num mt-1.5 inline-block rounded-md bg-[#fff1f2] px-2.5 py-1 text-[12.5px] font-bold text-[#be123c]">
+                    {l}
+                  </span>
+                ) : (
+                  <span key={l} className="block">
+                    <NumBold text={l} />
+                  </span>
+                ),
+              )}
             </span>
           }
         />
@@ -741,11 +797,16 @@ function RequestDialog({
           <Kv
             label="ผล"
             value={
-              item.status === "approved"
-                ? cut != null
-                  ? `อนุมัติ ${cut.toFixed(2)} ชม. (ขอ ${(item.hours ?? 0).toFixed(2)} ชม.)`
-                  : "อนุมัติแล้ว"
-                : "ไม่อนุมัติ"
+              item.status === "approved" ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-[#a7f3d0] bg-[#ecfdf5] px-2.5 py-1 text-[12.5px] font-semibold text-[#047857]">
+                  <CheckIcon className="size-3" strokeWidth={2.6} />
+                  {cut != null ? `อนุมัติ ${cut.toFixed(2)} ชม. (ขอ ${(item.hours ?? 0).toFixed(2)} ชม.)` : "อนุมัติแล้ว"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border border-[#fecdd3] bg-[#fff1f2] px-2.5 py-1 text-[12.5px] font-semibold text-[#be123c]">
+                  ไม่อนุมัติ
+                </span>
+              )
             }
           />
         )}
@@ -783,7 +844,75 @@ function RequestDialog({
           )}
         </div>
       )}
-    </Sheet>
+    </ApprModal>
+  );
+}
+
+/**
+ * กล่องรายละเอียดคำขอตามดีไซน์ Stitch (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ * กว้าง 520 · มุม 20 · พื้นหลังมืดเบลอ · หัวไม่มีเส้นคั่น · ท้ายเป็นแถบพื้นเทาอ่อน
+ * จอแคบเปิดเป็นแผ่นจากขอบล่างเหมือนกล่องอื่นของระบบ
+ */
+function ApprModal({
+  title,
+  icon,
+  onClose,
+  footer,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  onClose: () => void;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const hydrated = useHydrated();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const unlock = lockScroll();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      unlock();
+    };
+  }, [onClose]);
+
+  if (!hydrated) return null;
+
+  return createPortal(
+    <div
+      className="appr-modal fixed inset-0 z-80 flex items-end justify-center bg-[#0f172a]/40 backdrop-blur-sm md:items-center md:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="appr-modal-box flex max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[20px] bg-white text-[#0f172a] shadow-2xl md:rounded-[20px]">
+        <div className="flex flex-none items-center justify-between gap-3 border-b border-[#e2e8f0] px-6 pt-5 pb-4 md:px-7 md:pt-6">
+          <h2 className="flex h-12 min-w-0 items-center gap-3 text-[18px] font-bold">
+            {icon}
+            <span className="truncate">{title}</span>
+          </h2>
+          <button
+            type="button"
+            className="no-print grid size-8 flex-none place-items-center rounded-full text-[#94a3b8] hover:bg-[#f1f5f9] hover:text-[#334155]"
+            onClick={onClose}
+            aria-label="ปิด"
+          >
+            <CloseIcon className="size-[15px]" strokeWidth={2.2} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-6 py-5 md:px-7">{children}</div>
+        <div className="no-print flex flex-none items-center justify-end gap-2.5 bg-[#f8fafc] px-6 py-4 pb-[max(16px,env(safe-area-inset-bottom))] md:px-7">
+          {footer}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -825,11 +954,21 @@ function applyDecision(item: Request, approve: boolean, why: string, hours?: num
 
 function Kv({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="contents">
+    <div className="grid grid-cols-[110px_minmax(0,1fr)] items-baseline gap-x-4">
       {/* หัวข้อทางซ้ายจางกว่าค่า ให้สายตาไปที่ข้อมูลก่อน */}
-      <dt className="text-[12.5px] font-medium text-[var(--ink-faint,#9AA1AE)]">{label}</dt>
-      <dd className="leading-[1.6]">{value}</dd>
+      <dt className="text-[13px] font-medium text-[#94a3b8]">{label}</dt>
+      <dd className="leading-[1.6] text-[#0f172a]">{value}</dd>
     </div>
+  );
+}
+
+/** ไอคอนหัวกล่องรายละเอียด — แผ่นสีแดงอ่อนตามดีไซน์ */
+function KindIcon({ kind }: { kind: Kind }) {
+  const Icon = kind === "ot" ? ClockIcon : kind === "leave" ? CalendarIcon : ReceiptIcon;
+  return (
+    <i className="grid size-9 flex-none place-items-center rounded-full bg-[#fff1f2] text-[#be123c] not-italic">
+      <Icon className="size-4" strokeWidth={2.2} />
+    </i>
   );
 }
 
@@ -910,8 +1049,13 @@ function fromEmp(r: EmpRequest, name: string, sub: string, as: Role, spans: Away
       }),
     };
   }
-  const km = empFuelKm(r);
-  const lines = [`ค่าน้ำมัน ${thaiMonth(r.month ?? "")}`, `รวม ${km.toFixed(2)} กม.`, `เป็นเงิน ${baht(km * fuelRate())} บาท`];
+  /* ยอดคิดรายแถวตามชนิดรถ และบอกว่าระยะทางเป็นของรถยนต์หรือมอเตอร์ไซค์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const fuel = r.fuel ?? [];
+  const lines = [
+    `ค่าน้ำมัน ${thaiMonth(r.month ?? "")}`,
+    ...fuelKmLines(fuel),
+    `เป็นเงิน ${baht(fuel.reduce((s, x) => s + fuelAmount(x), 0))} บาท`,
+  ];
   return { ...base, kind: "expense", topic: "ค่าน้ำมัน", line: `${r.id} ${lines.join(" ")}`, lines };
 }
 
@@ -1001,9 +1145,16 @@ function fromOt(role: Role, v: OtRecord, as: Role): Request {
   };
 }
 
+/** ระยะรวมแยกตามชนิดรถ เช่น "รถยนต์ รวม 48.00 กม." — ไม่มีแถวค่าน้ำมันคงบรรทัดเดิม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+function fuelKmLines(rows: { km: string | number; vehicle?: Vehicle }[]) {
+  const km = (list: typeof rows) => list.reduce((s, r) => s + (Number(String(r.km).replace(/,/g, "")) || 0), 0);
+  const vs = vehiclesIn(rows);
+  if (!vs.length) return [`รวม ${km(rows).toFixed(2)} กม.`];
+  return vs.map((x) => `${VEHICLE_LABEL[x]} รวม ${km(fuelRowsOf(rows, x)).toFixed(2)} กม.`);
+}
+
 function fromClaim(role: Role, v: ExpenseClaim, as: Role): Request {
-  const km = v.fuel.reduce((sum, r) => sum + (Number(String(r.km).replace(/,/g, "")) || 0), 0);
-  const lines = [`ค่าน้ำมัน ${thaiMonth(v.month)}`, `รวม ${km.toFixed(2)} กม.`, `เป็นเงิน ${baht(claimTotal(v))} บาท`];
+  const lines = [`ค่าน้ำมัน ${thaiMonth(v.month)}`, ...fuelKmLines(v.fuel), `เป็นเงิน ${baht(claimTotal(v))} บาท`];
   return {
     kind: "expense",
     ...who(role),

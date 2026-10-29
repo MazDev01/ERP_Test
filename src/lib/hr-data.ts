@@ -40,21 +40,56 @@ export const BUILTIN_HR_DEPT: { v: DeptKey; label: string }[] = [
 /** รหัสตำแหน่ง — ชุดตั้งต้นด้านล่าง + ที่ผู้ดูแลระบบเพิ่ม (hrPositions()) */
 export type PosKey = string;
 
+/* ชื่อตำแหน่งใช้ชื่อเต็มทุกที่ในระบบ ไม่ใช้ตัวย่อ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 export const BUILTIN_HR_POSITION: { v: PosKey; label: string; dept: DeptKey }[] = [
   { v: "account_hr", label: "บัญชีและบุคคล", dept: "backoffice" },
   { v: "maid", label: "แม่บ้าน", dept: "backoffice" },
   { v: "graphic", label: "Graphic", dept: "marketing" },
-  { v: "pm", label: "PM", dept: "marketing" },
+  { v: "pm", label: "Project Manager", dept: "marketing" },
   { v: "content", label: "Content", dept: "marketing" },
-  { v: "gm", label: "GM", dept: "marketing" },
+  { v: "gm", label: "General Manager", dept: "marketing" },
   { v: "media", label: "Media planner", dept: "marketing" },
-  { v: "bd", label: "BD", dept: "bd" },
+  { v: "bd", label: "Business Development", dept: "bd" },
   /* ERD ระบุ 12 ตำแหน่ง รวม sales — ยังไม่ยืนยันว่าอยู่แผนกไหน (ERD ข้อ 8) จึงวางไว้ใต้ BD ไปก่อน */
   { v: "sales", label: "Sales", dept: "bd" },
   { v: "website", label: "Website", dept: "website" },
-  { v: "sa", label: "SA", dept: "developer" },
-  { v: "dev", label: "Dev", dept: "developer" },
+  { v: "sa", label: "System Analysis", dept: "developer" },
+  { v: "dev", label: "Developer", dept: "developer" },
 ];
+
+/** ตัวย่อตำแหน่ง → ชื่อเต็ม — ใช้แปลงข้อความเก่าที่เก็บเป็นตัวย่อ เช่น "ปิยะวัฒน์ (SA)" (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+export const POS_FULL_NAME: Record<string, string> = {
+  SA: "System Analysis",
+  PM: "Project Manager",
+  GM: "General Manager",
+  BD: "Business Development",
+  Dev: "Developer",
+  HR: "Human Resources",
+  CEO: "Chief Executive Officer",
+};
+
+/** ชื่อเต็มของตำแหน่ง — ไม่ใช่ตัวย่อที่รู้จักคืนข้อความเดิม */
+export function posFullName(label: string) {
+  return POS_FULL_NAME[label] ?? label;
+}
+
+/** "ชื่อ (SA)" → "ชื่อ (System Analysis)" · "PM" ล้วน → "Project Manager" — แปลงเฉพาะตัวย่อทั้งข้อความหรือในวงเล็บท้ายข้อความ */
+export function withFullPos(text: string) {
+  const whole = POS_FULL_NAME[text.trim()];
+  if (whole) return whole;
+  return text.replace(/\(([^()]+)\)\s*$/, (all, abbr: string) => {
+    const full = POS_FULL_NAME[abbr.trim()];
+    return full ? `(${full})` : all;
+  });
+}
+
+/* ชื่อตั้งต้นเดิมของตำแหน่ง (ตัวย่อ) — ค่าที่ผู้ดูแลบันทึกไว้ก่อน 29 ต.ค. 2569 ยังเป็นตัวย่อ
+   แปลงเป็นชื่อเต็มเฉพาะที่ยังเป็นชื่อเดิม ชื่อที่ผู้ดูแลตั้งใหม่เองไม่แตะ */
+const OLD_BUILTIN_POS_LABEL: Record<PosKey, string> = { pm: "PM", gm: "GM", bd: "BD", sa: "SA", dev: "Dev" };
+
+export function migratePosLabels<T extends { v: PosKey; label: string }>(saved: T[] | undefined): T[] | undefined {
+  return saved?.map((p) => (OLD_BUILTIN_POS_LABEL[p.v] === p.label ? { ...p, label: posFullName(p.label) } : p));
+}
 
 /** ทุกตำแหน่งของคนนี้ — ตำแหน่งหลักมาก่อน แล้วตามด้วยตำแหน่งที่ควบ */
 export function posOf(e: { pos: PosKey; posMore?: PosKey[] }): PosKey[] {
@@ -75,7 +110,7 @@ export function hrDepts() {
   return merged(settings().catalog.depts, BUILTIN_HR_DEPT, (d) => d.v);
 }
 export function hrPositions() {
-  return merged(settings().catalog.positions, BUILTIN_HR_POSITION, (p) => p.v);
+  return merged(migratePosLabels(settings().catalog.positions), BUILTIN_HR_POSITION, (p) => p.v);
 }
 
 /** ตำแหน่งที่ยังเปิดใช้ — ใช้ในดรอปดาวน์ตอนเลือกตำแหน่งใหม่ (ของเดิมที่ปิดไปแล้วยังอ่านชื่อได้ด้วย hrPos) */
@@ -919,7 +954,7 @@ const HR_TIME_BASE: Record<string, TimeRec> = {
        ot:[], issues:[]},
   E03:{late:[], leave:[{d:"2026-07-20",type:"personal",span:"full"},{d:"2026-08-07",type:"sick",span:"full"}],
        ot:[{d:"2026-07-09",h:2,kind:"after_work"},{d:"2026-08-13",h:2.5,kind:"after_work"}],
-       issues:[{d:"2026-08-19",kind:"nopair",note:"HR ตรวจแล้ว ลืมกดออก หัวหน้ายืนยันว่าอยู่ทำงานถึง 18:00"}]},
+       issues:[{d:"2026-08-19",kind:"nopair",note:"Human Resources ตรวจแล้ว ลืมกดออก หัวหน้ายืนยันว่าอยู่ทำงานถึง 18:00"}]},
   E04:{late:[{d:"2026-08-11",min:9}], leave:[],
        ot:[{d:"2026-07-11",h:7,kind:"holiday"},{d:"2026-07-23",h:3,kind:"after_work"},{d:"2026-07-28",h:5,kind:"public"},
            {d:"2026-08-15",h:8,kind:"holiday"},{d:"2026-08-26",h:2,kind:"after_work"}],
@@ -943,7 +978,7 @@ const HR_TIME_BASE: Record<string, TimeRec> = {
   E14:{late:[{d:"2026-08-06",min:11},{d:"2026-08-13",min:16}], leave:[], ot:[], issues:[]},
   E15:{late:[], leave:[], ot:[], issues:[]},
   E17:{late:[{d:"2026-08-12",min:0}], leave:[],
-       ot:[], issues:[{d:"2026-08-20",kind:"norecord",note:"HR ตรวจแล้ว ลืมตอกบัตร หัวหน้ายืนยันว่ามาทำงาน"}]}
+       ot:[], issues:[{d:"2026-08-20",kind:"norecord",note:"Human Resources ตรวจแล้ว ลืมตอกบัตร หัวหน้ายืนยันว่ามาทำงาน"}]}
 };
 /*
  * ตัวอย่างเวลาทำงานรอบ ต.ค. 2569 (26 ก.ย. – 25 ต.ค.) ของทีมงานที่ยังไม่มีบัญชีเข้าระบบ (เจ้าของสั่ง 8 ต.ค. 2569)
@@ -961,7 +996,7 @@ const HR_TIME_OCT_2569: Record<string, Partial<TimeRec>> = {
   E13: { late: [{ d: "2026-10-01", min: 18 }] },
   E17: {
     late: [{ d: "2026-10-07", min: 10 }],
-    issues: [{ d: "2026-09-30", kind: "nopair", note: "HR ตรวจแล้ว ลืมกดออก หัวหน้ายืนยันว่าอยู่ทำงานถึง 18:00" }],
+    issues: [{ d: "2026-09-30", kind: "nopair", note: "Human Resources ตรวจแล้ว ลืมกดออก หัวหน้ายืนยันว่าอยู่ทำงานถึง 18:00" }],
   },
 };
 

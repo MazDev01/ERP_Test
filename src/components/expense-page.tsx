@@ -12,14 +12,20 @@ import {
   fuelAmount,
   fuelRowMiss,
   fuelTotal,
+  fuelRowsOf,
   otherRowProblem,
   otherTotal,
   isLocked,
+  plateOf,
+  vehiclesIn,
+  VEHICLES,
+  VEHICLE_LABEL,
   type ClaimStatus,
   type ExpenseClaim,
   type FuelMiss,
   type FuelRow,
   type OtherRow,
+  type Vehicle,
 } from "@/lib/expense-data";
 import { optionsOf } from "@/lib/options";
 import { useAddOption } from "./add-option";
@@ -73,7 +79,14 @@ type Screen =
   | { kind: "form"; month: string; pick?: Pick };
 
 /* ประเภทที่เลือกก่อนเปิดฟอร์ม → ฟอร์มเดิม (ค่าน้ำมัน / ค่าใช้จ่ายอื่นพร้อมประเภท) (ผู้ใช้สั่ง 9 ต.ค. 2569) */
-type Pick = { key: "travel" | "fuel" | "other"; label: string; t: MType; kind: string };
+/* vehicle — ค่าน้ำมันรถต้องเลือกรถยนต์/มอเตอร์ไซค์ต่อ เพราะคิดคนละอัตรา (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+type Pick = { key: "travel" | "fuel" | "other"; label: string; t: MType; kind: string; vehicle?: Vehicle };
+
+/** ประเภทค่าน้ำมันของรถชนิดนั้น — ไปต่อที่ฟอร์มของรถคันนั้นเลย */
+const fuelPick = (p: Pick, v: Vehicle): Pick => ({ ...p, vehicle: v, label: `ค่าน้ำมัน${VEHICLE_LABEL[v]}` });
+
+/** แถวว่างที่หน้าจอเติมให้ — รถยนต์ใช้รหัสเดิม มอเตอร์ไซค์แยกรหัสไม่ให้ชนกัน */
+const fuelBlankId = (month: string, v: Vehicle) => `F-blank-${month}${v === "moto" ? "-moto" : ""}`;
 /*
  * เอา "ค่าคอมมิชชั่น" ออกจากประเภทการเบิก — ค่าคอมมิชชั่น/อินเซนทีฟ ผู้บริหารให้ในรอบเงินเดือนเท่านั้น
  * พนักงานเบิกเองไม่ได้ · ใบเก่าที่เคยเบิกค่าคอมไว้ยังเปิดดูเป็นประวัติได้ (ผู้ใช้สั่ง 14 ต.ค. 2569)
@@ -93,6 +106,11 @@ function usePicks() {
 /* กล่องเลือกประเภทการเบิก จอใหญ่ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
 function PickDialog({ onPick, onClose }: { onPick: (p: Pick) => void; onClose: () => void }) {
   const picks = usePicks();
+  /* กดค่าน้ำมันรถ → เลือกรถยนต์/มอเตอร์ไซค์ต่อในกล่องเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [fuel, setFuel] = useState<Pick | null>(null);
+  const opts: { key: string; label: string; t: MType; go: () => void }[] = fuel
+    ? VEHICLES.map((v) => ({ key: v, label: VEHICLE_LABEL[v], t: "fuel", go: () => onPick(fuelPick(fuel, v)) }))
+    : picks.map((p) => ({ key: p.key, label: p.label, t: p.t, go: () => (p.t === "fuel" ? setFuel(p) : onPick(p)) }));
   return (
     <Sheet
       title="เลือกประเภทการเบิก"
@@ -105,14 +123,14 @@ function PickDialog({ onPick, onClose }: { onPick: (p: Pick) => void; onClose: (
       }
     >
       <div className="grid gap-2">
-        {picks.map((p) => {
+        {opts.map((p) => {
           const ty = M_TYPES[p.t];
           return (
             <button
               key={p.key}
               type="button"
               className="flex items-center gap-3 rounded-[12px] border border-border bg-card px-3.5 py-3 text-left font-semibold hover:border-primary"
-              onClick={() => onPick(p)}
+              onClick={p.go}
             >
               <span
                 className="flex shrink-0 items-center justify-center rounded-full"
@@ -157,9 +175,9 @@ function roundNos(rounds: ExpenseClaim[]) {
   return stackNo(rounds, (c) => c.submittedAt || c.month, (c) => c.month);
 }
 
-/** ประเภทในใบ เช่น "ค่าน้ำมันรถ · ค่าใช้จ่ายอื่น" */
+/** ประเภทในใบ เช่น "ค่าน้ำมันรถยนต์ · ค่าใช้จ่ายอื่น" — ค่าน้ำมันบอกชนิดรถ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 function typesOf(c: ExpenseClaim) {
-  return [c.fuel.length ? "ค่าน้ำมันรถ" : "", c.other?.length ? "ค่าใช้จ่ายอื่น" : ""]
+  return [...vehiclesIn(c.fuel).map((v) => `ค่าน้ำมัน${VEHICLE_LABEL[v]}`), c.other?.length ? "ค่าใช้จ่ายอื่น" : ""]
     .filter(Boolean)
     .join(" · ");
 }
@@ -641,7 +659,7 @@ function ClaimForm({
         </div>
       )}
 
-      <ClaimSheet claim={claim} month={month} locked={locked} tried={tried} only={pick?.t} kind={pick?.kind} />
+      <ClaimSheet claim={claim} month={month} locked={locked} tried={tried} only={pick?.t} kind={pick?.kind} vehicle={pick?.vehicle} />
     </div>
   );
 }
@@ -654,6 +672,7 @@ function ClaimSheet({
   tried,
   only,
   kind = "",
+  vehicle,
 }: {
   claim: ExpenseClaim;
   month: string;
@@ -662,19 +681,30 @@ function ClaimSheet({
   /** ฟอร์มที่เปิดจากการเลือกประเภท — แสดงเฉพาะส่วนนั้น (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   only?: MType;
   kind?: string;
+  /** ฟอร์มค่าน้ำมันที่เลือกรถมาแล้ว — แสดงเฉพาะฟอร์มของรถชนิดนั้น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  vehicle?: Vehicle;
 }) {
   const me = useProfile();
   const fuelSum = fuelTotal(claim.fuel);
   const otherSum = otherTotal(claim.other);
+  /* รถยนต์กับมอเตอร์ไซค์คนละฟอร์ม คิดคนละอัตรา · ไม่ได้เลือกรถมา = แสดงทุกชนิดที่มีรายการ
+     ยังไม่มีรายการเลยแสดงฟอร์มรถยนต์ไว้ตามเดิม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const has = vehiclesIn(claim.fuel);
+  const vehicles: Vehicle[] = vehicle ? [vehicle] : has.length ? has : ["car"];
 
   return (
     <>
-      {only !== "other" && (
-      <section className="panel glass flex flex-col">
+      {only !== "other" && vehicles.map((v, vi) => {
+      const rows = fuelRowsOf(claim.fuel, v);
+      const label = VEHICLE_LABEL[v];
+      const plateKey = v === "moto" ? "motoPlate" : "plate";
+      const plate = plateOf(claim, v);
+      return (
+      <section key={v} className={`panel glass flex flex-col ${vi ? "mt-4" : ""}`}>
         <div className="strip no-print">
           <div className="tabs">
             <button type="button" className="on">
-              ค่าน้ำมันรถ <b>{claim.fuel.length}</b>
+              ค่าน้ำมัน{label} <b>{rows.length}</b>
             </button>
           </div>
           <span className="flex items-center gap-2.5 py-2">
@@ -694,7 +724,7 @@ function ClaimSheet({
         </div>
 
           <div className="claim">
-            <p className="ftitle">แบบฟอร์มขออนุมัติเบิกค่าน้ำมันรถ</p>
+            <p className="ftitle">แบบฟอร์มขออนุมัติเบิกค่าน้ำมัน{label}</p>
             <p className="fsub">
               {/* สถานะอยู่ที่ป้ายบนแถบแล้ว · ไม่แสดงเลขที่ใบเบิก (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
               ประจำเดือน {mMonthName(month)}
@@ -703,7 +733,7 @@ function ClaimSheet({
             <div className="meta">
               <div className="mrow">
                 <span>เรื่อง</span>
-                <b>ขออนุมัติเบิกค่าน้ำมันรถจักรยานยนต์</b>
+                <b>ขออนุมัติเบิกค่าน้ำมัน{label}</b>
               </div>
               <div className="mrow">
                 <span>ชื่อ – นามสกุล</span>
@@ -718,25 +748,26 @@ function ClaimSheet({
                 <b>{me.department}</b>
               </div>
               <div className="mrow">
-                <label htmlFor="plate">ป้ายทะเบียนรถ</label>
+                <label htmlFor={plateKey}>ป้ายทะเบียนรถ</label>
                 <input
-                  id="plate"
-                  className={`field-control ${tried && claim.fuel.length && !claim.plate.trim() ? "border-destructive" : ""}`}
-                  value={claim.plate}
+                  id={plateKey}
+                  className={`field-control ${tried && rows.length && !plate.trim() ? "border-destructive" : ""}`}
+                  value={plate}
                   disabled={locked}
                   placeholder="เช่น 1กก 1234 เชียงใหม่"
-                  onChange={(e) => setClaimField(month, "plate", e.target.value)}
+                  onChange={(e) => setClaimField(month, plateKey, e.target.value)}
                 />
               </div>
             </div>
             <p className="lead">ซึ่งข้าพเจ้าได้สำรองจ่ายไปก่อนในเดือนนี้ ตามรายละเอียดดังนี้</p>
 
             <FuelTable
-              rows={claim.fuel}
+              rows={rows}
+              vehicle={v}
               month={month}
               locked={locked}
               tried={tried}
-              total={fuelSum}
+              total={fuelTotal(rows)}
             />
 
             {!locked && (
@@ -745,8 +776,8 @@ function ClaimSheet({
                 className="btn glass-thin no-print mt-3"
                 onClick={() => {
                   /* ยังไม่มีรายการ = มีแถวว่างที่เติมให้อยู่แล้ว เก็บแถวนั้นไว้ก่อนแล้วค่อยเพิ่มแถวใหม่ (ตาม mockup) */
-                  if (!claim.fuel.length) addFuelRow(month, { id: `F-blank-${month}` });
-                  addFuelRow(month);
+                  if (!rows.length) addFuelRow(month, { id: fuelBlankId(month, v), vehicle: v });
+                  addFuelRow(month, { vehicle: v });
                 }}
               >
                 <PlusIcon className="size-[15px]" strokeWidth={2.2} />
@@ -754,11 +785,13 @@ function ClaimSheet({
               </button>
             )}
             <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
-              จำนวนเงินคำนวณจากระยะทาง × {fuelRate()} บาทต่อกิโลเมตร
+              จำนวนเงินคำนวณจากระยะทาง × {fuelRate(v)} บาทต่อกิโลเมตร
             </p>
             <SignBlock />
           </div>
 
+        {/* ยอดทั้งใบบอกครั้งเดียวท้ายฟอร์มค่าน้ำมันอันสุดท้าย */}
+        {vi === vehicles.length - 1 && (
         <div className="foot no-print flex-col items-stretch gap-3 text-center sm:flex-row sm:items-center sm:text-left">
           <span>
             ค่าน้ำมัน {claim.fuel.length} รายการ
@@ -770,8 +803,10 @@ function ClaimSheet({
             รวมที่ขอเบิกทั้งใบ<b>{baht(fuelSum + otherSum)}</b> บาท
           </span>
         </div>
+        )}
       </section>
-      )}
+      );
+      })}
 
       {/* ค่าใช้จ่ายอื่นนอกจากค่าน้ำมัน (Full Proposal · M6) — ประเภทมาจากข้อมูลหลัก */}
       {only !== "fuel" && (
@@ -959,12 +994,15 @@ const onlyNumber = (v: string) => {
 
 function FuelTable({
   rows,
+  vehicle,
   month,
   locked,
   tried,
   total,
 }: {
+  /** แถวของรถชนิดเดียว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   rows: FuelRow[];
+  vehicle: Vehicle;
   month: string;
   locked: boolean;
   tried: boolean;
@@ -974,15 +1012,15 @@ function FuelTable({
    * ตาม mockup: ใบร่างที่ยังไม่มีรายการ เติมแถวว่างให้หนึ่งแถวพร้อมกรอก
    * แถวนี้ยังไม่ลงสโตร์จนกว่าจะเริ่มกรอก (ใช้รหัสเดิมตอนลง ช่องที่กำลังพิมพ์จึงไม่หลุดโฟกัส)
    */
-  const blankId = `F-blank-${month}`;
+  const blankId = fuelBlankId(month, vehicle);
   const shown: FuelRow[] =
     rows.length || locked
       ? rows
-      : [{ id: blankId, date: "", place: "", km: "", work: "", note: "" }];
+      : [{ id: blankId, date: "", place: "", km: "", work: "", note: "", vehicle }];
   const set = (id: string, patch: Partial<Omit<FuelRow, "id">>) =>
     rows.some((r) => r.id === id)
       ? updateFuelRow(month, id, patch)
-      : addFuelRow(month, { ...patch, id });
+      : addFuelRow(month, { ...patch, id, vehicle });
   const { min, max } = monthRange(month);
 
   if (!shown.length) {
@@ -1233,8 +1271,13 @@ function dropBlankRows(claim: ExpenseClaim) {
 function ExpenseMobile() {
   const claims = useExpenseClaims();
   const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState<{ month: string; t: MType; kind?: string; label?: string } | null>(null);
+  const [form, setForm] = useState<{ month: string; t: MType; kind?: string; label?: string; vehicle?: Vehicle } | null>(null);
   const picks = usePicks();
+  /* กดค่าน้ำมันรถ → เลือกรถยนต์/มอเตอร์ไซค์ต่อในแผ่นเดียวกัน (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [fuelStep, setFuelStep] = useState<Pick | null>(null);
+  useEffect(() => {
+    if (!sheet) setFuelStep(null);
+  }, [sheet]);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -1286,7 +1329,12 @@ function ExpenseMobile() {
           const t: MType = c.fuel.length ? "fuel" : "other";
           const ty = M_TYPES[t];
           return (
-            <button key={c.month} type="button" className="exm-card" onClick={() => setForm({ month: c.month, t })}>
+            <button
+              key={c.month}
+              type="button"
+              className="exm-card"
+              onClick={() => setForm({ month: c.month, t, vehicle: vehiclesIn(c.fuel)[0] })}
+            >
               <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
                 <MSvg size={19}>{ty.ico}</MSvg>
               </span>
@@ -1320,24 +1368,28 @@ function ExpenseMobile() {
               <div className="exm-grab" />
               <h2 id="exmSheetT">เลือกประเภทการเบิก</h2>
               {/* ค่าเดินทาง / ค่าน้ำมัน / อื่นๆ — เหมือนจอใหญ่ · ไม่มีค่าคอมมิชชั่นแล้ว (ผู้ใช้สั่ง 14 ต.ค. 2569) */}
-              {picks.map((p) => {
+              {(fuelStep ? VEHICLES.map((v) => fuelPick(fuelStep, v)) : picks).map((p) => {
                 const ty = M_TYPES[p.t];
                 return (
                   <button
-                    key={p.key}
+                    key={p.vehicle ?? p.key}
                     type="button"
                     className="exm-type"
                     onClick={() => {
+                      if (p.t === "fuel" && !p.vehicle) {
+                        setFuelStep(p);
+                        return;
+                      }
                       setSheet(false);
                       /* เบิกใหม่เป็นของเดือนปัจจุบันเสมอ — เดือนหน้ายังมาไม่ถึง ไม่ให้เบิกล่วงหน้า */
-                      setForm({ month: monthKey(bkkNow()), t: p.t, kind: p.kind, label: p.label });
+                      setForm({ month: monthKey(bkkNow()), t: p.t, kind: p.kind, label: p.label, vehicle: p.vehicle });
                     }}
                   >
                     <span className="exm-ico" style={{ background: ty.bg, color: ty.fg }}>
                       <MSvg size={21}>{ty.ico}</MSvg>
                     </span>
                     <span className="tx">
-                      <b>{p.label}</b>
+                      <b>{fuelStep && p.vehicle ? VEHICLE_LABEL[p.vehicle] : p.label}</b>
                     </span>
                     <MSvg size={18}>
                       <path d="m9 18 6-6-6-6" />
@@ -1353,9 +1405,10 @@ function ExpenseMobile() {
       {form &&
         createPortal(
           <ExpenseMobileForm
-            key={`${form.month}-${form.t}-${form.kind ?? ""}`}
+            key={`${form.month}-${form.t}-${form.kind ?? ""}-${form.vehicle ?? ""}`}
             month={form.month}
             t={form.t}
+            vehicle0={form.vehicle}
             kind0={form.kind}
             label={form.label}
             onClose={() => setForm(null)}
@@ -1381,6 +1434,7 @@ function ExpenseMobile() {
 function ExpenseMobileForm({
   month,
   t: t0,
+  vehicle0 = "car",
   kind0 = "",
   label,
   onClose,
@@ -1388,6 +1442,8 @@ function ExpenseMobileForm({
 }: {
   month: string;
   t: MType;
+  /** รถของฟอร์มค่าน้ำมัน — ไม่มี = รถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  vehicle0?: Vehicle;
   /** ประเภทค่าใช้จ่ายที่เลือกมา และชื่อหัวฟอร์ม (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   kind0?: string;
   label?: string;
@@ -1399,8 +1455,18 @@ function ExpenseMobileForm({
   const locked = isLocked(claim.status);
   /* ใบที่มีทั้งค่าน้ำมันและค่าใช้จ่ายอื่น สลับดูทีละประเภทได้ (ผู้ใช้สั่ง 9 ต.ค. 2569) */
   const [t, setT] = useState<MType>(t0);
-  const both = claim.fuel.length > 0 && (claim.other ?? []).length > 0;
+  /* ค่าน้ำมันรถยนต์กับมอเตอร์ไซค์เป็นคนละฟอร์ม สลับดูแยกกันเหมือนค่าใช้จ่ายอื่น (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [veh, setVeh] = useState<Vehicle>(vehicle0);
+  const tabs: { key: string; t: MType; v: Vehicle; name: string }[] = [
+    ...vehiclesIn(claim.fuel).map((v) => ({ key: v, t: "fuel" as MType, v, name: `ค่าน้ำมัน${VEHICLE_LABEL[v]}` })),
+    ...((claim.other ?? []).length ? [{ key: "other", t: "other" as MType, v: veh, name: M_TYPES.other.name }] : []),
+  ];
+  const tabOn = (x: (typeof tabs)[number]) => x.t === t && (t === "other" || x.v === veh);
+  const both = tabs.length > 1 && tabs.some(tabOn);
   const ty = M_TYPES[t];
+  const plateKey = veh === "moto" ? "motoPlate" : "plate";
+  const plate = plateOf(claim, veh);
+  const vehRows = fuelRowsOf(claim.fuel, veh);
   const noApprover = hasNoApprover(useRole(), "expense", useApprovalRoute());
   const [tried, setTried] = useState(false);
   const [err, setErr] = useState<string[]>([]);
@@ -1409,22 +1475,22 @@ function ExpenseMobileForm({
   const bodyRef = useRef<HTMLDivElement>(null);
 
   /* ใบที่ยังไม่มีรายการ เติมแถวว่างให้หนึ่งแถว (ยังไม่ลงสโตร์จนกว่าจะเริ่มกรอก — วิธีเดียวกับตารางจอใหญ่) */
-  const fuelBlank = `F-blank-${month}`;
+  const fuelBlank = fuelBlankId(month, veh);
   const otherBlank = `O-blank-${month}`;
   const fuelRows: FuelRow[] =
-    claim.fuel.length || locked ? claim.fuel : [{ id: fuelBlank, date: "", place: "", km: "", work: "", note: "" }];
+    vehRows.length || locked ? vehRows : [{ id: fuelBlank, date: "", place: "", km: "", work: "", note: "", vehicle: veh }];
   const otherRows: OtherRow[] =
     (claim.other ?? []).length || locked
       ? claim.other ?? []
       : [{ id: otherBlank, kind: kind0, date: "", amount: "", note: "" }];
   const setFuel = (id: string, patch: Partial<Omit<FuelRow, "id">>) =>
-    claim.fuel.some((r) => r.id === id) ? updateFuelRow(month, id, patch) : addFuelRow(month, { ...patch, id });
+    claim.fuel.some((r) => r.id === id) ? updateFuelRow(month, id, patch) : addFuelRow(month, { ...patch, id, vehicle: veh });
   const setOther = (id: string, patch: Partial<Omit<OtherRow, "id">>) =>
     (claim.other ?? []).some((r) => r.id === id)
       ? updateOtherRow(month, id, patch)
       : addOtherRow(month, { kind: kind0, ...patch, id });
 
-  const total = t === "fuel" ? fuelTotal(claim.fuel) : otherTotal(claim.other);
+  const total = t === "fuel" ? fuelTotal(vehRows) : otherTotal(claim.other);
   const count = t === "fuel" ? fuelRows.length : otherRows.length;
 
   /* ปิดฟอร์ม — แถวว่างล้วนที่กดเพิ่มไว้ไม่เก็บ (อ่านค่าล่าสุดผ่าน ref เพราะ Escape ผูกไว้ครั้งเดียว) */
@@ -1451,8 +1517,8 @@ function ExpenseMobileForm({
 
   function add() {
     if (t === "fuel") {
-      if (!claim.fuel.length) addFuelRow(month, { id: fuelBlank });
-      addFuelRow(month);
+      if (!vehRows.length) addFuelRow(month, { id: fuelBlank, vehicle: veh });
+      addFuelRow(month, { vehicle: veh });
     } else {
       if (!(claim.other ?? []).length) addOtherRow(month, { id: otherBlank, kind: kind0 });
       addOtherRow(month, { kind: kind0 });
@@ -1467,7 +1533,7 @@ function ExpenseMobileForm({
     setTried(true);
     const fuel = claim.fuel.filter(fuelFilled);
     const other = (claim.other ?? []).filter(otherFilled);
-    if (!(t === "fuel" ? fuel : other).length) {
+    if (!(t === "fuel" ? fuelRowsOf(fuel, veh) : other).length) {
       setErr([
         t === "fuel"
           ? "กรอกวันที่และระยะทางอย่างน้อย 1 รายการ"
@@ -1499,7 +1565,7 @@ function ExpenseMobileForm({
           </MSvg>
         </button>
         <div>
-          <b id="exmFormT">{label && t === t0 ? label : ty.name}</b>
+          <b id="exmFormT">{t === "fuel" ? `ค่าน้ำมัน${VEHICLE_LABEL[veh]}` : label && t === t0 ? label : ty.name}</b>
           <small>
             {mMonthName(month)}
           </small>
@@ -1510,16 +1576,19 @@ function ExpenseMobileForm({
       <div className="exm-fbody" ref={bodyRef}>
         {both && (
           <div className="exm-filter" role="tablist">
-            {(["fuel", "other"] as MType[]).map((x) => (
+            {tabs.map((x) => (
               <button
-                key={x}
+                key={x.key}
                 type="button"
                 role="tab"
-                aria-selected={t === x}
-                className={t === x ? "on" : ""}
-                onClick={() => setT(x)}
+                aria-selected={tabOn(x)}
+                className={tabOn(x) ? "on" : ""}
+                onClick={() => {
+                  setT(x.t);
+                  setVeh(x.v);
+                }}
               >
-                {M_TYPES[x].name}
+                {x.name}
               </button>
             ))}
           </div>
@@ -1550,11 +1619,11 @@ function ExpenseMobileForm({
             <label style={{ display: "block" }}>
               <span className="exm-lbl">ป้ายทะเบียนรถ</span>
               <input
-                className={`exm-in ${tried && claim.fuel.some(fuelFilled) && !claim.plate.trim() ? "bad" : ""}`}
-                value={claim.plate}
+                className={`exm-in ${tried && vehRows.some(fuelFilled) && !plate.trim() ? "bad" : ""}`}
+                value={plate}
                 disabled={locked}
                 placeholder="เช่น 1กก 1234 เชียงใหม่"
-                onChange={(e) => setClaimField(month, "plate", e.target.value)}
+                onChange={(e) => setClaimField(month, plateKey, e.target.value)}
               />
             </label>
           </div>

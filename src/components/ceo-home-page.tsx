@@ -105,10 +105,12 @@ export function RoleHomePage() {
    * บทบาทผู้บริหารยังไม่มีชื่อจริงในทะเบียน เดิมจึงทักว่า "สวัสดี, CEO" ซึ่งอ่านเหมือนชื่อตำแหน่ง
    * ใช้ชื่อที่ผู้ดูแลตั้งไว้ในผู้อนุมัติระดับผู้บริหารก่อน ยังไม่ได้ตั้งค่อยใช้คำเรียกตำแหน่ง
    */
-  const execName = nameOf(approvers().exec.name.trim());
+  /* เทียบกับค่าที่ตั้งไว้ก่อนแปลงชื่อ — nameOf แปลง "CEO" เป็นชื่อตำแหน่งเต็มแล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const execRaw = approvers().exec.name.trim();
+  const execName = execRaw && execRaw !== "CEO" ? nameOf(execRaw) : "";
   const hello =
     role === "ceo"
-      ? execName && execName !== "CEO"
+      ? execName
         ? execName.split(" ")[0]
         : "ผู้บริหาร"
       : me.name.split(" ")[0];
@@ -131,7 +133,7 @@ export function RoleHomePage() {
     return [...map.entries()];
   }, [hits]);
   /* ชื่อเต็มบนการ์ดทักทายของมือถือ (ต้นแบบ home-*.html) — ผู้บริหารใช้ชื่อผู้อนุมัติที่ตั้งไว้เหมือนเดิม */
-  const fullName = role === "ceo" ? (execName && execName !== "CEO" ? execName : "ผู้บริหาร") : me.name;
+  const fullName = role === "ceo" ? (execName || "ผู้บริหาร") : me.name;
 
   useEffect(() => {
     const phone = window.matchMedia("(max-width: 640px)");
@@ -431,7 +433,7 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
         todos.push({ key: "late", title: ["เลยกำหนดส่ง"], count: late, unit: "งาน", href: "/my-tasks", source: "งานของฉัน", Icon: ClockIcon, tone: TONE_PINK, kind: "rows" });
       const back = count("revise");
       if (back)
-        todos.push({ key: "revise", title: ["งานที่ PM ส่งกลับ", "ให้แก้ไข"], count: back, unit: "งาน", href: "/my-tasks?stage=revise", source: "งานของฉัน", Icon: TasksIcon, tone: TONE_AMBER, kind: "rows" });
+        todos.push({ key: "revise", title: ["งานที่ Project Manager ส่งกลับ", "ให้แก้ไข"], count: back, unit: "งาน", href: "/my-tasks?stage=revise", source: "งานของฉัน", Icon: TasksIcon, tone: TONE_AMBER, kind: "rows" });
     }
 
     if (role === "pm") {

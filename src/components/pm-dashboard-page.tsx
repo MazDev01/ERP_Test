@@ -117,7 +117,7 @@ export function PmDashboardPage() {
       {/* มือถือ: การ์ดใบที่ห้าเหลือเดี่ยวอยู่แถวสุดท้าย ให้กินเต็มแถวแทนการเว้นช่องว่าง */}
       <div className="grid grid-cols-2 gap-3.5 max-sm:gap-2.5 max-sm:[&>*:last-child]:col-span-2 xl:grid-cols-5">
         {/* ใต้ตัวเลขเป็นแค่ลักษณนาม หัวการ์ดบอกความหมายอยู่แล้ว (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-        <Kpi label={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย PM"} value={waiting} sub="งาน" tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย Project Manager"} value={waiting} sub="งาน" tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
         <Kpi label="งานรอตรวจ" value={review} sub="งาน" tone="job" icon={<TasksIcon className="size-[15px]" strokeWidth={1.9} />} />
         <Kpi label="โปรเจคที่กำลังทำ" value={running} sub="โปรเจค" tone="won" icon={<ProjectIcon className="size-[15px]" strokeWidth={1.9} />} />
         <Kpi label="งานใกล้ครบกำหนด" value={soon} sub="งาน" tone="warn" icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
@@ -232,11 +232,11 @@ function NewJobs({ rows: list, pmView }: { rows: ReturnType<typeof usePm>["inbox
   const extra = Math.max(0, rows.length - INBOX_CAP);
 
   return (
-    <Card title={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย PM"}>
+    <Card title={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย Project Manager"}>
       {/* แต่ละงานเป็นแถวของตัวเอง มีเลขลำดับ ชื่องาน และลูกค้า อ่านแยกกันออก (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       <ul className="text-[13px]">
         {rows.length === 0 ? (
-          <li className="text-muted-foreground">{pmView ? "ยังไม่มีงานที่ GM มอบหมายให้คุณ" : "ไม่มีงานรอมอบหมาย"}</li>
+          <li className="text-muted-foreground">{pmView ? "ยังไม่มีงานที่ General Manager มอบหมายให้คุณ" : "ไม่มีงานรอมอบหมาย"}</li>
         ) : (
           <>
             {rows.slice(0, INBOX_CAP).map((j, i) => (

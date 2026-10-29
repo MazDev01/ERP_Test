@@ -114,7 +114,7 @@ export function ProposeSheet({
             ยกเลิก
           </button>
           <button type="button" className="btn solid btn-solid flex-1 justify-center sm:flex-none" onClick={send}>
-            ส่งให้ PM อนุมัติ
+            ส่งให้ Project Manager อนุมัติ
           </button>
         </>
       }
@@ -222,14 +222,14 @@ export function AskCard({ ask }: { ask: TaskAsk }) {
             </span>
             <span className={`tag ${no ? "t-late" : "t-info"} flex-none`}>
               <i />
-              {no ? "ไม่อนุมัติ" : "รอ PM อนุมัติ"}
+              {no ? "ไม่อนุมัติ" : "รอ Project Manager อนุมัติ"}
             </span>
           </div>
           {ask.brief && <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{ask.brief}</p>}
 
           {no && (
             <div className="mt-2 rounded-[13px] bg-[var(--destructive-soft)] px-3.5 py-2.5">
-              <p className="text-[12.5px] font-bold text-destructive">เหตุผลจาก PM</p>
+              <p className="text-[12.5px] font-bold text-destructive">เหตุผลจาก Project Manager</p>
               <p className="mt-1 text-[13px] leading-relaxed break-words">{no.why}</p>
               <em className="num mt-1 block text-[11.5px] text-muted-foreground not-italic">
                 {nameOf(no.by)} · {thaiStamp(no.at)} น.

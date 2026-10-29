@@ -670,7 +670,7 @@ function RunSheet({ run, onClose }: { run: AdRun; onClose: () => void }) {
       <dl className="grid gap-x-4 gap-y-2 text-[13.5px] sm:grid-cols-[140px_minmax(0,1fr)]">
         <Kv label="รอบเดือน" value={thaiMonth(run.round)} />
         <Kv label="ผู้ดูแลสื่อ" value={nameOf(run.media)} />
-        <Kv label="ผู้ดูแลงาน (PM)" value={nameOf(run.ae)} />
+        <Kv label="ผู้ดูแลงาน (Project Manager)" value={nameOf(run.ae)} />
         <Kv label="วันที่สั่งรัน" value={thaiDate(run.orderedAt)} />
         <Kv label="ช่วงรันโฆษณา" value={`${thaiDate(run.start)} – ${thaiDate(run.end)}`} />
         <Kv label="งบลูกค้า" value={`${baht(run.budget)} บาท`} />

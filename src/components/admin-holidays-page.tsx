@@ -79,14 +79,14 @@ export function AdminHolidaysPage() {
   function send() {
     if (!dirty || invalid) return;
     submitHolidays(work, currentProfile().name, bkkStamp());
-    logChange("วันหยุดบริษัท", `ส่งให้ CEO อนุมัติ · ${describeHolidays(active, work).join(" · ")}`);
+    logChange("วันหยุดบริษัท", `ส่งให้ Chief Executive Officer อนุมัติ · ${describeHolidays(active, work).join(" · ")}`);
   }
   /* ดึงคำขอกลับมาแก้ — ร่างยังอยู่ครบ */
   function pullBack() {
     if (!req) return;
     setWork(req.draft);
     clearHolidayReq();
-    logChange("วันหยุดบริษัท", "ดึงคำขอแก้วันหยุดกลับจาก CEO มาแก้ไข");
+    logChange("วันหยุดบริษัท", "ดึงคำขอแก้วันหยุดกลับจาก Chief Executive Officer มาแก้ไข");
   }
   /* ยกเลิกร่าง = กลับไปเป็นชุดที่ใช้อยู่ · คำขอที่ถูกตีกลับก็ทิ้งไปด้วย */
   function discard() {
@@ -211,19 +211,19 @@ export function AdminHolidaysPage() {
       {/* สถานะคำขอที่ส่ง CEO (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
       {req && req.status === "pending" && (
         <p className="rounded-[14px] border border-border bg-[var(--warning-soft)] px-4 py-3 text-[13px]">
-          <b className="font-bold">รอ CEO อนุมัติ</b> · ส่งเมื่อ {thaiStamp(req.sentAt)} โดย {req.sentBy} · แก้ไม่ได้ระหว่างรอ
+          <b className="font-bold">รอ Chief Executive Officer อนุมัติ</b> · ส่งเมื่อ {thaiStamp(req.sentAt)} โดย {req.sentBy} · แก้ไม่ได้ระหว่างรอ
           ทุกหน้ายังใช้วันหยุดชุดเดิมจนกว่าจะอนุมัติ
         </p>
       )}
       {req && req.status === "rejected" && (
         <p className="rounded-[14px] border border-[rgba(192,18,31,.2)] bg-[var(--destructive-soft)] px-4 py-3 text-[13px] text-destructive">
-          <b className="font-bold">CEO ตีกลับ</b>
-          {req.at && ` เมื่อ ${thaiStamp(req.at)}`} · เหตุผล: {req.reason || "—"} · แก้แล้วกดส่งให้ CEO อนุมัติอีกครั้ง
+          <b className="font-bold">Chief Executive Officer ตีกลับ</b>
+          {req.at && ` เมื่อ ${thaiStamp(req.at)}`} · เหตุผล: {req.reason || "—"} · แก้แล้วกดส่งให้ Chief Executive Officer อนุมัติอีกครั้ง
         </p>
       )}
       {req && req.status === "approved" && !dirty && (
         <p className="rounded-[14px] border border-border bg-[var(--success-soft)] px-4 py-3 text-[13px]">
-          <b className="font-bold">CEO อนุมัติแล้ว</b>
+          <b className="font-bold">Chief Executive Officer อนุมัติแล้ว</b>
           {req.at && ` เมื่อ ${thaiStamp(req.at)}`} · วันหยุดชุดนี้มีผลกับทุกหน้าแล้ว
         </p>
       )}
@@ -439,10 +439,10 @@ export function AdminHolidaysPage() {
       >
         <span className={`mr-auto text-[12.5px] max-sm:w-full ${invalid && !pending ? "text-destructive" : "text-muted-foreground"}`}>
           {pending
-            ? `รอ CEO อนุมัติ ${diff.length} รายการ`
+            ? `รอ Chief Executive Officer อนุมัติ ${diff.length} รายการ`
             : invalid ||
               (dirty
-                ? `แก้ไว้ ${diff.length} รายการ · ยังไม่มีผลจนกว่า CEO จะอนุมัติ`
+                ? `แก้ไว้ ${diff.length} รายการ · ยังไม่มีผลจนกว่า Chief Executive Officer จะอนุมัติ`
                 : "ตรงกับวันหยุดที่ใช้อยู่")}
         </span>
         {pending ? (
@@ -468,7 +468,7 @@ export function AdminHolidaysPage() {
               disabled={!dirty || Boolean(invalid)}
               onClick={send}
             >
-              ส่งให้ CEO อนุมัติ
+              ส่งให้ Chief Executive Officer อนุมัติ
             </button>
           </>
         )}
@@ -476,7 +476,7 @@ export function AdminHolidaysPage() {
       <ConfirmDialog
         open={askDefault}
         title="คืนค่าตั้งต้น"
-        description="ร่างจะกลับเป็นวันหยุดตั้งต้นของระบบ ยังไม่มีผลจนกว่าจะส่งและ CEO อนุมัติ"
+        description="ร่างจะกลับเป็นวันหยุดตั้งต้นของระบบ ยังไม่มีผลจนกว่าจะส่งและ Chief Executive Officer อนุมัติ"
         confirmLabel="คืนค่าตั้งต้น"
         tone="destructive"
         onCancel={() => setAskDefault(false)}

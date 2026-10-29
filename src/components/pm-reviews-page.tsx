@@ -363,7 +363,7 @@ export function ReviewDialog({
           <button
             type="button"
             disabled={clientBlocked}
-            title={clientBlocked ? "งานนี้ต้องส่งให้ลูกค้าตรวจรอบใหม่ — PM เป็นผู้ส่ง" : undefined}
+            title={clientBlocked ? "งานนี้ต้องส่งให้ลูกค้าตรวจรอบใหม่ — Project Manager เป็นผู้ส่ง" : undefined}
             className="btn solid flex-1 justify-center !bg-[var(--success)] !text-white disabled:opacity-50 max-sm:!h-12 max-sm:!rounded-[14px] max-sm:basis-0 max-sm:grow-[1.4] sm:flex-none"
             onClick={() => {
               if (clientBlocked) return;
@@ -395,7 +395,7 @@ export function ReviewDialog({
       </Section>
       {clientBlocked && (
         <p className="mb-4 rounded-[10px] bg-[var(--warning-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--warning)]">
-          งานนี้เคยส่งให้ลูกค้าตรวจแล้ว ผ่านรอบนี้ต้องส่งลูกค้ารอบใหม่ — PM เป็นผู้ส่ง ส่งกลับแก้ได้ตามปกติ
+          งานนี้เคยส่งให้ลูกค้าตรวจแล้ว ผ่านรอบนี้ต้องส่งลูกค้ารอบใหม่ — Project Manager เป็นผู้ส่ง ส่งกลับแก้ได้ตามปกติ
         </p>
       )}
       {/* หลังผ่านแล้วไปไหน — เลือกได้เฉพาะ PM/GM · ค่าตั้งต้นตามที่แผนกำหนด (ผู้ใช้สั่ง 21 ต.ค. 2569) */}
@@ -428,7 +428,7 @@ export function ReviewDialog({
       )}
       {!ro && !toClient && wantClient && !canClient && (
         <p className="mb-4 rounded-[10px] bg-[var(--info-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--info)]">
-          งานนี้ต้องให้ลูกค้าตรวจ — ผ่านแล้ว PM เป็นผู้ส่งให้ลูกค้าตรวจต่อ
+          งานนี้ต้องให้ลูกค้าตรวจ — ผ่านแล้ว Project Manager เป็นผู้ส่งให้ลูกค้าตรวจต่อ
         </p>
       )}
 

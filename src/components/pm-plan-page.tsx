@@ -333,8 +333,8 @@ export function PmPlanPage() {
                   ? `ถูกยกเลิกเมื่อ ${cancelled.cancelled ? thaiDate(cancelled.cancelled.at.slice(0, 10)) : "แล้ว"} โดย ${cancelled.cancelled?.by ? nameOfEmp(cancelled.cancelled.by) : "ฝ่ายที่เกี่ยวข้อง"}`
                   : notMine
                     ? isAssignedJob(notMine)
-                      ? "งานนี้มอบหมายให้ PM คนอื่นแล้ว"
-                      : "งานนี้ยังรอ GM มอบหมาย PM"
+                      ? "งานนี้มอบหมายให้ Project Manager คนอื่นแล้ว"
+                      : "งานนี้ยังรอ General Manager มอบหมาย Project Manager"
                     : ""}
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2.5">
@@ -1217,17 +1217,10 @@ function useMarketingTeam() {
   });
 }
 
-/* ตัวเลือกผู้รับผิดชอบ = "ตำแหน่งเต็ม (ชื่อ)" เช่น System Analysis (นุ่น) — ตำแหน่งย่อเขียนเต็มเฉพาะในดรอปดาวน์นี้ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
-const POS_FULL: Record<string, string> = {
-  SA: "System Analysis",
-  PM: "Project Manager",
-  GM: "General Manager",
-  BD: "Business Development",
-  Dev: "Developer",
-};
+/* ตัวเลือกผู้รับผิดชอบ = "ตำแหน่งเต็ม (ชื่อ)" เช่น System Analysis (นุ่น) — ชื่อตำแหน่งเต็มมาจาก hr-data แล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
 function whoLabel(m: Member, pos?: PosKey) {
   const label = pos ? hrPos(pos).label : m.roles.map(roleLabel).join(" | ");
-  return `${POS_FULL[label] ?? label} (${m.name})`;
+  return `${label} (${m.name})`;
 }
 
 // ─── ตัวเลือกผู้รับผิดชอบในแถบมอบหมายพร้อมกัน ────────────────────────

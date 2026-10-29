@@ -87,7 +87,7 @@ function edit(
 
 export function setClaimField(
   month: string,
-  field: "plate" | "nickname",
+  field: "plate" | "motoPlate" | "nickname",
   value: string,
 ) {
   edit(month, (c) => ({ ...c, [field]: value }));

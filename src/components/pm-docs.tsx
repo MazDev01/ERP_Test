@@ -12,6 +12,7 @@ import { useCrm } from "@/lib/crm-store";
 import { baht, thaiDate } from "@/lib/format";
 import { roleLabel, type InboxJob } from "@/lib/pm-data";
 import { nameOf } from "@/lib/emp-name";
+import { withFullPos } from "@/lib/hr-data";
 
 
 export function QuotationPreview({ job }: { job: InboxJob }) {
@@ -170,7 +171,7 @@ export function ProposalPreview({ job, variant = "plan" }: { job: InboxJob; vari
       <div className="mt-4 grid gap-5 sm:grid-cols-2">
         <div>
           <p className="text-[10.5px] font-bold text-muted-foreground">จัดทำโดย</p>
-          <p className="text-[13px] font-bold">{pr.by}</p>
+          <p className="text-[13px] font-bold">{withFullPos(pr.by)}</p>
         </div>
         <div>
           <p className="text-[10.5px] font-bold text-muted-foreground">เสนอต่อ</p>

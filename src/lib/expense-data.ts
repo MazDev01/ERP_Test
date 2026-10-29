@@ -11,8 +11,18 @@ import type { Role } from "./role";
 
 import { round2 } from "./format";
 
-/** จ่ายคืนกิโลเมตรละกี่บาท — ฝ่ายบุคคลตั้งได้ที่ /admin/rates (Full Proposal · M5) */
-export const fuelRate = () => settings().rates.fuelPerKm;
+/*
+ * รถที่ใช้เดินทาง — รถยนต์กับมอเตอร์ไซค์จ่ายคืนคนละอัตรา จึงกรอกแยกฟอร์มกัน
+ * แถวที่บันทึกไว้ก่อนมีช่องนี้ถือเป็นรถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ */
+export type Vehicle = "car" | "moto";
+export const VEHICLES: Vehicle[] = ["car", "moto"];
+export const VEHICLE_LABEL: Record<Vehicle, string> = { car: "รถยนต์", moto: "มอเตอร์ไซค์" };
+export const vehicleOf = (row: { vehicle?: Vehicle }): Vehicle => row.vehicle ?? "car";
+
+/** จ่ายคืนกิโลเมตรละกี่บาท ตามชนิดรถ — ฝ่ายบุคคลตั้งได้ที่ /admin/rates (Full Proposal · M5) */
+export const fuelRate = (v: Vehicle = "car") =>
+  v === "moto" ? settings().rates.fuelMotoPerKm : settings().rates.fuelPerKm;
 
 /** ค่าคอมมิชชั่นกี่เปอร์เซ็นต์ของมูลค่าดีล — ผู้ดูแลระบบตั้งได้ที่ /admin/rates */
 export const commissionRate = () => settings().rates.commission;
@@ -45,6 +55,8 @@ export type FuelRow = {
   km: string;
   work: string;
   note: string;
+  /** ชนิดรถ — ไม่มี = รถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  vehicle?: Vehicle;
 };
 
 export type IncomeRow = {
@@ -74,7 +86,10 @@ export type ExpenseClaim = {
   /** เดือนของใบเบิก รูปแบบ yyyy-mm */
   month: string;
   status: ClaimStatus;
+  /** ป้ายทะเบียนรถยนต์ */
   plate: string;
+  /** ป้ายทะเบียนมอเตอร์ไซค์ — ใบที่บันทึกไว้ก่อนมีช่องนี้ยังไม่มี (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  motoPlate?: string;
   nickname: string;
   fuel: FuelRow[];
   income: IncomeRow[];
@@ -97,9 +112,24 @@ export type ExpenseClaim = {
 
 const num = (v: string) => Number(String(v).replace(/,/g, "")) || 0;
 
-/** เงินค่าน้ำมันของแถวเดียว = ระยะทาง × เรตต่อกิโลเมตร */
-export function fuelAmount(row: FuelRow) {
-  return round2(num(row.km) * fuelRate());
+/** เงินค่าน้ำมันของแถวเดียว = ระยะทาง × เรตต่อกิโลเมตรของรถชนิดนั้น */
+export function fuelAmount(row: { km: string | number; vehicle?: Vehicle }) {
+  return round2(num(String(row.km)) * fuelRate(vehicleOf(row)));
+}
+
+/** แถวค่าน้ำมันของรถชนิดเดียว (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+export function fuelRowsOf<T extends { vehicle?: Vehicle }>(rows: T[], v: Vehicle) {
+  return rows.filter((r) => vehicleOf(r) === v);
+}
+
+/** ชนิดรถที่มีแถวค่าน้ำมันในใบ เรียงรถยนต์ก่อน */
+export function vehiclesIn(rows: { vehicle?: Vehicle }[]) {
+  return VEHICLES.filter((v) => rows.some((r) => vehicleOf(r) === v));
+}
+
+/** ป้ายทะเบียนของรถชนิดนั้นในใบ */
+export function plateOf(c: Pick<ExpenseClaim, "plate" | "motoPlate">, v: Vehicle) {
+  return v === "moto" ? c.motoPlate ?? "" : c.plate;
 }
 
 /** ค่าคอมของแถวเดียว = มูลค่าดีล × เปอร์เซ็นต์ — เก็บไว้อ่านใบเก่าที่ยังมีแถวค่าคอมติดมา ไม่เข้ายอดที่ขอเบิกแล้ว */
@@ -422,15 +452,16 @@ export function checkClaim(claim: ExpenseClaim): ClaimCheck {
   if (!claim.fuel.length && !claim.income.length && !claim.other?.length) {
     reasons.push("ยังไม่มีรายการในใบนี้");
   }
-  if (claim.fuel.length && !claim.plate.trim()) {
-    reasons.push("เบิกค่าน้ำมันต้องกรอกป้ายทะเบียนรถ");
+  /* รถยนต์กับมอเตอร์ไซค์แยกฟอร์ม — ป้ายทะเบียนและลำดับครั้งที่นับแยกตามชนิดรถ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  for (const v of vehiclesIn(claim.fuel)) {
+    const label = VEHICLE_LABEL[v];
+    if (!plateOf(claim, v).trim()) reasons.push(`เบิกค่าน้ำมัน${label}ต้องกรอกป้ายทะเบียนรถ`);
+    const badFuel = fuelRowsOf(claim.fuel, v)
+      .map((r, i) => ({ i: i + 1, why: fuelRowProblem(r, claim.month) }))
+      .filter((x) => x.why);
+    /* บอกเป็นรายแถวพร้อมชื่อช่อง — อ่านแล้วเดินไปแก้ได้เลยว่าแถวไหนช่องไหน */
+    for (const x of badFuel) reasons.push(`ค่าน้ำมัน${label}ครั้งที่ ${x.i}: ${x.why}`);
   }
-
-  const badFuel = claim.fuel
-    .map((r, i) => ({ i: i + 1, why: fuelRowProblem(r, claim.month) }))
-    .filter((x) => x.why);
-  /* บอกเป็นรายแถวพร้อมชื่อช่อง — อ่านแล้วเดินไปแก้ได้เลยว่าแถวไหนช่องไหน */
-  for (const x of badFuel) reasons.push(`ค่าน้ำมันครั้งที่ ${x.i}: ${x.why}`);
 
   const badOther = (claim.other ?? [])
     .map((r, i) => ({ i: i + 1, why: otherRowProblem(r, claim.month) }))

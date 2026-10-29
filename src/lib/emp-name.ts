@@ -12,7 +12,7 @@
  */
 
 import { useMemo } from "react";
-import { HR_EMP, type Employee } from "./hr-data";
+import { HR_EMP, withFullPos, type Employee } from "./hr-data";
 import { hrSnapshot, useHr } from "./hr-store";
 
 type Named = { name: string; nick?: string };
@@ -60,9 +60,10 @@ function makeLookup(list: Employee[]): Lookup {
     const m = /^(.+?)\s*(\(.+\))$/.exec(s);
     if (m) {
       const inner = find(m[1].trim());
-      if (inner) return `${displayName(inner)} ${m[2]}`;
+      /* ตำแหน่งย่อในวงเล็บโชว์เป็นชื่อเต็ม (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+      if (inner) return `${displayName(inner)} ${withFullPos(m[2])}`;
     }
-    return key;
+    return withFullPos(key);
   };
 }
 

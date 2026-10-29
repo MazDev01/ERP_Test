@@ -955,7 +955,7 @@ function LinkStage({ f }: { f: ReviewFile }) {
           เปิดลิงก์
         </a>
       ) : (
-        <span className="mt-2 block">PM ยังไม่ได้ใส่ที่อยู่ลิงก์ — คอมเมนต์ทั้งไฟล์ได้ที่ช่องด้านข้าง</span>
+        <span className="mt-2 block">Project Manager ยังไม่ได้ใส่ที่อยู่ลิงก์ — คอมเมนต์ทั้งไฟล์ได้ที่ช่องด้านข้าง</span>
       )}
     </div>
   );

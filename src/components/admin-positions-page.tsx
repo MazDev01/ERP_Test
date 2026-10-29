@@ -17,7 +17,7 @@ import { AdminOptionsPage } from "./admin-options-page";
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Catalog, PosRoute } from "@/lib/system-settings";
-import { BUILTIN_HR_DEPT, BUILTIN_HR_POSITION, holdsPos, hrDept, hrPos } from "@/lib/hr-data";
+import { BUILTIN_HR_DEPT, BUILTIN_HR_POSITION, holdsPos, hrDept, hrPos, migratePosLabels } from "@/lib/hr-data";
 import { merged } from "@/lib/catalog";
 import { useHr } from "@/lib/hr-store";
 import {
@@ -48,6 +48,7 @@ const APPROVER_CHOICES: ApproverKey[] = ["gm", "exec"];
 
 /** ชื่อสั้นของผู้อนุมัติที่ใช้บนป้ายในตาราง (ต้นแบบใช้ GM / CEO / HR) */
 const APPR_SHORT: Record<ApproverKey, string> = {
+  /* ป้ายในตารางนี้ใช้ตัวย่อได้ ชื่อเต็มยาวเกินช่อง (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   pm: "PM",
   acc: "บัญชี",
   hr: "HR",
@@ -57,7 +58,8 @@ const APPR_SHORT: Record<ApproverKey, string> = {
 
 /** บทบาทที่นั่งอยู่ในตำแหน่งนี้ — ใช้กันไม่ให้ตั้งผู้อนุมัติเป็นตัวเอง */
 function rolesOfPos(pos: string): Role[] {
-  return ROLES.map((r) => r.key).filter((r) => positionOfRole(r) === pos);
+  /* เด็กฝึกงานไม่ผูกกับสายอนุมัติของตำแหน่ง — ทดลองงานใช้ตามตำแหน่งตามปกติ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  return ROLES.map((r) => r.key).filter((r) => r !== "intern" && positionOfRole(r) === pos);
 }
 
 /** ผู้อนุมัติรายนี้เป็นคนเดียวกับคนในตำแหน่งนี้หรือไม่ */
@@ -99,7 +101,7 @@ function describePos(a: Catalog, b: Catalog) {
 function describeRoute(a: PosRoute, b: PosRoute) {
   const out: string[] = [];
   const names = approvers();
-  const text = (v: string) => (v ? names[v as ApproverKey].name : "ตามบทบาท");
+  const text = (v: string) => (v ? names[v as ApproverKey].name : "ค่าตั้งต้น");
   for (const pos of [...new Set([...Object.keys(a), ...Object.keys(b)])]) {
     for (const k of KINDS) {
       const was = a[pos]?.[k.key] ?? "";
@@ -113,25 +115,23 @@ function describeRoute(a: PosRoute, b: PosRoute) {
 /*
  * ผู้อนุมัติที่ใช้จริงของตำแหน่งนี้แบบสั้น
  * ตั้งไว้รายตำแหน่ง = ใช้อันนั้น · ไม่ได้ตั้ง = ตกไปที่สายตามบทบาทของคนที่นั่งตำแหน่งนี้
- * ตำแหน่งที่ยังไม่มีบทบาทเข้าระบบ บอกว่า "ตามบทบาท" ไปก่อน
+ * ตำแหน่งที่ยังไม่มีบทบาทเข้าระบบ คำขอของทีมงานเข้าคิว GM จึงแสดง GM (เลิกใช้คำว่า "ตามบทบาท" · ผู้ใช้สั่ง 29 ต.ค. 2569)
  */
 function apprShort(route: PosRoute, byRole: ApprovalRoute, pos: string, kind: RequestKind) {
   const own = route[pos]?.[kind];
   if (own) return APPR_SHORT[own as ApproverKey] ?? own;
   const role = rolesOfPos(pos)[0];
-  return role ? APPR_SHORT[byRole[kind][role]] : "ตามบทบาท";
+  return role ? APPR_SHORT[byRole[kind][role]] : APPR_SHORT.gm;
 }
 
 /** ป้ายผู้อนุมัติในตาราง — GM น้ำเงิน · CEO ส้ม · ที่เหลือเขียว (ตามต้นแบบ) */
 function ApprChip({ who, dim }: { who: string; dim?: boolean }) {
   const tone =
-    who === "GM"
+    who === APPR_SHORT.gm
       ? "bg-[#E7ECF7] text-[#1A3E8C]"
-      : who === "CEO"
+      : who === APPR_SHORT.exec
         ? "bg-[var(--warning-soft)] text-[var(--warning)]"
-        : who === "ตามบทบาท"
-          ? "bg-muted text-muted-foreground"
-          : "bg-[#E7F5EE] text-[#14875A]";
+        : "bg-[#E7F5EE] text-[#14875A]";
   return (
     <span
       className={`inline-flex justify-center rounded-full px-2.5 py-1 text-[12px] font-semibold ${tone} ${
@@ -209,7 +209,7 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
   const [deptEditing, setDeptEditing] = useState<{ v: string; label: string } | null>(null);
 
   /* ตำแหน่งและแผนกต้องมาจากร่าง ไม่ใช่ค่าที่บันทึกแล้ว — ไม่งั้นที่เพิ่ม/ลบไว้จะยังไม่ขึ้นก่อนกดบันทึก */
-  const list = merged(cat.draft.positions, BUILTIN_HR_POSITION, (p) => p.v);
+  const list = merged(migratePosLabels(cat.draft.positions), BUILTIN_HR_POSITION, (p) => p.v);
   const depts = merged(cat.draft.depts, BUILTIN_HR_DEPT, (d) => d.v);
   const names = approvers();
 
@@ -285,8 +285,9 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
       <section className="glass overflow-hidden rounded-[18px]">
         {tabs && <div className="border-b border-border px-3">{tabs}</div>}
 
-        <div className="px-4 pt-3.5 pb-4 sm:px-5">
-          <div className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_72px_72px_96px_58px_84px] ${thCls}`}>
+        {/* จอแคบ (เช่นแบ่งครึ่งจอ) ชื่อตำแหน่งกับแผนกต้องไม่ถูกบีบจนหาย — เลื่อนซ้ายขวาแทน (ผู้ใช้แจ้ง 29 ต.ค. 2569) */}
+        <div className="overflow-x-auto px-4 pt-3.5 pb-4 sm:px-5">
+          <div className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:min-w-[720px] md:grid-cols-[28px_minmax(150px,1.4fr)_minmax(110px,1fr)_72px_72px_96px_58px_84px] ${thCls}`}>
             <span className="text-center max-md:hidden">#</span>
             <span>ชื่อตำแหน่ง</span>
             <span className="max-md:hidden">แผนก</span>
@@ -310,7 +311,7 @@ function PositionsPane({ tabs }: { tabs: ReactNode }) {
               return (
                 <div
                   key={p.v}
-                  className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_72px_72px_96px_58px_84px] ${trCls} ${off ? "opacity-50" : ""}`}
+                  className={`grid grid-cols-[minmax(0,1fr)_58px_84px] md:min-w-[720px] md:grid-cols-[28px_minmax(150px,1.4fr)_minmax(110px,1fr)_72px_72px_96px_58px_84px] ${trCls} ${off ? "opacity-50" : ""}`}
                 >
                   <span className="num text-center text-[12px] text-muted-foreground max-md:hidden">{i + 1}</span>
                   <span className="min-w-0">

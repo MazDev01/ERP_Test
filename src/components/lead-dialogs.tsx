@@ -24,8 +24,11 @@ export function Sheet({
   steady = false,
   className = "",
   subhead,
+  icon,
 }: {
   title: string;
+  /** ไอคอนหน้าชื่อกล่อง (ไม่ส่ง = ชื่ออย่างเดียวแบบเดิม) */
+  icon?: React.ReactNode;
   /** แถบเล็กใต้หัวกล่อง เช่นตัวบอกขั้นของฟอร์มหลายขั้น */
   subhead?: React.ReactNode;
   onClose: () => void;
@@ -75,7 +78,10 @@ export function Sheet({
         } ${className}`}
       >
         <div className="ui-sheet-head flex flex-none items-center justify-between gap-3 border-b border-border px-4 py-3.5 md:px-5 md:py-4">
-          <h2 className="text-[16.5px] font-bold">{title}</h2>
+          <h2 className="flex items-center gap-2.5 text-[16.5px] font-bold">
+            {icon}
+            {title}
+          </h2>
           <button type="button" className="iconbtn glass-thin" onClick={onClose} aria-label="ปิด">
             <CloseIcon className="size-[15px]" strokeWidth={2.2} />
           </button>

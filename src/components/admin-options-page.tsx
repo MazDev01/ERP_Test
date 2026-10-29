@@ -63,10 +63,10 @@ type CatSpec = {
  */
 
 const CAT_SPECS: CatSpec[] = [
-  { key: "services", role: "sales", label: "ประเภทบริการ", where: "ใบเสนอราคา · งานเข้าใหม่ของ PM" },
+  { key: "services", role: "sales", label: "ประเภทบริการ", where: "ใบเสนอราคา · งานเข้าใหม่ของ Project Manager" },
   { key: "teamRoles", role: "pm", label: "ตำแหน่งในทีม", where: "หน้าวางแผนงาน (มอบงานตามตำแหน่ง)", extra: "color" },
   /* ประเภทนัดหมายในปฏิทินของ PM (Full Proposal · M5 ข้อมูลหลัก) */
-  { key: "eventKinds", role: "pm", label: "ประเภทนัดหมาย", where: "ตารางงานของ PM · ปฏิทินทีม", extra: "color" },
+  { key: "eventKinds", role: "pm", label: "ประเภทนัดหมาย", where: "ตารางงานของ Project Manager · ปฏิทินทีม", extra: "color" },
   { key: "whtTypes", role: "acc", label: "ประเภทเงินได้ที่หัก ณ ที่จ่าย", where: "หน้ายื่นภาษี", extra: "rate" },
   { key: "depts", role: "hr", label: "แผนก", where: "ข้อมูลพนักงาน · รายงาน" },
   { key: "positions", role: "hr", label: "ตำแหน่งงาน", where: "ข้อมูลพนักงาน (ตำแหน่งตามสัญญาจ้าง)", extra: "dept" },

@@ -10,7 +10,7 @@ import { useSyncExternalStore } from "react";
 import type { PresalesRequest } from "./crm-data";
 import { bkkStamp, daysBetween } from "./format";
 import { USERS } from "./mock-data";
-import { hrPos, posOf, ROLE_EMPLOYEE, type PosKey } from "./hr-data";
+import { hrPos, posFullName, posOf, ROLE_EMPLOYEE, type PosKey } from "./hr-data";
 import { currentRole } from "./role";
 import { hrSnapshot } from "./hr-store";
 import { nameOf } from "./emp-name";
@@ -21,7 +21,7 @@ export const PS_ME = {
   name: `${USERS.ps.name.split(" ")[0]} (${USERS.ps.position})`,
   full: USERS.ps.name,
   employeeId: USERS.ps.employeeId,
-  kind: (USERS.ps.position === "BD" ? "BD" : "SA") as "SA" | "BD",
+  kind: (USERS.ps.position === "Business Development" ? "BD" : "SA") as "SA" | "BD",
 };
 
 /** ประเภทคำขอที่กล่องงานก่อนการขายรับผิดชอบ — ตอนนี้รับทั้งสองประเภท */
@@ -39,7 +39,7 @@ export const PS_KIND_LABEL: Record<PresalesRequest["kind"], string> = {
 
 /** ป้ายประเภทแบบเต็ม "SA · วิเคราะห์เทคนิค" — ใช้ที่ที่มีที่พอให้อ่านว่าเป็นงานอะไร */
 export function psKindText(kind: PresalesRequest["kind"]) {
-  return `${kind} · ${PS_KIND_LABEL[kind]}`;
+  return `${posFullName(kind)} · ${PS_KIND_LABEL[kind]}`;
 }
 
 /** แท็บของหน้างานก่อนการขาย — รอข้อมูลเพิ่มแยกแท็บ เพราะเป็นงานที่รอฝ่ายขายตอบ ไม่ใช่งานในมือ */

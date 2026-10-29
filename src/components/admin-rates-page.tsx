@@ -46,7 +46,9 @@ const PAY: Field[] = [
   { key: "socialSecurity", label: "ประกันสังคม", unit: "% ของเงินเดือน", hint: "ไม่เกินเพดานของปีนั้น", min: 0, max: 10, step: 0.5 },
   { key: "probationMonths", label: "ระยะทดลองงาน", unit: "เดือน", hint: "นับจากวันเริ่มงาน ถอยหนึ่งวัน", min: 1, max: 4, step: 1 },
   /* ค่าน้ำมันในใบเบิกคิดจากอัตรานี้ (Full Proposal · M5) — เดิมเป็นค่าคงที่ในโค้ด */
-  { key: "fuelPerKm", label: "ค่าน้ำมันต่อกิโลเมตร", unit: "บาท/กม.", hint: "ใช้คิดยอดในใบเบิกค่าน้ำมัน", min: 0, max: 50, step: 0.5 },
+  /* รถยนต์กับมอเตอร์ไซค์คิดคนละอัตรา (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  { key: "fuelPerKm", label: "ค่าน้ำมันรถยนต์ต่อกิโลเมตร", unit: "บาท/กม.", hint: "ใช้คิดยอดในใบเบิกค่าน้ำมันรถยนต์", min: 0, max: 50, step: 0.5 },
+  { key: "fuelMotoPerKm", label: "ค่าน้ำมันมอเตอร์ไซค์ต่อกิโลเมตร", unit: "บาท/กม.", hint: "ใช้คิดยอดในใบเบิกค่าน้ำมันมอเตอร์ไซค์", min: 0, max: 50, step: 0.5 },
 ];
 function describeSs(a: SsCeiling[], b: SsCeiling[]) {
   const out: string[] = [];

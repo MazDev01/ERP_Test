@@ -19,11 +19,11 @@ export function usePmReadOnly() {
   return false;
 }
 
-export function ReadOnlyNote({ owner = "PM" }: { owner?: string }) {
+export function ReadOnlyNote({ owner = "Project Manager" }: { owner?: string }) {
   if (!usePmReadOnly()) return null;
   return (
     <p className="rounded-[10px] bg-muted px-3.5 py-[9px] text-[12.5px] font-semibold text-muted-foreground">
-      ดูในฐานะ GM · ดูอย่างเดียว {owner}เป็นผู้จัดการงานในหน้านี้
+      ดูในฐานะ General Manager · ดูอย่างเดียว {owner}เป็นผู้จัดการงานในหน้านี้
     </p>
   );
 }

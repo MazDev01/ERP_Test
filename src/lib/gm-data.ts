@@ -15,7 +15,7 @@
 import { useMemo } from "react";
 import { empReqLeaveHours, useEmpRequests } from "./emp-requests";
 import { fmtLeaveHours, leaveHoursOf } from "./leave-data";
-import { fuelAmount, fuelRate } from "./expense-data";
+import { fuelAmount } from "./expense-data";
 import { useAllClaims } from "./expense-store";
 import { addDays, thaiMonth } from "./format";
 import { HR_LEAVE_LABEL, ROLE_EMPLOYEE, leaveRowHours } from "./hr-data";
@@ -233,7 +233,7 @@ export function useGmApprovedTravel(spans: DateSpan[]): number[] {
     }
     for (const r of extra) {
       if (r.to !== GM || r.kind !== "expense" || r.status !== "approved" || r.emp === ROLE_EMPLOYEE.gm) continue;
-      for (const f of r.fuel ?? []) add(f.date || `${r.month ?? ""}-01`, (Number(f.km) || 0) * fuelRate());
+      for (const f of r.fuel ?? []) add(f.date || `${r.month ?? ""}-01`, fuelAmount(f));
     }
     return sum.map((v) => Math.round(v));
   }, [claims, extra, route, key]);
