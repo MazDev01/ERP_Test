@@ -7,17 +7,21 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { addDays, bkkStamp, daysBetween, nextDocNo, todayIso } from "./format";
+import { bkkStamp, nextDocNo, todayIso } from "./format";
 import { settings } from "./system-settings";
-import { currentRole } from "./role";
+import { currentRole, type Role } from "./role";
 import {
   PM_INBOX,
   PM_PROJECTS,
   PM_TEAM,
+  IN_HOUSE_CUS,
   fileKind,
+  isInHouse,
   isRef,
+  type WaitKind,
   type Activity,
   type ChatMessage,
+  type FileNote,
   type InboxJob,
   type Member,
   type Project,
@@ -30,11 +34,21 @@ import {
   type TaskStatus,
 } from "./pm-data";
 import { createPersistedStore } from "./persisted-store";
+import { LOCK_SEND_WHILE_WAITING, blockers } from "./task-deps";
 import { hrSnapshot, subscribeHr } from "./hr-store";
-import type { Employee } from "./hr-data";
+import { HR_EMP, type Employee } from "./hr-data";
 import { displayName, nameOf } from "./emp-name";
 import { TEAM_ROLES_BY_POSITION } from "./pm-data";
 import { USERS } from "./mock-data";
+import {
+  ASK_SEED,
+  LOOSE_SEED,
+  isLoose,
+  looseHomes,
+  looseOwner,
+  type AskFrom,
+  type TaskAsk,
+} from "./task-ask";
 
 /* ─── ร่างแผนงานที่ยังไม่ยืนยัน ─────────────────────────────────────
  * เฟสและงานย่อยระหว่างวางแผน เก็บรูปเดียวกับกระดานในหน้าจัดคิวงาน
@@ -50,6 +64,8 @@ export type DraftPhase = {
   baseName?: string;
   baseStart?: string;
   baseEnd?: string;
+  /** กลุ่มเฟสที่ทำคู่กัน (ข้อเสนอ par A/B) — เฟสกลุ่มเดียวกันไม่รอกันตอนเติมงานต่อกัน */
+  par?: string;
 };
 
 export type DraftTask = {
@@ -64,6 +80,18 @@ export type DraftTask = {
   brief?: string;
   /** ไฟล์ประกอบโจทย์ที่ PM แนบมา */
   files?: TaskFile[];
+  /** งานต่อกันที่ PM กำหนดเอง (ข้อยกเว้น) — ไม่มี = ตามเฟส (task-deps.ts autoAfter) · [] = เริ่มได้ทันที */
+  after?: string[];
+  /* ผู้ตรวจ = ผู้สั่งเสมอ ไม่มีช่องเลือกผู้ตรวจแล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  /** ไม่ต้องตรวจ — ส่งแล้วปิดงานทันที */
+  noReview?: boolean;
+  /** ต้องให้ลูกค้าตรวจ — ห้ามคู่กับ noReview (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  clientReview?: boolean;
+  /*
+   * ช่องที่ระบบเติมให้และ PM ยังไม่ได้แตะ — หน้าต่างงานขึ้นคำบอกสีเขียวว่ามาจากไหน
+   * PM แก้ช่องไหน ธงของช่องนั้นหาย (ระบบร่าง PM แค่ยืนยัน — ผู้ใช้สั่ง 21 ต.ค. 2569)
+   */
+  autoFill?: { who?: boolean; dates?: boolean; brief?: boolean };
 };
 
 export type PlanDraft = {
@@ -116,9 +144,22 @@ export type PmState = {
    * ผลคือเปิดจากอีกเครื่องหรืออีกคนจะไม่เห็นร่างนี้ ซึ่งผิดกติกาของเจ้าของระบบ
    */
   drafts: Record<string, PlanDraft>;
+  /** งานที่ทีมเสนอเอง (task-ask.ts) — ทุกใบเก็บไว้ ไม่ลบ */
+  asks: TaskAsk[];
+  /** งานนอกโปรเจคที่ PM อนุมัติแล้ว — ไม่อยู่ใน projects จึงไม่นับใน % ของโปรเจคใด */
+  loose: ProjectTask[];
 };
 
-const INITIAL: PmState = { inbox: PM_INBOX, projects: PM_PROJECTS, team: PM_TEAM, drafts: {}, talks: {} };
+const INITIAL: PmState = {
+  inbox: PM_INBOX,
+  /* ชุดตั้งต้นยังไม่มีผู้สั่ง — เติมตอนสร้างค่าเริ่ม (ค่าเริ่มไม่ผ่าน migratePm) (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  projects: PM_PROJECTS.map((p) => ({ ...p, tasks: p.tasks.map((t) => fillPeople(t, p.pm)) })),
+  team: PM_TEAM,
+  drafts: {},
+  talks: {},
+  asks: ASK_SEED,
+  loose: LOOSE_SEED.map((t) => fillPeople(t, USERS.pm.name)),
+};
 
 function isPmState(value: unknown): value is PmState {
   if (typeof value !== "object" || value === null) return false;
@@ -181,6 +222,8 @@ function migratePm(input: PmState): PmState {
       ...p,
       /* ชื่อลูกค้าแก้ในระบบไม่ได้ ถือว่าของชุดตั้งต้นถูกเสมอ */
       cus: seed.cus,
+      /* กลุ่มเฟสทำคู่ (par) เพิ่ม 20 ต.ค. 2569 — เติมจากชุดตั้งต้นเมื่อชื่อเฟสตรงกัน */
+      phases: p.phases.map((ph) => (ph.par ? ph : { ...ph, par: seed.phases.find((x) => x.name === ph.name)?.par })),
       /* ชื่อโปรเจคเพิ่มเข้าชุดตั้งต้น 21 ก.ย. — เติมเฉพาะที่ยังไม่ได้ตั้ง ชื่อที่ PM แก้เองห้ามทับ */
       name: p.name ?? seed.name,
       tasks: [
@@ -188,7 +231,19 @@ function migratePm(input: PmState): PmState {
           const st = seed.tasks.find((x) => x.name === t.name);
           if (!st) return t;
           /* เติมเฉพาะช่องที่ยังว่าง สถานะและรอบที่ส่งไปแล้วห้ามแตะ */
-          return { ...t, brief: t.brief ?? st.brief, doneAt: t.doneAt ?? st.doneAt };
+          /* ไม่ต้องตรวจของชุดตั้งต้นเพิ่ม 21 ต.ค. 2569 — เติมเฉพาะที่ยังไม่มี · ผู้ตรวจไม่เติมแล้ว ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+          return {
+            ...t,
+            brief: t.brief ?? st.brief,
+            doneAt: t.doneAt ?? st.doneAt,
+            after: t.after ?? st.after,
+            noReview: t.noReview ?? st.noReview,
+            /* คอมเมนต์บนไฟล์ของตัวอย่างงานตีกลับ — เติมเฉพาะรอบตีกลับเดียวกับชุดตั้งต้นที่ยังไม่มี (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+            back:
+              t.back && !t.back.notes && st.back?.notes && t.status === "revise" && t.back.at === st.back.at
+                ? { ...t.back, notes: st.back.notes }
+                : t.back,
+          };
         }),
         ...seed.tasks.filter((t) => !has.has(t.name)),
       ],
@@ -210,14 +265,18 @@ function migratePm(input: PmState): PmState {
 
   /* ร่างแผนเพิ่มเข้ามา 23 ก.ย. · สายข้อความของงานย่อยเพิ่ม 24 ก.ย. —
      ข้อมูลที่ยังไม่มีช่องพวกนี้ถือว่ายังว่าง เติมให้ ไม่เปลี่ยนคีย์ จะได้ไม่ทิ้งงานที่ทำไว้แล้ว */
-  /* ชื่อคนรับงานเพิ่ม 5 ต.ค. 2569 (กระดานรับงาน) — งานตั้งต้นที่รับไปแล้วเติมชื่อจากชุดตั้งต้น
-     งานอื่นที่รับไปก่อนมีช่องนี้ปล่อยว่าง หน้าจอขึ้นแค่ "รับแล้ว" */
+  /* ชื่อคนรับงานเพิ่ม 5 ต.ค. 2569 — งานตั้งต้นที่รับไปแล้วเติมชื่อจากชุดตั้งต้น · GM มอบหมายแทนการกดรับ (ผู้ใช้สั่ง 27 ต.ค. 2569): งานที่มีชื่อแล้วเป็นของ PM คนนั้นต่อ
+     งานอื่นที่รับไปก่อนมีช่องนี้ปล่อยว่าง ขึ้นเป็น "รอมอบหมาย" ให้ GM มอบหมายใหม่ */
   const inboxSeed = new Map(PM_INBOX.map((j) => [j.pj, j]));
   const inboxKept = v.inbox.map((j) => {
     const seed = inboxSeed.get(j.pj);
-    return j.stage === "plan" && !j.takenBy && seed?.takenBy
-      ? { ...j, takenBy: seed.takenBy, takenAt: j.takenAt ?? seed.takenAt }
-      : j;
+    const taken =
+      j.stage === "plan" && !j.takenBy && seed?.takenBy
+        ? { ...j, takenBy: seed.takenBy, takenAt: j.takenAt ?? seed.takenAt }
+        : j;
+    /* เฟสในข้อเสนอมาจากฝ่ายก่อนการขาย PM แก้ในร่างแผน ไม่ใช่ที่งาน — ยังไม่มีร่างก็ใช้เฟสล่าสุดของชุดตั้งต้น
+       (เพิ่มเฟสเขียนเนื้อหาและ par ให้ตัวอย่างงานต่อกัน 20 ต.ค. 2569) */
+    return seed && !v.drafts?.[j.pj] ? { ...taken, phases: seed.phases } : taken;
   });
   /* งานเข้าใหม่ตัวอย่างที่เพิ่มเข้าชุดตั้งต้นทีหลัง (8 ต.ค. 2569) — เติมเฉพาะเลขที่โปรเจคที่ยังไม่มีทั้งในกล่องและในโปรเจค
      งานที่ยืนยันแผนแล้วออกจากกล่องไปเป็นโปรเจคเลขเดิม จึงต้องเช็กสองที่ ไม่งั้นงานที่ทำไปแล้วจะเด้งกลับมา */
@@ -227,13 +286,37 @@ function migratePm(input: PmState): PmState {
 
   /* เอกสารแนบของโปรเจคเพิ่ม 5 ต.ค. 2569 — ข้อมูลเก่าที่ยังไม่มีช่องนี้ถือว่ายังไม่มีเอกสาร (ผู้ใช้สั่ง 5 ต.ค. 2569)
      ชื่อโปรเจคที่เก็บไว้แล้วไม่แตะ แม้จะเป็นรูปแบบเดิม "ลูกค้า – ขอบเขตงาน" */
+  /* ผู้สั่งเพิ่ม 21 ต.ค. 2569 — งานเก่าเติมจาก PM ของโปรเจค ไม่ทับค่าที่ตั้งไว้ ไม่แตะสถานะ/รอบส่ง
+     ผู้ตรวจที่เคยเลือกไว้ลบทิ้ง ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  const asked = seedAsks(v);
   return {
     ...v,
     inbox: inbox.map((j) => (j.docs ? j : { ...j, docs: [] })),
     /* added (โปรเจคตั้งต้นที่ยังไม่มีในเครื่อง) ต่อท้ายอยู่ใน cancelled แล้ว */
-    projects: cancelled.map((p) => (p.docs ? p : { ...p, docs: [] })),
+    projects: cancelled.map((p) => ({
+      ...(p.docs ? p : { ...p, docs: [] }),
+      tasks: p.tasks.map((t) => fillPeople(t, p.pm)),
+    })),
     drafts: v.drafts ?? {},
     talks: v.talks ?? {},
+    asks: asked.asks,
+    loose: asked.loose.map((t) => fillPeople(t, USERS.pm.name)),
+  };
+}
+
+/*
+ * งานที่ทีมเสนอเองเพิ่ม 20 ต.ค. 2569 — เติมตัวอย่างที่ยังไม่มีตามรหัสใบเสนอ
+ * ใบเสนอไม่เคยถูกลบ (อนุมัติ/ไม่อนุมัติ/ปิดแล้วก็ยังอยู่) ใบที่ผู้ใช้ทำไปแล้วจึงไม่เด้งกลับ
+ * งานนอกโปรเจคตัวอย่างเติมเมื่อยังไม่มีงานที่มาจากใบเสนอเดียวกัน
+ */
+function seedAsks(v: PmState): Pick<PmState, "asks" | "loose"> {
+  const asks = v.asks ?? [];
+  const loose = v.loose ?? [];
+  const haveAsk = new Set(asks.map((a) => a.id));
+  const haveLoose = new Set(loose.map((t) => t.origin?.ask).filter(Boolean));
+  return {
+    asks: [...asks, ...ASK_SEED.filter((a) => !haveAsk.has(a.id))],
+    loose: [...loose, ...LOOSE_SEED.filter((t) => !haveLoose.has(t.origin?.ask) && !haveAsk.has(t.origin?.ask ?? ""))],
   };
 }
 
@@ -244,13 +327,13 @@ const store = createPersistedStore<PmState>("maz-erp.pm.v4", INITIAL, isPmState,
  * ยกเลิกงานของดีลที่ถูกยกเลิก — โปรเจคเปลี่ยนเป็น "ยกเลิก" งานหยุด
  * เรียกผ่าน cancelDealFlow เท่านั้น
  *
- * งานที่ PM รับไว้แล้วและกำลังวางแผนอยู่ (stage "plan") ต้องไม่หายเงียบ ๆ
+ * งานที่ GM มอบหมาย PM แล้วและกำลังวางแผนอยู่ (stage "plan") ต้องไม่หายเงียบ ๆ
  * (เจ้าของสั่ง 24 ก.ย. 2569 — เดิมโยนทิ้งจาก inbox ทั้งใบ แผนที่ PM ลงแรงทำไว้
  * จึงหายไปโดยไม่มีใครรู้ และคนที่ถูกมอบหมายก็ไม่รู้ว่างานตายแล้ว)
  * ใบแบบนี้จึงกลายเป็นโปรเจคสถานะ "ยกเลิก" ที่เก็บแผนร่างไว้ครบ เปิดดูย้อนหลังได้
  * ร่างยังอยู่ใน drafts ด้วย เผื่อดีลกลับมาใหม่จะได้ไม่ต้องวางแผนใหม่ทั้งชุด
  *
- * งานที่ยังไม่เคยกดรับ (stage "new") เอาออกจากกล่องงานเข้าใหม่ตามเดิม — ยังไม่มีใครลงแรงกับมัน
+ * งานที่ยังไม่ได้มอบหมาย PM (stage "new") เอาออกจากกล่องงานเข้าใหม่ตามเดิม — ยังไม่มีใครลงแรงกับมัน
  */
 export function cancelDealWork(deal: string, c: { at: string; by: string; why: string }) {
   store.update((s) => {
@@ -262,17 +345,28 @@ export function cancelDealWork(deal: string, c: { at: string; by: string; why: s
     /* แผนร่าง → งานของโปรเจคที่ถูกยกเลิก (สถานะ "ยังไม่เริ่ม" เพราะยังไม่เคยมอบหมายจริง) */
     const tasks: ProjectTask[] =
       draft?.plan.flatMap((col, phase) =>
-        col.map<ProjectTask>((t) => ({
-          name: t.name,
-          phase,
-          whos: [...t.whos],
-          start: t.start,
-          due: t.due,
-          status: "todo" as const,
-          pct: 0,
-          files: (t.files ?? []).map((f) => ({ ...f })),
-          brief: t.brief?.trim() || undefined,
-        })),
+        col.map<ProjectTask>((t) =>
+          withStatus(
+            {
+              name: t.name,
+              phase,
+              whos: [...t.whos],
+              start: t.start,
+              due: t.due,
+              status: "todo" as const,
+              pct: 0,
+              files: (t.files ?? []).map((f) => ({ ...f })),
+              brief: t.brief?.trim() || undefined,
+              assignedBy: USERS.pm.employeeId,
+              noReview: t.noReview || undefined,
+              clientReview: (!t.noReview && t.clientReview) || undefined,
+            },
+            "todo",
+            USERS.pm.employeeId,
+            c.at,
+            true,
+          ),
+        ),
       ) ?? [];
     const kept: Project[] =
       job && !known
@@ -287,7 +381,7 @@ export function cancelDealWork(deal: string, c: { at: string; by: string; why: s
               quo: job.quo,
               net: job.net,
               scope: job.scope,
-              pm: USERS.pm.name,
+              pm: job.takenBy || USERS.pm.name, // PM ที่ GM มอบหมายไว้เป็นเจ้าของ (ผู้ใช้สั่ง 27 ต.ค. 2569)
               start: job.projectStart || day,
               due: job.planEnd || day,
               status: "cancelled" as const,
@@ -411,6 +505,71 @@ export function memberName(id: string) {
   return memberOf(id)?.name ?? nameOf(id);
 }
 
+// ─── ผู้สั่ง · ผู้ทำ · ผู้ตรวจ ─────────────────────────────────────────
+/*
+ * งาน 1 ใบมี 3 คน: ผู้สั่ง (assignedBy) · ผู้ทำ (whos[0]) · ผู้ตรวจ
+ * ผู้ตรวจ = ผู้สั่งเสมอ เลือกคนอื่นไม่ได้แล้ว — PM สั่ง PM ตรวจ · sale สั่ง sale ตรวจ (ผู้ใช้สั่ง 27 ต.ค. 2569)
+ * ไม่มีช่องเก็บผู้ตรวจ — หน้าจอและกระดิ่งอ่านผู้ตรวจผ่าน reviewerOf() เท่านั้น
+ * ข้อมูลเก่าที่เคยเก็บผู้ตรวจไว้ (ช่อง reviewer 21 ต.ค. 2569) ไม่ถูกอ่านอีก — fillPeople ลบทิ้งตอนโหลด
+ */
+
+/** รหัสพนักงานของ PM จากชื่อที่เก็บใน Project.pm ("ชื่อ" หรือ "ชื่อ (PM)") — หาไม่เจอใช้ PM ตั้งต้น */
+export function pmIdOf(pmName: string | undefined): string {
+  const n = (pmName ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (!n) return USERS.pm.employeeId;
+  const u = Object.values(USERS).find((x) => x.name === n);
+  if (u) return u.employeeId;
+  return HR_EMP.find((e) => e.name === n || e.nick?.trim() === n)?.id ?? USERS.pm.employeeId;
+}
+
+/** กันไว้อีกชั้น: ผู้ทำตรวจงานตัวเองไม่ได้ — ผู้สั่งเป็นคนทำเอง (ไม่ควรเกิด) ตกไปที่ GM (GM ทำเองตกไปที่ PM) */
+export function safeReviewer(reviewer: string | undefined, whos: string[]): string {
+  const r = reviewer || USERS.pm.employeeId;
+  if (r !== whos[0]) return r;
+  return whos[0] === USERS.gm.employeeId ? USERS.pm.employeeId : USERS.gm.employeeId;
+}
+
+/** ผู้ตรวจของงานใบนี้ = ผู้สั่ง · ข้อมูลเก่าที่ยังไม่มีผู้สั่ง = PM เจ้าของโปรเจค (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+export function reviewerOf(t: Pick<ProjectTask, "assignedBy" | "whos">, p: Pick<Project, "pm">): string {
+  return safeReviewer(t.assignedBy ?? pmIdOf(p.pm), t.whos);
+}
+
+/** แก้การตรวจงาน (ไม่ต้องตรวจ / ส่งลูกค้าตรวจ) ได้เฉพาะ PM เจ้าของโปรเจค หรือ GM — คนอื่นเห็นอย่างเดียว */
+export function canSetReview(pmName: string | undefined, role: Role = currentRole()) {
+  if (role === "gm") return true;
+  return role === "pm" && pmIdOf(pmName) === USERS.pm.employeeId;
+}
+
+/** รหัสพนักงานของคนที่ล็อกอินอยู่ — ใช้ประทับว่าใครเปลี่ยนสถานะ */
+function actorId() {
+  return USERS[currentRole()]?.employeeId ?? USERS.pm.employeeId;
+}
+
+/*
+ * เปลี่ยนสถานะงาน + ลงประวัติ — ทุกจุดในสโตร์ที่เปลี่ยนสถานะต้องผ่านตัวนี้ ประวัติจึงครบ (ผู้ใช้สั่ง 21 ต.ค. 2569)
+ * fresh = งานเพิ่งเกิด/เพิ่งมอบหมาย (from = null) · สถานะเดิมซ้ำไม่ลงประวัติ
+ */
+export function withStatus(t: ProjectTask, to: TaskStatus, by: string, at: string, fresh = false): ProjectTask {
+  if (!fresh && t.status === to) return t;
+  return {
+    ...t,
+    status: to,
+    history: [...(t.history ?? []), { at, from: fresh ? null : t.status, to, by }],
+  };
+}
+
+/*
+ * เติมผู้สั่งให้งานที่ยังไม่มี — ไม่ทับค่าที่ตั้งไว้แล้ว ไม่แตะสถานะและรอบส่ง
+ * ผู้ตรวจที่เคยเลือกไว้ (ช่อง reviewer ของข้อมูลเก่า) ลบทิ้ง — ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569)
+ */
+function fillPeople(t: ProjectTask, pmName: string): ProjectTask {
+  const old = t as ProjectTask & { reviewer?: unknown };
+  if (t.assignedBy && old.reviewer === undefined) return t;
+  const { reviewer: _dropped, ...rest } = old;
+  void _dropped;
+  return { ...rest, assignedBy: t.assignedBy ?? pmIdOf(pmName) };
+}
+
 /**
  * บัญชีรับเงินงวดแรกแล้ว งานจึงเข้ากล่องงานใหม่ของ PM — เกิดโปรเจคพร้อมเลขที่โปรเจคตรงนี้ (ผู้ใช้สั่ง 5 ต.ค. 2569)
  * กันซ้ำด้วยใบแจ้งหนี้งวดแรก (และเลขดีลถ้ามี) เผื่อบัญชีแก้แล้วบันทึกเงินเข้าซ้ำ
@@ -439,50 +598,37 @@ export function markInboxSeen(pj: string) {
   }));
 }
 
-/**
- * รับงาน (ตามต้นแบบ pm-inbox.html) — งานออกจากกล่องงานเข้าใหม่ไปรอจัดคิวในหน้าวางแผน
- *
- * ข้อเสนอกำหนดเป็นช่วงสัปดาห์ ไม่ได้ระบุวันเริ่มตายตัว
- * เลือกวันเริ่มแล้วเลื่อนทุกเฟสไปทั้งชุด ระยะของแต่ละเฟสเท่าเดิมตามที่ตกลงกับลูกค้า
- * งานที่ไม่มีข้อเสนอไม่มีเฟส — แค่จำวันเริ่มไว้ แล้ว PM สร้างเฟสเองในหน้าวางแผน
- */
-export type AcceptResult = { ok: true } | { ok: false; reason: "taken" | "start"; takenBy: string };
-
 /*
- * กระดานรับงาน (ผู้ใช้สั่ง 5 ต.ค. 2569) — ใครรับก่อนได้งาน จดชื่อคนรับไว้
- * งานที่ไม่อยู่ขั้น "new" แล้วคือมีคนรับไปก่อน (เช่นเปิดแท็บค้างไว้) ปฏิเสธและบอกชื่อคนที่รับไป
+ * GM มอบหมายงานเข้าใหม่ให้ PM (ผู้ใช้สั่ง 27 ต.ค. 2569) — แทนปุ่ม "รับงาน" ที่ PM กดรับเองจากกระดานกลาง
+ *
+ * มอบหมายครั้งแรก: งานออกจากขั้น "รอมอบหมาย" ไปรอวางแผนของ PM คนนั้น
+ *   วันเริ่มโครงการตั้งต้นแบบเดียวกับกล่องยืนยันรับงานเดิม — วันเริ่มตามข้อเสนอ ไม่มีใช้วันนี้
+ *   เฟสตามข้อเสนอคงเดิม · PM เลื่อนวันและแก้เฟสเองได้ตอนวางแผน
+ * เปลี่ยน PM: งานยังไม่ยืนยันแผน (ยังอยู่ในกล่อง) — เปลี่ยนแค่ผู้ดูแล วันและร่างแผนที่ทำไว้คงเดิม
+ *   ยืนยันแผนแล้วเป็นโปรเจค งานออกจากกล่องแล้ว — เปลี่ยนคนผ่านการโอนโปรเจค (transferProject) ไม่ใช่ที่นี่
+ * ชื่อ PM เก็บเป็นชื่อเต็มตามทะเบียน (รูปแบบเดียวกับ takenBy เดิม) · ผู้มอบหมาย = คนที่ล็อกอินอยู่
+ * seen = false — PM ที่ได้รับยังไม่ได้เปิดดูเอกสาร
  */
-export function acceptInboxJob(pj: string, start: string, name = ""): AcceptResult {
+export function assignInboxJob(pj: string, pmName: string, note = ""): boolean {
+  const to = pmName.trim();
   const cur = store.get().inbox.find((j) => isRef(j, pj));
-  if (!cur || cur.stage !== "new") return { ok: false, reason: "taken", takenBy: cur?.takenBy ?? "" };
-  if (!start) return { ok: false, reason: "start", takenBy: "" };
+  if (!to || !cur) return false;
   const by = USERS[currentRole()]?.name ?? "";
   const at = today();
+  const who = { takenBy: to, takenAt: at, assignedBy: by, assignedAt: at, assignNote: note.trim() || undefined, seen: false };
   store.update((s) => ({
     ...s,
     inbox: s.inbox.map((j) => {
-      if (!isRef(j, pj) || j.stage !== "new") return j;
-      /* ชื่อโปรเจค (PM-BR-03) — ว่างใช้แค่ชื่อลูกค้า PM ค่อยแก้ชื่อหลังเปิดโฟลเดอร์ (ผู้ใช้สั่ง 5 ต.ค. 2569 — เดิม "ลูกค้า – ขอบเขตงาน") */
-      const nm = name.trim() || j.cus;
-      if (!j.phases.length || !j.planStart) {
-        return { ...j, stage: "plan" as const, seen: true, projectStart: start, planStart: start, name: nm, takenBy: by, takenAt: at };
-      }
-      const d = daysBetween(j.planStart, start);
-      return {
-        ...j,
-        stage: "plan" as const,
-        seen: true,
-        name: nm,
-        takenBy: by,
-        takenAt: at,
-        projectStart: start,
-        planStart: addDays(j.planStart, d),
-        planEnd: j.planEnd ? addDays(j.planEnd, d) : j.planEnd,
-        phases: j.phases.map((ph) => ({ ...ph, start: addDays(ph.start, d), end: addDays(ph.end, d) })),
-      };
+      if (!isRef(j, pj)) return j;
+      /* เปลี่ยน PM ของงานที่รอวางแผนอยู่แล้ว — ไม่แตะวันและเฟส */
+      if (j.stage === "plan") return { ...j, ...who };
+      const start = j.planStart || at;
+      /* ชื่อโปรเจค (PM-BR-03) ตั้งต้นเป็นชื่อลูกค้า PM แก้ได้ที่หน้าวางแผน/หน้าโปรเจค (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+      const name = j.name?.trim() || j.cus;
+      return { ...j, ...who, stage: "plan" as const, name, projectStart: start, planStart: start };
     }),
   }));
-  return { ok: true };
+  return true;
 }
 
 /**
@@ -505,7 +651,8 @@ export function addAdhocProject(input: { name: string; cus: string; service: str
       pj,
       bill: "",
       service: input.service,
-      cus: input.cus.trim() || "งานภายใน",
+      /* เว้นลูกค้าว่าง = งานภายใน — isInHouse() ดูจากชื่อนี้ ไม่มีตัวเลือกให้ลูกค้าตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+      cus: input.cus.trim() || IN_HOUSE_CUS,
       quo: "",
       quoDate: "",
       net: 0,
@@ -551,6 +698,11 @@ export type PlannedTask = {
   brief?: string;
   /** ไฟล์ประกอบโจทย์ที่ PM แนบมาให้ */
   files?: TaskFile[];
+  /** งานต่อกันที่ใช้จริง — หน้าวางแผนแปลง "ตามเฟส" เป็นชื่องานมาแล้ว (resolveAfter) */
+  after?: string[];
+  noReview?: boolean;
+  /** ต้องให้ลูกค้าตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  clientReview?: boolean;
 };
 
 /* ─── ร่างแผนที่ยังไม่ยืนยัน ────────────────────────────────────────
@@ -626,23 +778,35 @@ export function confirmPlan(
       source: job,
       /* เอกสารที่แนบไว้ตอนวางแผนติดไปกับโปรเจค ทีมจะได้เห็น (ผู้ใช้สั่ง 5 ต.ค. 2569) */
       docs: (job.docs ?? []).map((d) => ({ ...d })),
-      /* ทุกใบเพิ่งถูกมอบหมายรอบแรก จึงประทับเวลาและผู้มอบให้ทั้งชุด */
+      /* ทุกใบเพิ่งถูกมอบหมายรอบแรก จึงประทับเวลาและผู้มอบให้ทั้งชุด
+         ผู้สั่ง = PM เจ้าของโปรเจค · ประวัติเริ่มที่ "มอบหมาย" (ผู้ใช้สั่ง 21 ต.ค. 2569) · ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
       tasks: tasks.map<ProjectTask>((t) =>
-        stampAssign(
-          {
-            name: t.name,
-            phase: t.phase,
-            whos: [...t.whos],
-            start: t.start,
-            due: t.due,
-            status: "todo",
-            pct: 0,
-            files: (t.files ?? []).map((f) => ({ ...f })),
-            brief: t.brief?.trim() || undefined,
-          },
-          "assign",
+        withStatus(
+          stampAssign(
+            {
+              name: t.name,
+              phase: t.phase,
+              whos: [...t.whos],
+              start: t.start,
+              due: t.due,
+              status: "todo",
+              pct: 0,
+              files: (t.files ?? []).map((f) => ({ ...f })),
+              brief: t.brief?.trim() || undefined,
+              after: t.after?.length ? [...t.after] : undefined,
+              assignedBy: pmIdOf(pmName),
+              noReview: t.noReview || undefined,
+              /* ต้องให้ลูกค้าตรวจ — ไม่ต้องตรวจแล้วไม่มี · งานภายในไม่มี (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+              clientReview: (!t.noReview && !isInHouse(job) && t.clientReview) || undefined,
+            },
+            "assign",
+            at,
+            pmName,
+          ),
+          "todo",
+          actorId(),
           at,
-          pmName,
+          true,
         ),
       ),
       chat: [],
@@ -686,6 +850,8 @@ export function replanProject(pj: string, tasks: PlannedTask[], phases: ProjectP
         tasks: tasks.map<ProjectTask>((t) => {
           const old = t.from !== undefined ? p.tasks[t.from] : undefined;
           const base: ProjectTask = old ?? { name: t.name, phase: t.phase, whos: [], start: "", due: "", status: "todo", pct: 0, files: [] };
+          /* ผู้สั่งของงานเดิมคงไว้ · งานใหม่ = PM เจ้าของโปรเจค (ผู้ใช้สั่ง 21 ต.ค. 2569) · ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+          const assignedBy = base.assignedBy ?? pmIdOf(p.pm);
           const next: ProjectTask = {
             ...base,
             name: t.name,
@@ -695,12 +861,16 @@ export function replanProject(pj: string, tasks: PlannedTask[], phases: ProjectP
             due: t.due,
             files: t.files ? t.files.map((f) => ({ ...f })) : base.files,
             brief: t.brief?.trim() || undefined,
+            after: t.after?.length ? [...t.after] : undefined,
+            assignedBy,
+            noReview: t.noReview || undefined,
+            clientReview: (!t.noReview && !isInHouse(p) && t.clientReview) || undefined,
           };
           /*
            * สิ่งที่ผู้รับงานต้องรู้มีสามอย่าง — เพิ่งได้รับงาน · เปลี่ยนคนทำ · เลื่อนกำหนดส่ง
            * งานเก่าที่ไม่ได้แตะไม่ต้องประทับใหม่ ไม่งั้นทุกใบจะขึ้นว่า "เพิ่งเปลี่ยน" ทั้งกระดาน
            */
-          if (!old) return stampAssign(next, "assign", at, p.pm);
+          if (!old) return withStatus(stampAssign(next, "assign", at, p.pm), "todo", actorId(), at, true);
           if (old.whos.join(",") !== next.whos.join(",")) return stampAssign(next, "owner", at, p.pm);
           if (old.due !== next.due) return stampAssign(next, "due", at, p.pm);
           return next;
@@ -821,13 +991,15 @@ export function transferProject(pj: string, to: string, why: string, by: string)
 
 /** เลื่อนสถานะงานย่อย — เสร็จแล้วให้ความคืบหน้าเต็ม 100 เสมอ */
 export function setTaskStatus(pj: string, taskIndex: number, status: TaskStatus) {
+  const by = actorId();
+  const at = bkkStamp();
   store.update((s) => ({
     ...s,
     projects: s.projects.map((p) => {
       if (!isRef(p, pj)) return p;
       const tasks = p.tasks.map((t, i) =>
-        i === taskIndex
-          ? { ...t, status, pct: status === "done" ? 100 : status === "todo" ? 0 : t.pct }
+        i === taskIndex && !t.clientOk
+          ? { ...withStatus(t, status, by, at), pct: status === "done" ? 100 : status === "todo" ? 0 : t.pct }
           : t,
       );
       /* งานครบทุกใบแล้วถือว่าโปรเจคส่งมอบเสร็จ ไม่ต้องมากดปิดซ้ำอีกที */
@@ -850,17 +1022,22 @@ export function setTaskStatus(pj: string, taskIndex: number, status: TaskStatus)
  */
 export function setTaskProgress(pj: string, taskIndex: number, pct: number) {
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  const by = actorId();
+  const at = bkkStamp();
   store.update((s) => ({
     ...s,
     projects: s.projects.map((p) => {
       if (!isRef(p, pj)) return p;
       const tasks = p.tasks.map((t, i) =>
-        i === taskIndex
+        i === taskIndex && !t.clientOk
           ? {
-              ...t,
+              ...withStatus(
+                t,
+                clamped >= 100 ? "done" : clamped <= 0 ? "todo" : "doing",
+                by,
+                at,
+              ),
               pct: clamped,
-              status:
-                clamped >= 100 ? ("done" as const) : clamped <= 0 ? ("todo" as const) : ("doing" as const),
             }
           : t,
       );
@@ -927,6 +1104,17 @@ function patchTask(
      ไม่งั้น PM เปิดหน้าโปรเจคแล้วเห็นสถานะเปลี่ยนโดยไม่รู้ว่าใครทำเมื่อไหร่ */
   act: Activity,
 ): PmState {
+  /* งานนอกโปรเจค — อยู่ใน loose ไม่มีโปรเจคให้ลงกิจกรรมหรือเลื่อนสถานะ */
+  if (isLoose(pj)) {
+    const owner = looseOwner(pj);
+    return {
+      ...s,
+      loose: s.loose.map((t) => (t.whos[0] === owner && t.name === taskName && !t.clientOk ? fn(t) : t)),
+    };
+  }
+  /* ลูกค้าอนุมัติแล้ว = ปิดถาวร ไม่รับการเปลี่ยนสถานะใด ๆ อีก */
+  const target = s.projects.find((p) => isRef(p, pj))?.tasks.find((t) => t.name === taskName);
+  if (target?.clientOk) return s;
   return {
     ...s,
     projects: s.projects.map((p) => {
@@ -961,14 +1149,39 @@ export function submitWork(
     files: input.files,
     note: input.note,
   };
-  store.update((s) =>
-    patchTask(
+  store.update((s) => {
+    /* รอข้อมูลอยู่ = ยังส่งไม่ได้ (LOCK_SEND_WHILE_WAITING) — กันที่สโตร์ด้วย ไม่ฝากไว้กับปุ่มบนหน้าจออย่างเดียว */
+    const home = s.projects.find((p) => isRef(p, pj));
+    const task = home?.tasks.find((t) => t.name === taskName);
+    if (LOCK_SEND_WHILE_WAITING && home && task && blockers(home.tasks, task).length) return s;
+    /* ไม่ต้องตรวจ — ส่งแล้วปิดงานทันที เวลาปิด = เวลาส่ง (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+    const quick =
+      task?.noReview ??
+      (isLoose(pj) ? s.loose.find((t) => t.whos[0] === looseOwner(pj) && t.name === taskName)?.noReview : undefined);
+    if (quick) {
+      return patchTask(
+        s,
+        pj,
+        taskName,
+        (t) => ({
+          ...withStatus(t, "done", input.by, input.at),
+          ...endWait(t, input.at),
+          pct: 100,
+          doneAt: input.at,
+          subs: [...(t.subs ?? []), sub],
+          back: undefined,
+        }),
+        { kind: "done", who: input.by, at: input.at, tx: `ส่งงาน ${taskName} · ไม่ต้องตรวจ ปิดงานแล้ว` },
+      );
+    }
+    return patchTask(
       s,
       pj,
       taskName,
       (t) => ({
-        ...t,
-        status: "sent",
+        ...withStatus(t, "sent", input.by, input.at),
+        /* ส่งงานแล้ว = ได้ข้อมูลครบแล้ว ปิดการรอที่กดเองไว้ด้วย (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+        ...endWait(t, input.at),
         subs: [...(t.subs ?? []), sub],
         back: undefined,
       }),
@@ -979,60 +1192,119 @@ export function submitWork(
         at: input.at,
         tx: `ส่งงาน ${taskName} ให้ตรวจ`,
       },
+    );
+  });
+}
+
+/*
+ * รอข้อมูลที่คนทำกดเอง (ผู้ใช้สั่ง 21 ต.ค. 2569) — รอนอกแผน: รอลูกค้า / รอไฟล์ / อื่น ๆ
+ * ไม่เปลี่ยนสถานะงาน ไม่ล็อกปุ่มส่ง · เก็บทุกช่วงที่รอไว้ใน waits ไว้หักเวลารอออกจากความช้าของคนทำ
+ */
+function endWait(t: ProjectTask, at: string): Pick<ProjectTask, "waitingOn" | "waits"> {
+  if (!t.waitingOn) return { waitingOn: undefined, waits: t.waits };
+  return {
+    waitingOn: undefined,
+    waits: (t.waits ?? []).map((w) => (w.to || w.from !== t.waitingOn?.since ? w : { ...w, to: at })),
+  };
+}
+
+export function setTaskWait(pj: string, taskName: string, input: { kind: WaitKind; note?: string; by: string }) {
+  const at = bkkStamp();
+  const note = input.note?.trim() || undefined;
+  store.update((s) =>
+    patchTask(
+      s,
+      pj,
+      taskName,
+      (t) =>
+        t.status === "done" || t.waitingOn
+          ? t
+          : {
+              ...t,
+              waitingOn: { kind: input.kind, note, since: at, by: input.by },
+              waits: [...(t.waits ?? []), { kind: input.kind, note, from: at, by: input.by }],
+            },
+      { kind: "status", who: input.by, at, tx: `แจ้งรอข้อมูล ${taskName}${note ? ` · ${note}` : ""}` },
     ),
   );
 }
 
-/** PM ตรวจผ่าน — งานจบที่ 100% ไม่ต้องให้ทีมมากดปิดซ้ำอีกที */
-export function approveWork(pj: string, taskName: string, stamp: string) {
+/** ได้ข้อมูลแล้ว — ปิดช่วงที่รออยู่ */
+export function clearTaskWait(pj: string, taskName: string, by: string) {
+  const at = bkkStamp();
+  store.update((s) =>
+    patchTask(
+      s,
+      pj,
+      taskName,
+      (t) => (t.waitingOn ? { ...t, ...endWait(t, at) } : t),
+      { kind: "status", who: by, at, tx: `ได้ข้อมูลแล้ว ${taskName}` },
+    ),
+  );
+}
+
+/**
+ * PM ตรวจผ่าน — งานจบที่ 100% ไม่ต้องให้ทีมมากดปิดซ้ำอีกที
+ * byClient = ลูกค้าอนุมัติผ่านลิงก์ตรวจงาน → ประทับ clientOk งานปิดถาวร
+ */
+export function approveWork(pj: string, taskName: string, stamp: string, byClient = false) {
+  /* ผู้ตรวจตัวจริง (คนที่กด) ไม่ใช่คำว่า "PM" — ชื่อขึ้นในกิจกรรมผ่านรหัสพนักงาน (ผู้ใช้สั่ง 21 ต.ค. 2569)
+     ข้อความกิจกรรมคงรูปเดิม เพราะประวัติการส่งงาน (my-tasks SubmitHistory) จับคู่จากข้อความนี้ */
+  const by = byClient ? "ลูกค้า" : actorId();
   store.update((s) =>
     patchTask(
       s,
       pj,
       taskName,
       (t) => ({
-        ...t,
-        status: "done",
+        ...withStatus(t, "done", by, stamp),
         pct: 100,
         doneAt: stamp,
         back: undefined,
+        ...(byClient ? { clientOk: stamp } : {}),
       }),
-      { kind: "status", who: "PM", at: stamp, tx: `ตรวจผ่าน ${taskName}` },
+      byClient
+        ? { kind: "status", who: "ลูกค้า", at: stamp, tx: `ลูกค้าอนุมัติ ${taskName} · ปิดงาน` }
+        : { kind: "status", who: by, at: stamp, tx: `ตรวจผ่าน ${taskName}` },
     ),
   );
 }
 
-/** PM ตีกลับให้แก้ — เหตุผลบังคับ ฝั่งที่เรียกต้องกันไว้ก่อนแล้ว */
-export function sendBackWork(pj: string, taskName: string, why: string, stamp: string) {
+/** ผู้ตรวจตีกลับให้แก้ — เหตุผลหรือคอมเมนต์บนไฟล์อย่างใดอย่างหนึ่งบังคับ ฝั่งที่เรียกต้องกันไว้ก่อนแล้ว · by ไม่ส่ง = คนที่ล็อกอินอยู่ */
+export function sendBackWork(pj: string, taskName: string, why: string, stamp: string, by = actorId(), notes?: FileNote[], due?: string) {
   store.update((s) =>
     patchTask(
       s,
       pj,
       taskName,
       (t) => ({
-        ...t,
-        status: "revise",
-        back: { why, at: stamp, by: "PM" },
+        ...withStatus(t, "revise", by, stamp),
+        back: { why, at: stamp, by, ...(notes?.length ? { notes } : {}), ...(due ? { due } : {}) },
       }),
-      { kind: "status", who: "PM", at: stamp, tx: `ส่งกลับให้แก้ ${taskName}` },
+      { kind: "status", who: by, at: stamp, tx: `ส่งกลับให้แก้ ${taskName}` },
     ),
   );
 }
 
 /**
  * PM ส่งงานที่ตรวจผ่านแล้วให้ลูกค้าตรวจผ่านลิงก์ (client-review-store) — งานเป็น "รอลูกค้าตรวจ"
- * ลูกค้าอนุมัติแล้ว PM ปิดด้วย approveWork · ลูกค้ามีความเห็นก็ตีกลับด้วย sendBackWork ตามทางเดิม
+ * ลูกค้าอนุมัติแล้วงานปิดเอง (approveWork byClient) · ลูกค้ามีความเห็นก็ตีกลับด้วย sendBackWork ตามทางเดิม
  */
 export function sendToClientWork(pj: string, taskName: string, round: number, stamp: string) {
-  store.update((s) =>
-    patchTask(
+  const by = actorId();
+  store.update((s) => {
+    /* งานภายใน (ไม่มีลูกค้า) ส่งให้ลูกค้าตรวจไม่ได้ — หน้าจอซ่อนปุ่มแล้ว กันที่สโตร์อีกชั้น (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+    const home = s.projects.find((p) => isRef(p, pj));
+    if (home && isInHouse(home)) return s;
+    return patchTask(
       s,
       pj,
       taskName,
-      (t) => ({ ...t, status: "wait", back: undefined }),
-      { kind: "status", who: "PM", at: stamp, tx: `ส่ง ${taskName} ให้ลูกค้าตรวจ รอบที่ ${round}` },
-    ),
-  );
+      /* งาน "ไม่ต้องตรวจ" ส่งให้ลูกค้าตรวจไม่ได้ (ผู้ใช้สั่ง 21 ต.ค. 2569) — หน้าจอซ่อนปุ่มแล้ว กันที่สโตร์อีกชั้น */
+      (t) => (t.noReview ? t : { ...withStatus(t, "wait", by, stamp), back: undefined }),
+      { kind: "status", who: by, at: stamp, tx: `ส่ง ${taskName} ให้ลูกค้าตรวจ รอบที่ ${round}` },
+    );
+  });
 }
 
 /** ลงกิจกรรมของโปรเจคจากนอกสโตร์ — ตอนนี้ใช้กับลูกค้าที่ส่งความเห็นผ่านลิงก์ตรวจงาน */
@@ -1126,4 +1398,121 @@ export function openNudge(s: PmState, pj: string, taskName: string) {
   const list = taskTalks(s, pj, taskName);
   const last = list[list.length - 1];
   return last?.nudge ? last : undefined;
+}
+
+// ─── งานที่ทีมเสนอเอง (เจ้าของอนุมัติ 20 ต.ค. 2569) ──────────────────
+
+/**
+ * ที่อยู่ของงานทุกใบ — โปรเจคจริง + บ้านชั่วคราวของงานนอกโปรเจค (ต่อคน)
+ * ใช้เฉพาะหน้าที่ไล่ "งานของคน" (งานที่ได้รับ งานรอตรวจ กระดิ่ง) ห้ามใช้กับรายการโปรเจค
+ */
+export function taskHomes(s: PmState): Project[] {
+  return [...s.projects, ...looseHomes(s.loose ?? [], USERS.pm.name)];
+}
+
+/** ชื่องานไม่ซ้ำในที่เดียวกัน — สายข้อความและผลตรวจอ้างงานด้วยชื่อ */
+function uniqueName(name: string, taken: string[]) {
+  const have = new Set(taken);
+  if (!have.has(name)) return name;
+  let i = 2;
+  while (have.has(`${name} (${i})`)) i++;
+  return `${name} (${i})`;
+}
+
+function deciderId() {
+  return USERS[currentRole()]?.employeeId ?? USERS.pm.employeeId;
+}
+
+export function proposeTask(input: {
+  by: string;
+  pj: string;
+  name: string;
+  from: AskFrom;
+  fromName: string;
+  brief: string;
+  due: string;
+  files: TaskFile[];
+}) {
+  const ask: TaskAsk = { ...input, id: `ASK-${Date.now().toString(36)}`, at: bkkStamp() };
+  store.update((s) => ({ ...s, asks: [ask, ...s.asks] }));
+  return ask.id;
+}
+
+/**
+ * PM อนุมัติ — งานเข้าโปรเจค (นับใน % ตามปกติ) หรือเป็นงานนอกโปรเจคของผู้เสนอ
+ * ผู้รับงานคือคนเสนอคนเดียวเสมอ · เริ่มวันนี้ · กำหนดส่งตามที่ PM ยืนยัน
+ */
+export function approveAsk(id: string, pick: { pj: string; phase: number; due: string }) {
+  const s0 = store.get();
+  const ask = s0.asks.find((a) => a.id === id);
+  if (!ask || ask.ok || ask.no) return false;
+  const at = bkkStamp();
+  const by = deciderId();
+  const day = today();
+  const base: ProjectTask = withStatus({
+    name: ask.name,
+    phase: 0,
+    whos: [ask.by],
+    start: day,
+    due: pick.due < day ? day : pick.due,
+    status: "todo",
+    pct: 0,
+    files: ask.files.map((f) => ({ ...f })),
+    brief: ask.brief.trim() || undefined,
+    assignedAt: at,
+    lastChange: { at, what: "assign", by },
+    origin: { ask: ask.id, by: ask.by, at: ask.at, from: ask.from, fromName: ask.fromName },
+    /* ผู้สั่ง = คนที่กดอนุมัติ · ประวัติเริ่มที่มอบหมาย (ผู้ใช้สั่ง 21 ต.ค. 2569) · ผู้ตรวจ = ผู้สั่ง (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+    assignedBy: by,
+  }, "todo", by, at, true);
+  const project = pick.pj ? s0.projects.find((p) => p.pj === pick.pj && p.status !== "cancelled") : undefined;
+  store.update((s) => {
+    if (project) {
+      const name = uniqueName(ask.name, project.tasks.map((t) => t.name));
+      const phase = Math.max(0, Math.min(pick.phase, Math.max(0, project.phases.length - 1)));
+      return {
+        ...s,
+        asks: s.asks.map((a) => (a.id === id ? { ...a, ok: { at, by, pj: project.pj, name } } : a)),
+        projects: s.projects.map((p) =>
+          p.pj === project.pj
+            ? {
+                ...p,
+                tasks: [...p.tasks, { ...base, name, phase }],
+                status: "running" as const,
+                acts: [
+                  { kind: "status" as const, who: "PM", at, tx: `อนุมัติงานที่ ${nameOf(ask.by)} เสนอ · ${name}` },
+                  ...p.acts,
+                ],
+                updated: day,
+              }
+            : p,
+        ),
+      };
+    }
+    const name = uniqueName(
+      ask.name,
+      s.loose.filter((t) => t.whos[0] === ask.by).map((t) => t.name),
+    );
+    return {
+      ...s,
+      asks: s.asks.map((a) => (a.id === id ? { ...a, ok: { at, by, pj: "", name } } : a)),
+      loose: [...s.loose, { ...base, name }],
+    };
+  });
+  return true;
+}
+
+/** PM ไม่อนุมัติ — เหตุผลบังคับ ฝั่งที่เรียกต้องกันไว้ก่อน */
+export function rejectAsk(id: string, why: string) {
+  const at = bkkStamp();
+  const by = deciderId();
+  store.update((s) => ({
+    ...s,
+    asks: s.asks.map((a) => (a.id === id && !a.ok && !a.no ? { ...a, no: { why, at, by } } : a)),
+  }));
+}
+
+/** ผู้เสนอรับทราบผลไม่อนุมัติแล้ว — ซ่อนจากหน้าของตัวเอง ใบยังอยู่ในประวัติ */
+export function dismissAsk(id: string) {
+  store.update((s) => ({ ...s, asks: s.asks.map((a) => (a.id === id && a.no ? { ...a, gone: true } : a)) }));
 }

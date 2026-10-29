@@ -40,6 +40,7 @@ import {
   pmSnapshot,
   setTaskProgress,
   setTaskStatus,
+  submitWork,
   type PmState,
 } from "./pm-store";
 import { isRef, planHref, projectHref, type InboxJob, type Phase, type Proposal, type Project, type TeamRole } from "./pm-data";
@@ -339,8 +340,14 @@ function closeJobIfDone(pj: string) {
  * หน้างานรอตรวจต้องเรียกตัวนี้ ไม่ใช่ approveWork ตรง ๆ
  * ไม่งั้นฝ่ายขายจะเห็นใบงานค้างอยู่ทั้งที่ทีมทำเสร็จและส่งมอบไปแล้ว
  */
-export function approveWorkFlow(pj: string, taskName: string, stamp: string) {
-  approveWork(pj, taskName, stamp);
+export function approveWorkFlow(pj: string, taskName: string, stamp: string, byClient = false) {
+  approveWork(pj, taskName, stamp, byClient);
+  closeJobIfDone(pj);
+}
+
+/** ทีมส่งงาน — งาน "ไม่ต้องตรวจ" ปิดทันที อาจเป็นใบสุดท้ายของโปรเจค จึงเช็คส่งมอบด้วย (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+export function submitWorkFlow(pj: string, taskName: string, input: Parameters<typeof submitWork>[2]) {
+  submitWork(pj, taskName, input);
   closeJobIfDone(pj);
 }
 
@@ -406,7 +413,7 @@ export function dealTrack(dealNo: string, acc: AccState, pm: PmState): DealTrack
           href: planHref(job.pj),
         }
       : {
-          label: "รอ PM รับงาน",
+          label: "รอ GM มอบหมาย PM", // PM กดรับงานเองไม่ได้แล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569)
           cls: "t-early",
           detail: `ชำระงวดแรกเมื่อ ${job.paidAt}`,
           href: `/pm/inbox?find=${encodeURIComponent(job.pj)}`,

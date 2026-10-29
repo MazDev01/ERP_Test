@@ -26,6 +26,7 @@ import {
   useLeaveRecords,
 } from "@/lib/leave-store";
 import { formatMinutesOfDay } from "@/lib/work-schedule";
+import { useNoLeaveQuota } from "@/lib/hr-link";
 import { ApproverNote } from "./approver-note";
 import { LeaveDialog } from "./leave-dialog";
 import { Sheet } from "./lead-dialogs";
@@ -76,6 +77,7 @@ const QUOTA_TONE = [
 
 export function LeavePage() {
   const records = useLeaveRecords();
+  const noQuota = useNoLeaveQuota();
   const params = useSearchParams();
   /* ลิงก์จากแจ้งเตือน LINE — /leave?find=LV-2569-0123 เปิดรอบปีของใบนั้นแล้วไฮไลต์ให้ */
   const findId = useSearchParams().get("find") ?? "";
@@ -203,6 +205,7 @@ export function LeavePage() {
           setPage(1);
         }}
         findId={findId}
+        noQuota={noQuota}
         onCancel={setCancelling}
         onNew={() => setDialogOpen(true)}
         yearLabel={pFrom.endsWith("-01-01") ? `ปี ${year + 543}` : `${shortThai(pFrom)} – ${shortThai(pTo)}`}
@@ -218,7 +221,8 @@ export function LeavePage() {
         }}
       />
 
-      {/* ── สิทธิ์คงเหลือแต่ละประเภท (จอคอม) ── */}
+      {/* ── สิทธิ์คงเหลือแต่ละประเภท (จอคอม) · ทดลองงาน/ฝึกงานไม่มีโควต้า ── */}
+      {!noQuota && (
       <div className="max-md:hidden">
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 lg:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
         {leaveTypes().filter((t) => entitlementDays(t, period) > 0).map((t, n) => {
@@ -261,6 +265,7 @@ export function LeavePage() {
         })}
       </div>
       </div>
+      )}
 
       {/* ── รายการใบลา (จอคอม) ── */}
       <div className="max-md:hidden">
@@ -468,6 +473,7 @@ function MobileLeave({
   tab,
   onTab,
   findId,
+  noQuota,
   onCancel,
   onNew,
   yearLabel,
@@ -488,6 +494,7 @@ function MobileLeave({
   tab: "all" | LeaveStatus;
   onTab: (k: "all" | LeaveStatus) => void;
   findId: string;
+  noQuota: boolean;
   onCancel: (r: LeaveRecord) => void;
   onNew: () => void;
 }) {
@@ -514,6 +521,7 @@ function MobileLeave({
       </div>
 
       {/* วันลาคงเหลือ — กล่องเดียวแบ่งคอลัมน์ ตัวเลขมาจาก leaveUsage() ตัวเดียวกับจอคอม */}
+      {!noQuota && (
       <div className="m-lv-bal">
         {leaveTypes()
           .filter((t) => entitlementDays(t, period) > 0)
@@ -526,6 +534,7 @@ function MobileLeave({
             </div>
           ))}
       </div>
+      )}
 
       <div className="m-lv-chips">
         {TABS.map((t) => {

@@ -24,6 +24,7 @@ import {
   fileKind,
   isRef,
   lastSub,
+  isInHouse,
   planHref,
   projName,
   projectMembers,
@@ -37,9 +38,13 @@ import {
   type TaskStatus,
   pctColor,
 } from "@/lib/pm-data";
+import { useRole } from "@/lib/role";
+import { USERS } from "@/lib/mock-data";
 import {
+  memberName,
   memberOf,
   nudgeTask,
+  reviewerOf,
   talkKey,
   taskTalks,
   transferProject,
@@ -752,6 +757,9 @@ function Tasks({ project, today, count, who }: { project: Project; today: string
   /* ตรวจงานที่ทีมส่งมาได้จากการ์ดงานตรงนี้เลย ไม่ต้องไปเมนูงานรอตรวจ (ผู้ใช้สั่ง 8 ต.ค. 2569) */
   const [reviewing, setReviewing] = useState<string | null>(null);
   const reviewTask = reviewing ? project.tasks.find((t) => t.name === reviewing) : undefined;
+  /* ตัดสินผลตรวจได้เฉพาะผู้ตรวจ (= ผู้สั่ง) ของงานใบนั้น หรือ GM — ใบอื่นเปิดดูได้ บอกว่ารอใครตรวจ (ผู้ใช้สั่ง 21 · 27 ต.ค. 2569) */
+  const role = useRole();
+  const myId = USERS[role]?.employeeId ?? "";
   const talks = usePm().talks;
   /* ลูกค้าตรวจงานผ่านลิงก์ — ส่งให้ลูกค้า (ชื่องาน) · ความเห็นจากลูกค้า (token) · ลิงก์จากกระดิ่ง ?review=<token> เปิดให้เลย */
   const reviews = useClientReviews();
@@ -814,9 +822,14 @@ function Tasks({ project, today, count, who }: { project: Project; today: string
             const talkCount = (talks[talkKey(project.pj, t.name)] ?? []).length;
             const latest = latestRound(reviews, project.pj, t.name);
             /* ส่งได้เมื่อ PM ตรวจผ่านแล้ว (done) และไม่มีรอบที่ลูกค้ายังตรวจค้างอยู่ / ลูกค้าอนุมัติปิดไปแล้ว */
+            /* งาน "ไม่ต้องตรวจ" ส่งให้ลูกค้าตรวจไม่ได้ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
             const canSend =
               project.status !== "cancelled" &&
               t.status === "done" &&
+              !t.clientOk &&
+              !t.noReview &&
+              /* งานภายใน (ไม่มีลูกค้า) ไม่มีปุ่มส่งให้ลูกค้าตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+              !isInHouse(project) &&
               (!latest || (roundStatus(latest) !== "open" && !latest.closedAt));
             return (
               <article
@@ -877,7 +890,9 @@ function Tasks({ project, today, count, who }: { project: Project; today: string
                     onClick={() => setReviewing(t.name)}
                     className="mt-2.5 h-8 w-full rounded-[9px] bg-primary text-[11.5px] font-semibold text-white hover:opacity-90 max-sm:h-10 max-sm:text-[13px]"
                   >
-                    ตรวจงาน
+                    {role === "gm" || reviewerOf(t, project) === myId
+                      ? "ตรวจงาน"
+                      : `ดูงาน · รอ ${memberName(reviewerOf(t, project))} ตรวจ`}
                   </button>
                 )}
 

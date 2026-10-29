@@ -24,9 +24,9 @@ import { RADIUS_MAX, RADIUS_MIN, locate, mapLink, saveWorkplace, useAreaSettings
 import { lockedUntil, useHr } from "@/lib/hr-store";
 import { Time24Input } from "./time24-input"; // ช่องเวลา 24 ชม. แทน input[type=time] (ผู้ใช้สั่ง 13 ต.ค. 2569)
 
-/** รัศมีเป็นกิโลเมตรตามต้นแบบ — ระบบเก็บเป็นเมตร */
-const KM_MIN = RADIUS_MIN / 1000;
-const KM_MAX = RADIUS_MAX / 1000;
+/** รัศมีกรอกเป็นเมตร (ผู้ใช้สั่ง 20 ต.ค. 2569 — กิโลเมตรอ่านแล้วงง) */
+const M_MIN = RADIUS_MIN;
+const M_MAX = RADIUS_MAX;
 
 type Draft = { start: string; end: string; lunchStart: string; lunchEnd: string; lat: string; lng: string; km: string };
 
@@ -55,7 +55,7 @@ function problemOf(d: Draft) {
   const km = Number(d.km);
   if (!(d.lat.trim() && Number.isFinite(lat) && Math.abs(lat) <= 90)) return "ละติจูดต้องอยู่ระหว่าง -90 ถึง 90";
   if (!(d.lng.trim() && Number.isFinite(lng) && Math.abs(lng) <= 180)) return "ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180";
-  if (!(Number.isFinite(km) && km >= KM_MIN && km <= KM_MAX)) return `รัศมีต้องอยู่ระหว่าง ${KM_MIN} ถึง ${KM_MAX} กิโลเมตร`;
+  if (!(Number.isFinite(km) && km >= M_MIN && km <= M_MAX)) return `รัศมีต้องอยู่ระหว่าง ${M_MIN.toLocaleString()} ถึง ${M_MAX.toLocaleString()} เมตร`;
   return "";
 }
 
@@ -84,7 +84,7 @@ export function AdminAttendancePage() {
     lunchEnd: s.schedule.lunchEnd,
     lat: String(place.lat),
     lng: String(place.lng),
-    km: String(place.radius / 1000),
+    km: String(place.radius),
   }));
   const [at, setAt] = useState(() => (minAt && minAt > todayIso() ? minAt : todayIso()));
   /*
@@ -123,7 +123,7 @@ export function AdminAttendancePage() {
     d.lunchEnd !== s.schedule.lunchEnd ||
     lat !== place.lat ||
     lng !== place.lng ||
-    Math.round(km * 1000) !== place.radius;
+    Math.round(km) !== place.radius;
   const dirty = mainDirty || posDirty;
   const allBad = bad || (posBad ? `${posLabel}: ${posBad}` : "");
 
@@ -136,7 +136,7 @@ export function AdminAttendancePage() {
       lunchEnd: s.schedule.lunchEnd,
       lat: String(place.lat),
       lng: String(place.lng),
-      km: String(place.radius / 1000),
+      km: String(place.radius),
     });
     setErr("");
   }
@@ -180,8 +180,8 @@ export function AdminAttendancePage() {
       return;
     }
     const times = { start: d.start, end: d.end, lunchStart: d.lunchStart, lunchEnd: d.lunchEnd };
-    const radius = Math.round(km * 1000);
-    const note = `เวลาทำงาน ${d.start}–${d.end} · พักเที่ยง ${d.lunchStart}–${d.lunchEnd} · รัศมี ${km} กม.`;
+    const radius = Math.round(km);
+    const note = `เวลาทำงาน ${d.start}–${d.end} · พักเที่ยง ${d.lunchStart}–${d.lunchEnd} · รัศมี ${radius.toLocaleString()} ม.`;
     saveAttFrom(at, times, { lat, lng, radius }, note);
     /* มีผลแล้ววันนี้ก็เขียนพิกัดลงที่เก็บของพื้นที่เข้างานด้วย (คนละที่เก็บกับค่าตั้งค่า) */
     if (at <= todayIso()) saveWorkplace({ ...place, lat, lng, radius });
@@ -265,7 +265,7 @@ export function AdminAttendancePage() {
               <AreaMap
                 lat={lat}
                 lng={lng}
-                radius={Number.isFinite(km) && km > 0 ? km * 1000 : 150}
+                radius={Number.isFinite(km) && km > 0 ? km : 150}
                 onPick={(la, ln) => setD((x) => ({ ...x, lat: String(la), lng: String(ln) }))}
                 className="h-[300px] w-full"
               />
@@ -293,15 +293,15 @@ export function AdminAttendancePage() {
             </Input2>
           </div>
           <div className="mt-3">
-            <Input2 label="รัศมีที่ลงเวลาได้" hint={`ตั้งได้ ${KM_MIN} ถึง ${KM_MAX} กิโลเมตร`}>
+            <Input2 label="รัศมีที่ลงเวลาได้" hint={`ตั้งได้ ${M_MIN.toLocaleString()} ถึง ${M_MAX.toLocaleString()} เมตร`}>
               <div className="flex items-center gap-2">
                 <input
                   value={d.km}
-                  inputMode="decimal"
+                  inputMode="numeric"
                   onChange={(e) => set("km", e.target.value)}
                   className={`${inputCls} num w-[130px]`}
                 />
-                <span className="text-[12.5px] whitespace-nowrap text-muted-foreground">กิโลเมตร</span>
+                <span className="text-[12.5px] whitespace-nowrap text-muted-foreground">เมตร</span>
               </div>
             </Input2>
           </div>
@@ -540,7 +540,7 @@ export function AttHistory() {
                 <span className="num text-[13.5px] font-semibold">
                   {thaiDate(h.at)}
                   <small className="block text-[11.5px] font-medium text-muted-foreground sm:hidden">
-                    {h.times.start}–{h.times.end} · พัก {h.times.lunchStart}–{h.times.lunchEnd} · {h.place.radius / 1000} กม.
+                    {h.times.start}–{h.times.end} · พัก {h.times.lunchStart}–{h.times.lunchEnd} · {h.place.radius.toLocaleString()} ม.
                   </small>
                 </span>
                 <span className="num text-[13px] max-sm:hidden">
@@ -549,7 +549,7 @@ export function AttHistory() {
                 <span className="num text-[13px] max-sm:hidden">
                   {h.times.lunchStart} – {h.times.lunchEnd}
                 </span>
-                <span className="num text-[13px] max-sm:hidden">{h.place.radius / 1000} กม.</span>
+                <span className="num text-[13px] max-sm:hidden">{h.place.radius.toLocaleString()} ม.</span>
                 <span className="text-right">
                   <em className={`rounded-full px-2.5 py-1 text-[11.5px] font-semibold not-italic ${st.cls}`}>{st.label}</em>
                 </span>

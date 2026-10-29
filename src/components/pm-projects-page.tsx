@@ -18,12 +18,11 @@ import { useRouter } from "next/navigation";
 import { daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
 import { setPmProjectsView, usePmProjectsView, type PmProjectsView } from "@/lib/pm-projects-view";
 import { pctColor, planHref, projName, projectHref, projectProgress, type InboxJob, type Project } from "@/lib/pm-data";
-import { addAdhocProject, deleteProject, renameProject, usePm, type PlanDraft } from "@/lib/pm-store";
+import { addAdhocProject, renameProject, usePm, type PlanDraft } from "@/lib/pm-store";
 import { services } from "@/lib/pm-data";
 import { Sheet } from "./lead-dialogs";
 import { PlusIcon } from "./icons";
 import { ReadOnlyNote } from "./pm-readonly";
-import { TransferDialog } from "./pm-project-page";
 import { useRole } from "@/lib/role";
 import { USERS } from "@/lib/mock-data";
 import { nameOf } from "@/lib/emp-name";
@@ -36,8 +35,8 @@ type FolderKey = "all" | "plan" | "run" | "late" | "done" | "cancelled";
 /*
  * โปรเจคในหน้านี้มาจากสองที่ (ตามต้นแบบ pm-projects.html)
  *   1) pm.projects — วางแผนเสร็จแล้ว มีเฟสและงานย่อยครบ
- *   2) pm.inbox ที่ stage = plan — รับงานแล้วแต่ยังไม่ยืนยันแผน ต้องเห็นตรงนี้ด้วย
- *      ไม่งั้นรับงานแล้วงานจะหายไปจากสายตา กดแล้วพาไปหน้าวางแผน
+ *   2) pm.inbox ที่ stage = plan — GM มอบหมาย PM แล้วแต่ยังไม่ยืนยันแผน (ผู้ใช้สั่ง 27 ต.ค. 2569) ต้องเห็นตรงนี้ด้วย
+ *      ไม่งั้นได้รับมอบหมายแล้วงานจะหายไปจากสายตา กดแล้วพาไปหน้าวางแผน
  */
 type Item = { kind: "project"; p: Project } | { kind: "plan"; j: InboxJob };
 
@@ -54,10 +53,10 @@ export function PmProjectsPage() {
   const [folder, setFolder] = useState<FolderKey>("all");
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
-  /* โปรเจคที่กดลบ — รอยืนยันก่อนลบจริง */
-  const [del, setDel] = useState<{ pj: string; name: string } | null>(null);
-  /* โปรเจคที่กดโอน */
-  const [moving, setMoving] = useState<Project | null>(null);
+  /*
+   * ไม่มีเมนูสามจุด (ลบ/โอน) บนโฟลเดอร์แล้ว — ลบหรือแก้จากหน้านี้ทำให้ดูย้อนหลังไม่ได้ (ผู้ใช้สั่ง 27 ต.ค. 2569)
+   * การโอนโปรเจคยังทำได้ที่หน้ารายละเอียดโปรเจค ซึ่งเก็บประวัติการโอนไว้
+   */
 
   /* เลยกำหนด = ยังไม่ส่งมอบ และวันนี้เลยวันกำหนดส่งไปแล้ว (งานรอวางแผนไม่นับ)
      ตัวเลขบนปุ่มทุกปุ่มในหน้านี้นับเป็น "โปรเจค" ไม่ใช่ใบงานย่อย — ชื่อปุ่มจึงบอกหน่วยไว้ด้วย
@@ -72,7 +71,7 @@ export function PmProjectsPage() {
 
   const items: Item[] = [
     ...pm.projects.filter((p) => !mine || p.pm === mine).map((p) => ({ kind: "project" as const, p })),
-    /* งานที่ยังรอวางแผนเป็นของ PM ที่รับงานเข้ามา ยังไม่มีเจ้าของโปรเจค จึงไม่ใช่ของ SA */
+    /* งานที่ยังรอวางแผนเป็นของ PM ที่ GM มอบหมาย ยังไม่มีเจ้าของโปรเจค จึงไม่ใช่ของ SA */
     ...(mine
       ? []
       : pm.inbox
@@ -203,8 +202,6 @@ export function PmProjectsPage() {
         </div>
 
       {adding && <AddProjectDialog onClose={() => setAdding(false)} />}
-      {moving && <TransferDialog project={moving} onClose={() => setMoving(null)} />}
-      {del && <DeleteDialog pj={del.pj} name={del.name} onClose={() => setDel(null)} />}
       <ReadOnlyNote />
 
       <section>
@@ -220,16 +217,14 @@ export function PmProjectsPage() {
           /* มุมมองแถว — ใช้ผลกรอง/ค้นหา/แท็บชุดเดียวกับโฟลเดอร์ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
           <ListView
             rows={rows.map((x) => rowOf(x, x.kind === "project" && late(x)))}
-            onDelete={mine ? undefined : (r) => setDel({ pj: r.pj, name: r.name })}
-            onTransfer={mine ? undefined : (r) => r.project && setMoving(r.project)}
           />
         ) : (
           <div className="pj-list grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]">
             {rows.map((x) =>
               x.kind === "project" ? (
-                <Folder key={x.p.pj} project={x.p} status={stOf(x.p)} today={today} late={late(x)} onDelete={mine ? undefined : () => setDel({ pj: x.p.pj, name: projName(x.p) })} onTransfer={mine ? undefined : () => setMoving(x.p)} />
+                <Folder key={x.p.pj} project={x.p} status={stOf(x.p)} today={today} late={late(x)} />
               ) : (
-                <PlanFolder key={x.j.pj} job={x.j} draft={pm.drafts[x.j.pj]} onDelete={mine ? undefined : () => setDel({ pj: x.j.pj, name: projName(x.j) })} />
+                <PlanFolder key={x.j.pj} job={x.j} draft={pm.drafts[x.j.pj]} />
               ),
             )}
           </div>
@@ -244,11 +239,7 @@ function Folder({
   status: st,
   today,
   late,
-  onDelete,
-  onTransfer,
 }: {
-  onDelete?: () => void;
-  onTransfer?: () => void;
   project: Project;
   /** สถานะจริง — ส่งมอบแล้วแต่ยังมีงานค้าง นับเป็นกำลังดำเนินการ */
   status: Project["status"];
@@ -271,7 +262,6 @@ function Folder({
       title={`${projName(p)} · ${p.cus}`}
       className="pj-card group relative flex flex-col items-center gap-0.5 rounded-[14px] px-2.5 pt-[18px] pb-4 text-center transition-colors hover:bg-black/[.045] max-sm:border max-sm:border-border max-sm:bg-card max-sm:pt-3.5 max-sm:active:bg-muted"
     >
-      {onDelete && <CardMenu onDelete={onDelete} onTransfer={st === "cancelled" ? undefined : onTransfer} />}
       <StatusIcon label={status.text} dim={p.status === "cancelled"}>
         <FolderIcon tone={status.tone} />
         <MobileFolderIcon />
@@ -300,14 +290,13 @@ function Folder({
 }
 
 /** งานที่รับแล้วแต่ยังไม่ยืนยันแผน — ยังไม่มีอะไรให้ดูในหน้ารายละเอียด จึงพาไปวางแผนเลย */
-function PlanFolder({ job: j, draft, onDelete }: { job: InboxJob; draft?: PlanDraft; onDelete?: () => void }) {
+function PlanFolder({ job: j, draft }: { job: InboxJob; draft?: PlanDraft }) {
   return (
     <Link
       href={planHref(j.pj)}
       title={`${projName(j)} · ${j.cus}`}
       className="pj-card group relative flex flex-col items-center gap-0.5 rounded-[14px] px-2.5 pt-[18px] pb-4 text-center transition-colors hover:bg-black/[.045] max-sm:border max-sm:border-border max-sm:bg-card max-sm:pt-3.5 max-sm:active:bg-muted"
     >
-      {onDelete && <CardMenu onDelete={onDelete} />}
       <StatusIcon label={j.phases.length ? "ยังไม่ยืนยันแผน" : "ยังไม่มีแผนงาน"}>
         <FolderIcon tone={FOLDER_TONE.plan} />
         <MobileFolderIcon />
@@ -424,97 +413,6 @@ function AddProjectDialog({ onClose }: { onClose: () => void }) {
           />
         </label>
       </div>
-    </Sheet>
-  );
-}
-
-/** ปุ่มสามจุดมุมขวาบนของการ์ด — โอนโปรเจค / ลบ (ผู้ใช้สั่ง 8 ต.ค. 2569) · โผล่เมื่อชี้เมาส์ (มือถือเห็นตลอด) */
-function CardMenu({ onDelete, onTransfer, inline }: { onDelete: () => void; onTransfer?: () => void; /** ใช้ในแถวของมุมมองแถว — วางตามปกติ เห็นตลอด */ inline?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const stop = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  const pick = (fn: () => void) => (e: React.MouseEvent) => {
-    stop(e);
-    setOpen(false);
-    fn();
-  };
-  const item = "flex w-full items-center px-3.5 py-2 text-left text-[13px] font-semibold hover:bg-muted";
-  return (
-    <span ref={ref} className={inline ? "relative inline-block" : "absolute z-10"} style={inline ? undefined : { top: 6, right: 6 }}>
-      <button
-        type="button"
-        aria-label="ตัวเลือกโปรเจค"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={(e) => {
-          stop(e);
-          setOpen((v) => !v);
-        }}
-        className={`grid size-7 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-black/[.08] hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 max-sm:opacity-100 ${open ? "bg-black/[.08] opacity-100" : inline ? "opacity-100" : "opacity-0"}`}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="12" cy="5" r="2" />
-          <circle cx="12" cy="12" r="2" />
-          <circle cx="12" cy="19" r="2" />
-        </svg>
-      </button>
-      {open && (
-        <span
-          role="menu"
-          className="absolute right-0 z-20 mt-1 block min-w-[140px] overflow-hidden rounded-[10px] border border-border bg-card py-1 shadow-lg"
-          style={{ top: "100%" }}
-        >
-          {onTransfer && (
-            <button type="button" role="menuitem" className={item} onClick={pick(onTransfer)}>
-              โอนโปรเจค
-            </button>
-          )}
-          <button type="button" role="menuitem" className={`${item} text-destructive`} onClick={pick(onDelete)}>
-            ลบ
-          </button>
-        </span>
-      )}
-    </span>
-  );
-}
-
-function DeleteDialog({ pj, name, onClose }: { pj: string; name: string; onClose: () => void }) {
-  return (
-    <Sheet
-      title="ลบโปรเจค"
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" className="btn glass-thin" onClick={onClose}>
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            className="btn solid btn-solid"
-            onClick={() => {
-              deleteProject(pj);
-              onClose();
-            }}
-          >
-            ลบโปรเจค
-          </button>
-        </>
-      }
-    >
-      <p className="text-[13.5px]">
-        ลบ <b>{name}</b> ใช่ไหม? งาน ไฟล์ และข้อความทั้งหมดในโปรเจคนี้จะหายไปและกู้คืนไม่ได้
-      </p>
     </Sheet>
   );
 }
@@ -713,15 +611,7 @@ function SortHead({
   );
 }
 
-function ListView({
-  rows,
-  onDelete,
-  onTransfer,
-}: {
-  rows: Row[];
-  onDelete?: (r: Row) => void;
-  onTransfer?: (r: Row) => void;
-}) {
+function ListView({ rows }: { rows: Row[] }) {
   const router = useRouter();
   /* ยังไม่กดหัวคอลัมน์ = ลำดับเดิมเหมือนมุมมองโฟลเดอร์ · กดซ้ำสลับน้อยไปมาก/มากไปน้อย */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
@@ -743,12 +633,6 @@ function ListView({
   const onSort = (key: SortKey) =>
     setSort((s) => (s?.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
 
-  /* เมนูสามจุด — สิทธิ์เดียวกับการ์ดโฟลเดอร์: โอนได้เฉพาะโปรเจคจริงที่ยังไม่ยกเลิก */
-  const menu = (r: Row) =>
-    onDelete ? (
-      <CardMenu inline onDelete={() => onDelete(r)} onTransfer={r.project && !r.cancelled && onTransfer ? () => onTransfer(r) : undefined} />
-    ) : null;
-
   return (
     <>
       {/* จอคอม — ตาราง */}
@@ -762,7 +646,6 @@ function ListView({
               <SortHead k="pct" sort={sort} onSort={onSort}>ความคืบหน้า</SortHead>
               <SortHead k="due" sort={sort} onSort={onSort}>กำหนดส่ง</SortHead>
               <th>ผู้รับผิดชอบ</th>
-              <th className="w-12" aria-label="ตัวเลือก" />
             </tr>
           </thead>
           <tbody>
@@ -793,9 +676,6 @@ function ListView({
                 </td>
                 <td className="num whitespace-nowrap">{r.due ? thaiDate(r.due) : "—"}</td>
                 <td className="whitespace-nowrap">{r.owner || "—"}</td>
-                <td className="r !py-1" onClick={(e) => e.stopPropagation()}>
-                  {menu(r)}
-                </td>
               </tr>
             ))}
           </tbody>
@@ -820,7 +700,6 @@ function ListView({
                 </span>
               </span>
             </Link>
-            {menu(r)}
           </li>
         ))}
       </ul>

@@ -38,6 +38,8 @@ import { awaitingReceipt, invoiceDue, seqStatus, useAcc } from "@/lib/acc-store"
 import { useHr } from "@/lib/hr-store";
 import { inPeriod, inRange, isDaily, probEnd, rangeLabel } from "@/lib/hr-data";
 import { usePm } from "@/lib/pm-store";
+import { isJobOf } from "@/lib/pm-data";
+import { USERS } from "@/lib/mock-data";
 import { useCrm } from "@/lib/crm-store";
 import { buildReport } from "@/lib/sales-report";
 import { leaveUsage, useLeaveRecords } from "@/lib/leave-store";
@@ -421,7 +423,7 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
       const isRecv = (s: string) => s !== "done" && s !== "revise" && s !== "sent";
       const count = (s: string) => mine.filter((t) => (s === "recv" ? isRecv(t.status) : t.status === s)).length;
       stats.push({ value: `${count("recv")}`, unit: "งาน", label: "งานที่ได้รับ", href: "/my-tasks" });
-      stats.push({ value: `${count("sent")}`, unit: "งาน", label: "รอ PM ตรวจ", href: "/my-tasks?stage=sent" });
+      stats.push({ value: `${count("sent")}`, unit: "งาน", label: "รอตรวจ", href: "/my-tasks?stage=sent" });
       stats.push({ value: `${count("revise")}`, unit: "งาน", label: "ต้องแก้ไข", href: "/my-tasks?stage=revise" });
       stats.push({ value: `${count("done")}`, unit: "งาน", label: "เสร็จแล้ว", href: "/my-tasks?stage=done" });
       const late = mine.filter((t) => isRecv(t.status) && t.due < today).length;
@@ -437,19 +439,20 @@ function useHomeData(role: Role, menu: NavItem[], employeeId: string) {
       const open = pm.projects
         .filter((p) => p.status !== "cancelled")
         .flatMap((p) => p.tasks.filter((t) => t.status !== "done"));
-      const waiting = pm.inbox.filter((j) => j.stage === "new").length;
+      /* งานที่ GM มอบหมายให้ PM คนนี้และยังไม่ได้วางแผน — PM กดรับงานเองไม่ได้แล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+      const waiting = pm.inbox.filter((j) => isJobOf(j, USERS.pm.name) && !pm.projects.some((p) => p.pj === j.pj)).length;
       const review = open.filter((t) => t.status === "sent").length;
       const running = pm.projects.filter((p) => p.status === "running").length;
       const soon = open.filter((t) => {
         const d = daysBetween(today, t.due);
         return t.status !== "sent" && d >= 0 && d <= 7;
       }).length;
-      if (has("/pm/inbox")) stats.push({ value: `${waiting}`, unit: "งาน", label: "งานรอรับ", href: "/pm/inbox" });
+      if (has("/pm/inbox")) stats.push({ value: `${waiting}`, unit: "งาน", label: "งานที่ได้รับมอบหมาย", href: "/pm/inbox" });
       if (has("/pm/reviews")) stats.push({ value: `${review}`, unit: "งาน", label: "งานรอตรวจ", href: "/pm/reviews" });
       if (has("/pm/projects")) stats.push({ value: `${running}`, unit: "โปรเจค", label: "กำลังทำ", href: "/pm/projects" });
       if (has("/pm/dashboard")) stats.push({ value: `${soon}`, unit: "งาน", label: "ใกล้ครบกำหนด", href: "/pm/dashboard" });
       if (waiting && has("/pm/inbox"))
-        todos.push({ key: "inbox", title: ["งานเข้าใหม่"], count: waiting, unit: "งาน", href: "/pm/inbox", source: "รอรับเข้าโปรเจค", Icon: InboxIcon, tone: TONE_BLUE, kind: "rows" });
+        todos.push({ key: "inbox", title: ["งานที่ได้รับมอบหมาย"], count: waiting, unit: "งาน", href: "/pm/inbox", source: "รอวางแผน", Icon: InboxIcon, tone: TONE_BLUE, kind: "rows" });
       if (review && has("/pm/reviews"))
         todos.push({ key: "review", title: ["งานรอตรวจ", "ทีมส่งมาแล้ว"], count: review, unit: "งาน", href: "/pm/reviews", source: "งานรอตรวจ", Icon: TasksIcon, tone: TONE_AMBER, kind: "rows" });
       if (soon && has("/pm/projects"))

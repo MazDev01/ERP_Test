@@ -12,9 +12,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { bkkStamp, daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
-import { fileKindLabel, lastSub, projName, type Project, type ProjectTask } from "@/lib/pm-data";
-import { memberName, openNudge, postTaskTalk, submitWork, taskTalks, usePm, type TaskTalk } from "@/lib/pm-store";
+import { addDays, bkkStamp, daysBetween, thaiDate, thaiStamp, todayIso } from "@/lib/format";
+import { TASK_STATUS, fileKindLabel, lastSub, projName, type Project, type ProjectTask } from "@/lib/pm-data";
+import { clearTaskWait, memberName, openNudge, postTaskTalk, reviewerOf, setTaskWait, taskHomes, taskTalks, usePm, type TaskTalk } from "@/lib/pm-store";
+import type { WaitKind } from "@/lib/pm-data";
+import { submitWorkFlow } from "@/lib/flow";
+import { ReviewDialog } from "./pm-reviews-page";
+import { ASK_FROM_LABEL, isLoose } from "@/lib/task-ask";
+import { AskCard, ProposeSheet } from "./task-ask-ui";
 import { useProfile } from "@/lib/profile-data";
 import { nameOf } from "@/lib/emp-name";
 import { FileDrop, type PickedFile } from "./file-drop";
@@ -23,6 +28,8 @@ import { SearchBox } from "./sales-ui";
 import { TalkList } from "./pm-project-page";
 import { ProjectChat } from "./project-chat";
 import { ClientCommentList } from "./client-review-pm";
+import { ClientFixBoard, openFixes } from "./review-pins";
+import { FileNotesView } from "./file-notes";
 import { roundsOfTask, useClientReviews, type ReviewRound } from "@/lib/client-review-store";
 import {
   CalendarIcon,
@@ -32,10 +39,15 @@ import {
   FileIcon,
   InboxIcon,
   PencilIcon,
+  SendIcon,
 } from "./icons";
 import "@/styles/mobile/my-tasks.css";
+import { LOCK_SEND_WHILE_WAITING, WAIT_KIND_LABEL, blockers, manualWaitDays, readySince, waitingDays } from "@/lib/task-deps";
 
-type Stage = "recv" | "sent" | "revise" | "done";
+/* ask = งานที่เสนอเองแล้วรอ PM อนุมัติ หรือไม่อนุมัติ (20 ต.ค. 2569) — ยังไม่ใช่งานจริง
+   review = งานของคนอื่นที่เราเป็นผู้ตรวจ ส่งมาแล้วรอเรา — ทีมงานไม่มีหน้าอื่นให้ตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569)
+   ผู้ตรวจ = ผู้สั่งเสมอ · แท็บนี้ขึ้นเฉพาะคนที่สั่งงานคนอื่นไว้ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+type Stage = "recv" | "sent" | "revise" | "done" | "ask" | "review";
 
 /*
  * หน้าตาของแต่ละขั้น — สีเดียวกันทั้งการ์ดสรุปข้างบนและไอคอนหน้าการ์ดงาน
@@ -44,7 +56,8 @@ type Stage = "recv" | "sent" | "revise" | "done";
 const LOOK: Record<Stage, { label: string; icon: typeof InboxIcon; tone: string }> = {
   recv: { label: "งานที่ได้รับ", icon: InboxIcon, tone: "bg-muted text-muted-foreground" },
   sent: {
-    label: "รอ PM ตรวจ",
+    /* ผู้ตรวจ = ผู้สั่ง ไม่ใช่ PM เสมอไป — ชื่อผู้ตรวจอยู่บนการ์ด (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+    label: "รอตรวจ",
     icon: ClockIcon,
     tone: "bg-[var(--warning-soft)] text-[var(--warning)]",
   },
@@ -58,9 +71,20 @@ const LOOK: Record<Stage, { label: string; icon: typeof InboxIcon; tone: string 
     icon: CheckCircleIcon,
     tone: "bg-[var(--success-soft)] text-[var(--success)]",
   },
+  ask: {
+    label: "รอ PM อนุมัติ",
+    icon: SendIcon,
+    tone: "bg-[var(--info-soft)] text-[var(--info)]",
+  },
+  review: {
+    label: "รอฉันตรวจ",
+    icon: CheckCircleIcon,
+    tone: "bg-accent text-primary",
+  },
 };
 
-const STAGES: Stage[] = ["recv", "sent", "revise", "done"];
+/* ไม่มีการ์ด "รอ PM อนุมัติ" แล้ว — ทีมไม่เสนองานเอง (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+const STAGES: Stage[] = ["recv", "sent", "revise", "done", "review"];
 
 /* มือถือ: วงกลมไอคอนหน้าการ์ดงาน ย้อมตามขั้น (ต้นแบบ mt-mobile .tk-thumb.tk-c1–c4) */
 const M_TINT: Record<Stage, { bg: string; fg: string }> = {
@@ -68,6 +92,8 @@ const M_TINT: Record<Stage, { bg: string; fg: string }> = {
   sent: { bg: "#FDEDD6", fg: "#94500A" },
   revise: { bg: "#FCE3E7", fg: "#B0101F" },
   done: { bg: "#DDF2E6", fg: "#0F7049" },
+  ask: { bg: "#E3EDFB", fg: "#1F5FAD" },
+  review: { bg: "#F4EEEF", fg: "#C8102E" },
 };
 
 /* สิ่งที่ PM เปลี่ยนล่าสุดในงานใบนี้ — ผู้รับงานต้องรู้ว่าของเดิมไม่เหมือนเดิมแล้ว */
@@ -112,7 +138,7 @@ export function MyTasksPage() {
 }
 
 function toStage(v: string | null): Stage {
-  return v === "sent" || v === "revise" || v === "done" ? v : "recv";
+  return v === "sent" || v === "revise" || v === "done" || v === "ask" || v === "review" ? v : "recv";
 }
 
 function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQuery: string }) {
@@ -120,7 +146,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
   const me = useProfile();
   const today = todayIso();
 
-  const [stage, setStage] = useState<Stage>(initialStage);
+  const [pickedStage, setStage] = useState<Stage>(initialStage);
   const [query, setQuery] = useState(initialQuery);
   /** การ์ดที่เปิดดูรายละเอียดอยู่ */
   const [viewing, setViewing] = useState<Row | null>(null);
@@ -133,6 +159,9 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
   const [chatOpen, setChatOpen] = useState(false);
   const chatProject = pm.projects.find((p) => p.pj === chatPj);
   const [toast, setToast] = useState("");
+  const [proposing, setProposing] = useState(false);
+  /** การ์ดที่กำลังแจ้งรอข้อมูล (คนทำกดเอง — ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  const [waitingRow, setWaitingRow] = useState<Row | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   /* จอมือถือ: กดการ์ดสรุปแล้วเลื่อนลงไปที่รายการงาน ตามต้นแบบ (scrollToList)
@@ -149,20 +178,72 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
   /* งานของตัวเองเท่านั้น — จับคู่ด้วยรหัสพนักงานที่อยู่ในทีมของโปรเจค */
   const mine = useMemo<Row[]>(
     () =>
-      /* โปรเจคที่ถูกยกเลิก งานหยุด ไม่ต้องทำต่อ */
-      pm.projects
+      /* โปรเจคที่ถูกยกเลิก งานหยุด ไม่ต้องทำต่อ · งานนอกโปรเจคที่ PM อนุมัติแล้วรวมอยู่ด้วย (taskHomes) */
+      taskHomes(pm)
         .filter((p) => p.status !== "cancelled")
         .flatMap((p) =>
           p.tasks.filter((t) => t.whos.includes(me.employeeId)).map((t) => ({ p, t })),
         ),
-    [pm.projects, me.employeeId],
+    [pm, me.employeeId],
   );
 
+  /* ใบที่เสนอไปแล้วยังไม่อนุมัติ หรือไม่อนุมัติแต่ยังไม่กดรับทราบ */
+  const asks = useMemo(
+    () =>
+      (pm.asks ?? [])
+        .filter((a) => a.by === me.employeeId && !a.ok && !a.gone)
+        .sort((a, b) => b.at.localeCompare(a.at)),
+    [pm.asks, me.employeeId],
+  );
+  const askRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return asks.filter((a) => !q || `${a.name} ${a.brief} ${a.fromName}`.toLowerCase().includes(q));
+  }, [asks, query]);
+
+  /* งานของคนอื่นที่เราสั่ง (ผู้ตรวจ = ผู้สั่งเสมอ — ผู้ใช้สั่ง 27 ต.ค. 2569) ส่งมาแล้ว — ทุกโปรเจค + งานนอกโปรเจค · ที่ส่งมาก่อนขึ้นก่อน (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  const toReview = useMemo<Row[]>(
+    () =>
+      taskHomes(pm)
+        .filter((p) => p.status !== "cancelled")
+        .flatMap((p) =>
+          p.tasks
+            .filter((t) => t.status === "sent" && reviewerOf(t, p) === me.employeeId)
+            .map((t) => ({ p, t })),
+        )
+        .sort((a, b) => (lastSub(a.t)?.at ?? "").localeCompare(lastSub(b.t)?.at ?? "")),
+    [pm, me.employeeId],
+  );
+  const reviewRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return toReview.filter(
+      (x) => !q || `${x.t.name} ${projName(x.p)} ${x.p.cus} ${memberName(x.t.whos[0] ?? "")}`.toLowerCase().includes(q),
+    );
+  }, [toReview, query]);
+  const [reviewing, setReviewing] = useState<Row | null>(null);
+
+  /*
+   * แท็บ "รอฉันตรวจ" ขึ้นเฉพาะคนที่สั่งงานคนอื่นไว้ (มีงานที่ยังไม่ปิดซึ่งตัวเองเป็นผู้ตรวจ)
+   * คนที่ไม่เคยสั่งงานใครไม่เห็นแท็บนี้เลย (ผู้ใช้สั่ง 27 ต.ค. 2569)
+   */
+  const showReview = useMemo(
+    () =>
+      toReview.length > 0 ||
+      taskHomes(pm).some(
+        (p) =>
+          p.status !== "cancelled" &&
+          p.tasks.some((t) => t.status !== "done" && t.whos[0] !== me.employeeId && reviewerOf(t, p) === me.employeeId),
+      ),
+    [pm, me.employeeId, toReview.length],
+  );
+  const stages = showReview ? STAGES : STAGES.filter((k) => k !== "review");
+  /* เปิดลิงก์ ?stage=review แต่ไม่มีแท็บนี้ → แท็บงานที่ได้รับ */
+  const stage: Stage = !showReview && pickedStage === "review" ? "recv" : pickedStage;
+
   const counts = useMemo(() => {
-    const out: Record<Stage, number> = { recv: 0, sent: 0, revise: 0, done: 0 };
+    const out: Record<Stage, number> = { recv: 0, sent: 0, revise: 0, done: 0, ask: asks.length, review: toReview.length };
     for (const x of mine) out[stageOf(x.t)] += 1;
     return out;
-  }, [mine]);
+  }, [mine, asks.length, toReview.length]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -171,7 +252,12 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
       .filter(
         (x) => !q || `${x.t.name} ${projName(x.p)} ${x.p.cus} ${x.t.brief ?? ""}`.toLowerCase().includes(q),
       )
-      .sort((a, b) => a.t.due.localeCompare(b.t.due));
+      /* งานที่เริ่มได้ขึ้นก่อน งานที่ยังรอข้อมูลตามท้าย — แล้วเรียงตามกำหนดส่ง */
+      .sort(
+        (a, b) =>
+          Number(blockers(a.p.tasks, a.t).length > 0) - Number(blockers(b.p.tasks, b.t).length > 0) ||
+          a.t.due.localeCompare(b.t.due),
+      );
   }, [mine, stage, query]);
 
   /* ข้อความยืนยันหายเองหลังผ่านไปครู่หนึ่ง ไม่ต้องให้กดปิด */
@@ -207,7 +293,11 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
         {/* ใช้ช่องค้นหากลางของระบบ — เคยเขียนเองแล้วไอคอนทับตัวอักษร
             เพราะ .field-control กำหนด padding ของตัวเองทับคลาส pl-*
             มือถือเป็นแคปซูล 46px (my-tasks.css) */}
-        <SearchBox value={query} onChange={setQuery} placeholder="ค้นหางานหรือโครงการ" />
+        <div className="flex min-w-0 items-center gap-2.5 max-md:w-full">
+          <div className="min-w-0 max-md:flex-1">
+            <SearchBox value={query} onChange={setQuery} placeholder="ค้นหางานหรือโครงการ" />
+          </div>
+        </div>
       </div>
 
       {/* มือถือ: ขั้นของงานเป็นชิปเลื่อนข้าง (ต้นแบบ mt-mobile .tk-stat) — กดแล้วกรองรายการ */}
@@ -217,7 +307,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
         /* ชิดขอบจอเวลาเลื่อน — หักระยะขอบของ <main> (px-4 · sm:px-[30px]) */
         className="-mx-4 flex gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none] sm:-mx-[30px] sm:px-[30px] md:hidden"
       >
-        {STAGES.map((k) => (
+        {stages.map((k) => (
           <button
             key={k}
             type="button"
@@ -234,8 +324,8 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
       </div>
 
       {/* การ์ดสรุปสี่ใบ — กดเพื่อกรองรายการข้างล่าง (จอ md ขึ้นไป) */}
-      <div className="grid grid-cols-2 gap-2.5 max-md:hidden sm:gap-3 xl:grid-cols-4">
-        {STAGES.map((k) => (
+      <div className={`grid grid-cols-2 gap-2.5 max-md:hidden sm:gap-3 lg:grid-cols-3 ${showReview ? "xl:grid-cols-5" : "lg:grid-cols-4"}`}>
+        {stages.map((k) => (
           <StatCard
             key={k}
             stage={k}
@@ -250,7 +340,25 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
       </div>
 
       <div ref={listRef} className="flex scroll-mt-20 flex-col gap-3.5 max-md:gap-2.5">
-        {rows.length === 0 ? (
+        {stage === "review" ? (
+          reviewRows.length === 0 ? (
+            <p className="glass rounded-[18px] px-5 py-14 text-center text-[13.5px] text-muted-foreground max-md:rounded-[20px] max-md:border-0 max-md:bg-white max-md:text-[#8A7E81]">
+              {query.trim() ? "ไม่พบงานที่ค้นหา" : "ไม่มีงานรอคุณตรวจ"}
+            </p>
+          ) : (
+            reviewRows.map((x) => (
+              <ReviewCard key={`${x.p.pj}-${x.t.name}`} row={x} today={today} onOpen={() => setReviewing(x)} />
+            ))
+          )
+        ) : stage === "ask" ? (
+          askRows.length === 0 ? (
+            <p className="glass rounded-[18px] px-5 py-14 text-center text-[13.5px] text-muted-foreground max-md:rounded-[20px] max-md:border-0 max-md:bg-white max-md:text-[#8A7E81]">
+              {query.trim() ? "ไม่พบงานที่ค้นหา" : "ไม่มีงานในกลุ่มนี้"}
+            </p>
+          ) : (
+            askRows.map((a) => <AskCard key={a.id} ask={a} />)
+          )
+        ) : rows.length === 0 ? (
           <p className="glass rounded-[18px] px-5 py-14 text-center text-[13.5px] text-muted-foreground max-md:rounded-[20px] max-md:border-0 max-md:bg-white max-md:text-[#8A7E81]">
             {query.trim() ? "ไม่พบงานที่ค้นหา" : "ไม่มีงานในกลุ่มนี้"}
           </p>
@@ -264,6 +372,11 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
               nudge={openNudge(pm, x.p.pj, x.t.name)}
               onOpen={() => setViewing(x)}
               onSend={() => setSending(x)}
+              onWait={() => setWaitingRow(x)}
+              onUnwait={() => {
+                clearTaskWait(x.p.pj, x.t.name, me.employeeId);
+                setToast("บันทึกว่าได้ข้อมูลแล้ว");
+              }}
               onTalk={() => setTalking(x)}
               onChat={() => {
                 setChatPj(x.p.pj);
@@ -276,6 +389,18 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
 
       {viewing && (
         <DetailDialog row={viewing} today={today} onClose={() => setViewing(null)} />
+      )}
+
+      {/* ตรวจงานของคนอื่น — กล่องเดียวกับหน้างานรอตรวจของ PM (ผ่าน / ส่งกลับแก้ ต้องมีเหตุผล) */}
+      {reviewing && (
+        <ReviewDialog
+          row={reviewing}
+          onClose={() => setReviewing(null)}
+          onDone={() => {
+            setReviewing(null);
+            setToast("บันทึกผลตรวจแล้ว");
+          }}
+        />
       )}
 
       {/* แชทกลุ่มของโปรเจค — สายเดียวกับที่ PM ใช้ในหน้าโปรเจค ส่งในนามคนที่ล็อกอิน */}
@@ -302,6 +427,30 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
         />
       )}
 
+      {proposing && (
+        <ProposeSheet
+          me={me.employeeId}
+          onClose={() => setProposing(false)}
+          onSent={() => {
+            setProposing(false);
+            setStage("ask");
+            setToast("ส่งให้ PM อนุมัติแล้ว");
+          }}
+        />
+      )}
+
+      {waitingRow && (
+        <WaitSheet
+          row={waitingRow}
+          me={me.employeeId}
+          onClose={() => setWaitingRow(null)}
+          onSaved={() => {
+            setWaitingRow(null);
+            setToast("แจ้งรอข้อมูลแล้ว · PM เห็นแล้ว");
+          }}
+        />
+      )}
+
       {sending && (
         <SubmitDialog
           row={sending}
@@ -309,7 +458,7 @@ function MyTasks({ initialStage, initialQuery }: { initialStage: Stage; initialQ
           onClose={() => setSending(null)}
           onSent={() => {
             setSending(null);
-            setToast("ส่งงานแล้ว");
+            setToast(sending.t.noReview ? "ส่งงานแล้ว · ปิดงานแล้ว" : "ส่งงานแล้ว");
           }}
         />
       )}
@@ -379,6 +528,8 @@ function TaskCard({
   nudge,
   onOpen,
   onSend,
+  onWait,
+  onUnwait,
   onTalk,
   onChat,
 }: {
@@ -389,6 +540,9 @@ function TaskCard({
   nudge?: TaskTalk;
   onOpen: () => void;
   onSend: () => void;
+  /** คนทำแจ้งรอข้อมูลเอง / ได้ข้อมูลแล้ว (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  onWait: () => void;
+  onUnwait: () => void;
   onTalk: () => void;
   /** เปิดแชทกลุ่มของโปรเจคที่งานใบนี้อยู่ */
   onChat: () => void;
@@ -398,7 +552,11 @@ function TaskCard({
   const look = LOOK[stage];
   const Icon = look.icon;
   const late = stage === "recv" && daysBetween(t.due, today) > 0;
-  const canSend = stage === "recv" || stage === "revise";
+  /* รอข้อมูล — งานก่อนหน้ายังไม่ผ่าน (task-deps.ts) · ล็อกปุ่มส่งงานตาม LOCK_SEND_WHILE_WAITING */
+  const wait = blockers(p.tasks, t);
+  const locked = LOCK_SEND_WHILE_WAITING && wait.length > 0;
+  const ready = readySince(p.tasks, t);
+  const canSend = (stage === "recv" || stage === "revise") && !locked;
   const tint = M_TINT[stage];
 
   return (
@@ -423,13 +581,18 @@ function TaskCard({
       </span>
       <p className="text-[12px] font-medium text-[#8A7E81]">{projName(p)}</p>
       <h3 className="text-[15.5px] leading-[1.35] font-bold">{t.name}</h3>
-      <p className="line-clamp-2 text-[13px] leading-[1.45] text-[#6E6164]">
-        {t.brief || "ยังไม่มีรายละเอียดงานจาก PM"}
-      </p>
+      {/* งานที่ต้องแก้ไข ไม่แสดงรายละเอียดงานเดิม — เห็นแค่สิ่งที่ต้องแก้ (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+      {stage !== "revise" && (
+        <p className="line-clamp-2 text-[13px] leading-[1.45] text-[#6E6164]">
+          {t.brief || "ยังไม่มีรายละเอียดงานจาก PM"}
+        </p>
+      )}
 
       {/* ข้อมูลที่ต้องเห็นก่อนกดส่ง — ต้นแบบไม่มี แต่ตัดทิ้งไม่ได้ (เหตุผลที่ตีกลับ · PM ทวง · คุยกับ PM) */}
-      {(stage === "revise" || nudge) && (
+      {(stage === "revise" || nudge || wait.length > 0 || ready || t.waitingOn) && (
         <div className="col-span-2 mt-1.5 flex flex-col gap-2">
+          <WaitNote wait={wait} t={t} today={today} ready={ready} />
+          <ManualWaitNote t={t} today={today} onClear={onUnwait} className="relative z-[2]" />
           {stage === "revise" && <BackNote back={t.back} />}
           {nudge && (
             <div className="rounded-[13px] bg-[var(--warning-soft)] px-3.5 py-2.5">
@@ -464,7 +627,7 @@ function TaskCard({
           {whenText(t, stage, today)}
         </p>
         <span className="relative z-[2] flex flex-none items-center gap-2">
-          <ChatButton onClick={onChat} />
+          {!isLoose(p.pj) && <ChatButton onClick={onChat} />}
           {canSend && (
             <button
               type="button"
@@ -474,6 +637,7 @@ function TaskCard({
               {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
             </button>
           )}
+          {locked && <WaitPill />}
         </span>
       </div>
     </article>
@@ -512,7 +676,8 @@ function TaskCard({
             </span>
           </div>
 
-          {t.brief ? (
+          {/* งานที่ต้องแก้ไข ไม่แสดงรายละเอียดงานเดิม — เห็นแค่สิ่งที่ต้องแก้ (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+          {stage === "revise" ? null : t.brief ? (
             <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t.brief}</p>
           ) : (
             <p className="mt-1 text-[13px] text-muted-foreground/70">ยังไม่มีรายละเอียดงานจาก PM</p>
@@ -521,6 +686,9 @@ function TaskCard({
           {/* เหตุผลที่ถูกตีกลับอยู่บนการ์ด ไม่ใช่หลังการกดเปิดดู —
               เดิมต้องกดชื่องานถึงจะเห็น คนจึงกด "ส่งแก้ไข" โดยไม่รู้ว่าต้องแก้อะไร แล้วส่งของเดิมกลับไป */}
           {stage === "revise" && <BackNote back={t.back} />}
+
+          <WaitNote wait={wait} t={t} today={today} ready={ready} className="mt-2" />
+          <ManualWaitNote t={t} today={today} onClear={onUnwait} className="mt-2" />
 
           {/* PM ทวงงานใบนี้ — ต้องเห็นบนการ์ด ไม่ใช่รอให้ไปตามกันในไลน์ */}
           {nudge && (
@@ -533,7 +701,9 @@ function TaskCard({
             </div>
           )}
 
-          {/* มอบหมายเมื่อไร และเปลี่ยนอะไรล่าสุด — แยกงานใหม่ออกจากงานเก่าได้โดยไม่ต้องเปิดดู */}
+          {/* มอบหมายเมื่อไร และเปลี่ยนอะไรล่าสุด — แยกงานใหม่ออกจากงานเก่าได้โดยไม่ต้องเปิดดู
+              งานที่ต้องแก้ไขไม่มีแถวนี้ — ชื่อ PM อยู่ในกล่องสิ่งที่ต้องแก้แล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+          {stage !== "revise" && (
           <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-muted-foreground">
             {t.lastChange && (
               <span className="rounded-full bg-accent px-2.5 py-0.5 font-bold text-primary">
@@ -549,6 +719,7 @@ function TaskCard({
               </span>
             )}
           </p>
+          )}
 
           <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
             <p
@@ -565,7 +736,7 @@ function TaskCard({
                   ตอบ PM{talks.length > 0 ? ` (${talks.length})` : ""}
                 </button>
               )}
-              <ChatButton onClick={onChat} />
+              {!isLoose(p.pj) && <ChatButton onClick={onChat} />}
               {canSend && (
                 <button
                   type="button"
@@ -576,6 +747,7 @@ function TaskCard({
                   {stage === "revise" ? "ส่งแก้ไข" : "ส่งงาน"}
                 </button>
               )}
+              {locked && <WaitPill />}
             </span>
           </div>
         </div>
@@ -583,6 +755,233 @@ function TaskCard({
     </article>
     </>
   );
+}
+
+/*
+ * รอข้อมูล — บอกว่ารองานไหน ใครทำ ถึงไหนแล้ว และรอมากี่วัน (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 6)
+ * งานก่อนหน้าผ่านครบแล้วภายใน 7 วัน ขึ้นแถบเขียวบอกว่าเริ่มได้ แทนการรอให้ใครมาบอกในไลน์
+ */
+function WaitNote({
+  wait,
+  t,
+  today,
+  ready,
+  className = "",
+}: {
+  wait: ProjectTask[];
+  t: ProjectTask;
+  today: string;
+  ready: string | null;
+  className?: string;
+}) {
+  if (!wait.length) {
+    if (!ready || daysBetween(ready.slice(0, 10), today) > 7) return null;
+    return (
+      <div className={`rounded-[13px] bg-[var(--success-soft)] px-3.5 py-2.5 ${className}`}>
+        <p className="text-[12.5px] font-bold text-[var(--success)]">งานก่อนหน้าผ่านครบแล้ว เริ่มงานได้</p>
+        <p className="num mt-0.5 text-[12px] text-muted-foreground">ผ่านครบเมื่อ {stamp(ready)}</p>
+      </div>
+    );
+  }
+  const days = waitingDays(t, today);
+  return (
+    <div className={`rounded-[13px] bg-[var(--warning-soft)] px-3.5 py-2.5 ${className}`}>
+      <p className="text-[12.5px] font-bold text-[var(--warning)]">
+        รอข้อมูล{days > 0 ? <span className="num"> · รอมา {days} วัน</span> : null}
+      </p>
+      <ul className="mt-1 flex flex-col gap-0.5">
+        {wait.map((w) => {
+          const over = daysBetween(w.due, today);
+          return (
+            <li key={w.name} className="text-[12.5px] leading-relaxed break-words">
+              รอ <b className="font-semibold">{w.name}</b>
+              <span className="text-muted-foreground">
+                {" "}· {w.whos.map(memberName).join(", ") || "ยังไม่มีคนทำ"} · {TASK_STATUS[w.status].label}
+              </span>
+              {over > 0 && <span className="num font-semibold text-destructive"> · เลยกำหนด {over} วัน</span>}
+            </li>
+          );
+        })}
+      </ul>
+      {LOCK_SEND_WHILE_WAITING && (
+        <p className="mt-1 text-[11.5px] text-muted-foreground">ส่งงานได้เมื่องานก่อนหน้าตรวจผ่านครบ</p>
+      )}
+    </div>
+  );
+}
+
+/*
+ * รอข้อมูลที่คนทำกดเอง (ผู้ใช้สั่ง 21 ต.ค. 2569) — หน้าตาเดียวกับ WaitNote
+ * บอกว่ารออะไร มากี่วัน · ไม่ล็อกปุ่มส่งงาน · กด "ได้ข้อมูลแล้ว" ปิดการรอ (ส่งงานแล้วก็ปิดเอง)
+ */
+function ManualWaitNote({
+  t,
+  today,
+  onClear,
+  className = "",
+}: {
+  t: ProjectTask;
+  today: string;
+  onClear: () => void;
+  className?: string;
+}) {
+  const w = t.waitingOn;
+  if (!w) return null;
+  const days = manualWaitDays(t, today);
+  return (
+    <div className={`rounded-[13px] bg-[var(--warning-soft)] px-3.5 py-2.5 ${className}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-bold text-[var(--warning)]">
+            รอข้อมูล · {WAIT_KIND_LABEL[w.kind]}
+            {days > 0 ? <span className="num"> · รอมา {days} วัน</span> : null}
+          </p>
+          {w.note && <p className="mt-0.5 text-[12.5px] leading-relaxed break-words">{w.note}</p>}
+          <p className="num mt-0.5 text-[11.5px] text-muted-foreground">แจ้งเมื่อ {stamp(w.since)} · ส่งงานได้ตามปกติ</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex-none text-[12.5px] font-semibold text-primary hover:underline"
+        >
+          ได้ข้อมูลแล้ว
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** แจ้งรอข้อมูลนอกแผน — รอลูกค้า / รอไฟล์ / อื่น ๆ + หมายเหตุ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+function WaitSheet({
+  row,
+  me,
+  onClose,
+  onSaved,
+}: {
+  row: Row;
+  me: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [kind, setKind] = useState<WaitKind>("customer");
+  const [note, setNote] = useState("");
+  const options: { k: WaitKind; label: string }[] = [
+    { k: "customer", label: "รอลูกค้า" },
+    { k: "file", label: "รอไฟล์" },
+    { k: "other", label: "อื่น ๆ" },
+  ];
+  return (
+    <Sheet
+      title="รอข้อมูล"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn glass-thin" onClick={onClose}>
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            className="btn solid btn-solid"
+            onClick={() => {
+              setTaskWait(row.p.pj, row.t.name, { kind, note, by: me });
+              onSaved();
+            }}
+          >
+            บันทึก
+          </button>
+        </>
+      }
+    >
+      <p className="mb-4 text-[13px] font-semibold">{row.t.name}</p>
+      <Field label="รออะไร" required>
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13.5px]">
+          {options.map((o) => (
+            <label key={o.k} className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="wait-kind"
+                className="size-4 accent-[var(--primary)]"
+                checked={kind === o.k}
+                onChange={() => setKind(o.k)}
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      </Field>
+      <Field label="หมายเหตุ" labelNote="ไม่บังคับ">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="เช่น ลูกค้ายังไม่ส่งรูปสินค้า"
+          className="field-control h-[76px] resize-y py-2.5 leading-relaxed"
+        />
+      </Field>
+      <p className="text-[12px] leading-relaxed text-muted-foreground">
+        ระบบแจ้ง PM ว่างานนี้รอข้อมูล · ยังส่งงานได้ตามปกติ และช่วงที่รอจะไม่นับเป็นความช้าของคุณ
+      </p>
+    </Sheet>
+  );
+}
+
+/** แทนปุ่มส่งงานตอนรอข้อมูล — เห็นว่ามีปุ่มแต่ยังกดไม่ได้ ไม่ใช่ปุ่มหายไปเฉย ๆ */
+function WaitPill() {
+  return (
+    <span
+      aria-disabled="true"
+      title="รองานก่อนหน้าผ่านก่อน"
+      className="inline-flex h-[34px] flex-none cursor-not-allowed items-center rounded-[10px] border border-border px-4 text-[13px] font-semibold text-muted-foreground"
+    >
+      รอข้อมูล
+    </span>
+  );
+}
+
+// ─── การ์ดงานที่รอเราตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569) ──────────────────
+
+function ReviewCard({ row, today, onOpen }: { row: Row; today: string; onOpen: () => void }) {
+  const { p, t } = row;
+  const sub = lastSub(t);
+  const day = sub?.at.split(" ")[0] ?? "";
+  const waited = day ? daysBetween(day, today) : 0;
+  const who = memberName(sub?.by ?? t.whos[0] ?? "");
+  return (
+    <article
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        onOpen();
+      }}
+      className="glass-thin flex cursor-pointer flex-wrap items-center gap-3 rounded-[16px] px-4 py-4 transition-colors hover:border-primary max-md:rounded-[20px] max-md:border-0 max-md:bg-white sm:px-5"
+    >
+      <span
+        className={`grid size-11 flex-none place-items-center rounded-[13px] ${LOOK.review.tone}`}
+        aria-hidden="true"
+      >
+        <CheckCircleIcon className="size-[22px]" strokeWidth={1.8} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[12.5px] font-semibold text-muted-foreground">{projName(p)}</p>
+        <p className="text-[15px] font-bold break-words">{t.name}</p>
+        <p className="num mt-0.5 text-[12.5px] text-muted-foreground">
+          {who} ส่งมา{day ? ` ${stamp(sub?.at ?? day)}` : ""}
+          {waited >= 3 && <span className="font-semibold text-destructive"> · รอมา {waited} วัน</span>}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="btn solid btn-solid btn-mini max-sm:h-10! max-sm:w-full max-sm:justify-center"
+      >
+        ตรวจงาน
+      </button>
+    </article>
+  );
+}
+
+/* งานที่ต้องแก้ไข กำหนดส่ง = กำหนดส่งแก้ ไม่ใช่กำหนดส่งรอบแรก · ข้อมูลเก่าไม่มีวัน ใช้ 2 วันหลังตีกลับ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+function dueOf(t: ProjectTask) {
+  if (t.status !== "revise" || !t.back) return t.due;
+  return t.back.due ?? addDays(t.back.at.split(" ")[0], 2);
 }
 
 /** บรรทัดวันของการ์ด — แต่ละขั้นสนใจคนละวัน */
@@ -594,6 +993,8 @@ function whenText(t: ProjectTask, stage: Stage, today: string) {
   if (stage === "done") {
     return t.doneAt ? `อนุมัติเมื่อ ${stamp(t.doneAt)}` : "อนุมัติแล้ว";
   }
+  /* งานที่ต้องแก้ไข บอกเวลาที่ PM ส่งกลับ ไม่ใช่เวลาที่เราส่งไป (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  if (stage === "revise" && t.back) return `ส่งกลับให้แก้เมื่อ ${stamp(t.back.at)}`;
   const sub = lastSub(t);
   return sub ? `ส่งเมื่อ ${stamp(sub.at)}` : "—";
 }
@@ -634,8 +1035,14 @@ function DetailDialog({
       <ProjectDocs p={p} />
 
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-        <Kv k="ผู้มอบหมาย" v={nameOf(t.lastChange?.by || p.pm)} />
-        <Kv k="กำหนดส่ง" v={thaiDate(t.due)} warn={late} />
+        <Kv k={t.origin ? "ผู้อนุมัติ" : "ผู้มอบหมาย"} v={nameOf(t.lastChange?.by || p.pm)} />
+        <Kv k="กำหนดส่ง" v={thaiDate(dueOf(t))} warn={late} />
+        {t.origin && (
+          <Kv
+            k="ขอมาจาก"
+            v={t.origin.fromName ? `${ASK_FROM_LABEL[t.origin.from]} · ${t.origin.fromName}` : ASK_FROM_LABEL[t.origin.from]}
+          />
+        )}
         {t.assignedAt && <Kv k="มอบหมายเมื่อ" v={`${thaiStamp(t.assignedAt)} น.`} />}
         {t.lastChange && (
           <Kv
@@ -733,7 +1140,7 @@ function SubmitHistory({ p, t }: { p: Project; t: ProjectTask }) {
           const rounds = client.filter((r) => inWin(r.createdAt));
 
           if (rounds.length > 0) {
-            steps.push({ at: rounds[0].createdAt, label: "PM ตรวจผ่าน", tone: "ok" });
+            steps.push({ at: rounds[0].createdAt, label: "ตรวจผ่าน", tone: "ok" });
             for (const r of rounds) {
               steps.push({ at: r.createdAt, label: `ส่งให้ลูกค้าตรวจ รอบที่ ${r.round}`, tone: "info" });
               if (r.status === "approved") {
@@ -747,9 +1154,9 @@ function SubmitHistory({ p, t }: { p: Project; t: ProjectTask }) {
           } else if (!last) {
             const at = backActs.find(inWin);
             const why = t.back && inWin(t.back.at) ? t.back.why : undefined;
-            steps.push({ at, label: "PM ส่งกลับให้แก้", tone: "miss", why });
+            steps.push({ at, label: "ส่งกลับให้แก้", tone: "miss", why });
           } else {
-            steps.push({ at: t.doneAt ?? passActs.find(inWin), label: "PM ตรวจผ่าน · อนุมัติ", tone: "ok" });
+            steps.push({ at: t.doneAt ?? passActs.find(inWin), label: t.noReview ? "ปิดงาน · ไม่ต้องตรวจ" : "ตรวจผ่าน · อนุมัติ", tone: "ok" });
           }
           if (last && rounds.length > 0 && t.doneAt) steps.push({ at: t.doneAt, label: "อนุมัติ · ปิดงาน", tone: "ok" });
 
@@ -860,7 +1267,7 @@ function SubmitDialog({
                 setBrief(false);
                 return;
               }
-              submitWork(p.pj, t.name, {
+              submitWorkFlow(p.pj, t.name, {
                 by: me,
                 files: files.map((f) => f.name),
                 note: note.trim(),
@@ -908,13 +1315,14 @@ function SubmitDialog({
           <ProjectDocs p={p} />
           <dl className="mt-5 grid gap-4 sm:grid-cols-2">
             <Kv k="ผู้มอบหมาย" v={nameOf(t.lastChange?.by || p.pm)} />
-            <Kv k="กำหนดส่ง" v={thaiDate(t.due)} />
+            <Kv k="กำหนดส่ง" v={thaiDate(dueOf(t))} />
             {t.assignedAt && <Kv k="มอบหมายเมื่อ" v={`${thaiStamp(t.assignedAt)} น.`} />}
           </dl>
         </div>
       )}
 
       <div className={brief ? "hidden" : undefined}>
+      {/* ไม่บอกผู้ตรวจในหน้างานของพนักงานแล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
       {/* ส่งแก้ไข = ต้องเห็นสิ่งที่ต้องแก้อยู่ตรงหน้า ไม่ต้องสลับไปหน้าโจทย์ก่อน */}
       {revise && (
         <div className="mt-4">
@@ -938,7 +1346,7 @@ function SubmitDialog({
 
       <div className="mt-4">
         <Field
-          label="หมายเหตุถึง PM"
+          label="หมายเหตุ"
           error={
             busyWarn
               ? "รอให้ไฟล์อัปโหลดเสร็จก่อนส่ง"
@@ -1045,12 +1453,13 @@ function TalkDialog({
  * ตีกลับแล้วไม่บอกเหตุผลถือเป็นข้อมูลหาย ต้องบอกตรง ๆ ว่า PM ยังไม่ได้เขียน
  */
 function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string; task?: string }) {
-  /* PM ส่งความเห็นของลูกค้าต่อมา (ลิงก์ตรวจงาน) — จับคู่ด้วยเวลาที่ตีกลับ แล้วแสดงทีละจุดพร้อมเวลา/หมุด */
+  /*
+   * PM ส่งความเห็นของลูกค้าต่อมา (ลิงก์ตรวจงาน) — จับคู่ด้วยเวลาที่ตีกลับ (forwardedAt = back.at)
+   * ข้อมูลที่เวลาไม่ตรงกัน: รอบล่าสุดของงานที่ส่งต่อแล้ว และข้อความตีกลับขึ้นต้นด้วยรอบนั้น (composeReason)
+   * ตีกลับด้วยข้อความของ PM เอง = ไม่มีรอบ → แสดงข้อความเดิม
+   */
   const reviews = useClientReviews();
-  const round =
-    back && pj && task
-      ? reviews.rounds.find((r) => r.pj === pj && r.taskName === task && r.forwardedAt === back.at)
-      : undefined;
+  const round = back && pj && task ? reviewRoundOfBack(reviews, pj, task, back) : undefined;
   if (!back) {
     return (
       <p className="rounded-[14px] bg-muted px-4 py-3 text-[13px] text-muted-foreground">
@@ -1058,24 +1467,58 @@ function BackNote({ back, pj, task }: { back?: ProjectTask["back"]; pj?: string;
       </p>
     );
   }
+  const by = (
+    <em className="num mt-1.5 block text-[11.5px] text-muted-foreground not-italic">
+      {/* บางใบเก็บเป็นรหัสพนักงาน — คนอ่านต้องเห็นชื่อ ไม่ใช่รหัส */}
+      {back.by ? nameOf(memberName(back.by)) : "PM"}
+      {/* บนการ์ดวันที่อยู่บรรทัดล่างแล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+      {pj ? ` · ${thaiDate(back.at.split(" ")[0])}` : ""}
+    </em>
+  );
+  /* รูปพร้อมหมุดของลูกค้า แทนข้อความบรรทัดละจุด — PM ติ๊กแก้แล้วครบทุกจุดภายหลัง = กลับไปแสดงข้อความเดิม */
+  if (round && openFixes(round).length > 0) {
+    return (
+      <div className="rounded-[14px] bg-[var(--destructive-soft)] px-4 py-3.5">
+        <h5 className="text-[13px] font-bold text-destructive">สิ่งที่ต้องแก้ตามความเห็นลูกค้า</h5>
+        <p className="mt-0.5 text-[12px] text-muted-foreground">
+          รอบที่ {round.round}
+          {round.contact ? ` · ${round.contact}` : ""}
+        </p>
+        <div className="mt-2.5 rounded-[12px] bg-card p-3">
+          <ClientFixBoard round={round} />
+        </div>
+        {by}
+      </div>
+    );
+  }
   return (
     <div className="rounded-[14px] bg-[var(--destructive-soft)] px-4 py-3.5">
       <h5 className="text-[13px] font-bold text-destructive">สิ่งที่ต้องแก้ตามที่ PM ตีกลับ</h5>
-      <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line text-destructive">{back.why}</p>
-      <em className="num mt-1.5 block text-[11.5px] text-muted-foreground not-italic">
-        {/* บางใบเก็บเป็นรหัสพนักงาน — คนอ่านต้องเห็นชื่อ ไม่ใช่รหัส */}
-        {back.by ? nameOf(memberName(back.by)) : "PM"} · {thaiDate(back.at.split(" ")[0])}
-      </em>
-      {round && (
-        <div className="mt-3 rounded-[12px] bg-card p-3">
-          <p className="mb-2 text-[12px] font-semibold text-muted-foreground">
-            คอมเมนต์ของลูกค้า รอบที่ {round.round}
-          </p>
-          <ClientCommentList round={round} />
+      {back.why && <p className="mt-1.5 text-[13px] leading-relaxed whitespace-pre-line text-destructive">{back.why}</p>}
+      {/* คอมเมนต์ของ PM บนไฟล์ — แยกตามไฟล์ กดไฟล์เปิดดูหมุด (ผู้ใช้สั่ง 29 ต.ค. 2569)
+          บนการ์ดมีแค่ข้อความ เห็นไฟล์เต็มเมื่อเปิดรายละเอียดงาน (การ์ดไม่ส่ง pj มา — ผู้ใช้สั่ง 29 ต.ค. 2569) */}
+      {pj && back.notes?.length ? (
+        <div className="mt-2.5 rounded-[12px] bg-card p-3">
+          <FileNotesView notes={back.notes} />
         </div>
-      )}
+      ) : null}
+      {by}
     </div>
   );
+}
+
+/** รอบตรวจของลูกค้าที่ทำให้งานถูกตีกลับครั้งนี้ */
+function reviewRoundOfBack(
+  s: ReturnType<typeof useClientReviews>,
+  pj: string,
+  task: string,
+  back: NonNullable<ProjectTask["back"]>,
+) {
+  const sent = roundsOfTask(s, pj, task).filter((r) => r.forwardedAt);
+  const exact = sent.find((r) => r.forwardedAt === back.at);
+  if (exact) return exact;
+  const last = sent[sent.length - 1];
+  return last && back.why.startsWith(`ความเห็นจากลูกค้า รอบที่ ${last.round}`) ? last : undefined;
 }
 
 function Kv({ k, v, warn }: { k: string; v: string; warn?: boolean }) {

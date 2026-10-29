@@ -44,8 +44,10 @@ import { empReqLeaveText, type EmpRequest } from "./emp-requests";
 import type { NotifyEventKey } from "./notify-settings";
 import type { OtRecord } from "./ot-data";
 import { canBill, dealPaid, invoiceDue, invoiceNotYet, invoiceStatus, type AccState } from "./acc-store";
-import { isRef, lastSub, projectHref, type ProjectTask } from "./pm-data";
-import { memberName, openNudge } from "./pm-store";
+import { isAssignedJob, isJobOf, isRef, lastSub, planHref, projectHref, type ProjectTask } from "./pm-data";
+import { memberName, openNudge, reviewerOf, taskHomes } from "./pm-store";
+import { askWaiting, isLoose, LOOSE_NAME } from "./task-ask";
+import { WAIT_KIND_LABEL, blockers, manualWaitDays, readySince } from "./task-deps";
 import { eventChangeNotices, eventNotices, type PmEvent } from "./pm-schedule-data";
 import type { PmState } from "./pm-store";
 import type { ReviewRound } from "./client-review-store";
@@ -64,8 +66,8 @@ const PROBATION_WARN_DAYS = 30;
 /** เรื่องที่เกิดขึ้นที่ฝ่ายอื่นแจ้งกี่วันย้อนหลัง (ชำระเงิน ส่งมอบงาน) */
 const RECENT_DAYS = 7;
 
-/** งานของทีมงานเหลืออีกกี่วันถึงจะขึ้นเตือน — ตารางแจ้งเตือน: ครบกำหนดพรุ่งนี้ (ผู้ใช้สั่ง 16 ต.ค. 2569) */
-const SOON_TASK_DAYS = 1;
+/** งานของทีมงานเหลืออีกกี่วันถึงจะขึ้นเตือน — ล่วงหน้า 2 วันแทนพรุ่งนี้ (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 8 · PM ขอ) */
+const SOON_TASK_DAYS = 2;
 
 /** กำหนดนำส่งภาษีหัก ณ ที่จ่าย (ภ.ง.ด.3/53) — ภายในวันที่ 7 ของเดือนถัดไป ตรงกับหน้า /acc/wht */
 const WHT_FILE_DAY = 7;
@@ -612,22 +614,66 @@ export function buildNotices(input: {
       });
     }
 
-    /* งานที่บัญชีส่งมาแล้วยังไม่ได้ตรวจ ต้องขึ้นก่อน เพราะทั้งโปรเจคยังไม่เริ่ม */
+    /*
+     * งานเข้าใหม่ — GM มอบหมายให้ PM ทีละงาน PM กดรับเองไม่ได้แล้ว (ผู้ใช้สั่ง 27 ต.ค. 2569)
+     *   GM: งานที่ยังไม่มอบหมาย → "งานเข้าใหม่รอมอบหมาย PM" (ค้างเกิน 2 วันขึ้นเลยกำหนด) · มอบหมายแล้วรอวางแผน = แจ้งให้ทราบ
+     *   PM: เฉพาะงานที่ GM มอบหมายให้ตัวเอง → "GM มอบหมายงานใหม่ให้คุณ" จนกว่าจะยืนยันแผน
+     *       งานของตัวเองที่ไม่มีผู้มอบหมาย (รับเองไว้ก่อนเปลี่ยนกติกา / เพิ่มโปรเจคเอง) = "งานรอวางแผน" เหมือนเดิม
+     *   งานที่ยังไม่มอบหมายไม่ขึ้นที่กระดิ่งของ PM
+     */
     for (const j of pm.inbox) {
       const waiting = daysBetween(j.sentAt, today);
+      if (!isAssignedJob(j)) {
+        if (!gm) continue;
+        out.push({
+          id: `pmin-${j.pj}`,
+          level: waiting > 2 ? "late" : "soon",
+          group: "งานเข้าใหม่รอมอบหมาย PM",
+          event: "pmjob",
+          title: j.cus,
+          detail: `${j.scope} · เข้ามา ${waiting > 0 ? `${waiting} วันแล้ว` : "วันนี้"}`,
+          href: "/pm/inbox",
+          date: j.sentAt,
+        });
+        continue;
+      }
+      const mine = isJobOf(j, myName);
+      if (!gm && !mine) continue;
+      if (mine && j.assignedBy) {
+        out.push({
+          id: `pmas-${j.pj}-${j.assignedAt ?? ""}`,
+          level: "soon",
+          group: "GM มอบหมายงานใหม่ให้คุณ",
+          event: "pmassigned",
+          title: j.cus,
+          detail: `${j.scope}${j.assignNote ? ` · ${j.assignNote}` : ""}`,
+          href: planHref(j.pj),
+          date: j.assignedAt || j.takenAt || j.sentAt,
+        });
+        continue;
+      }
       out.push({
         id: `pmin-${j.pj}`,
-        level: j.stage === "new" ? (waiting > 2 ? "late" : "soon") : "info",
-        group: j.stage === "new" ? "งานเข้าใหม่รอตรวจ" : "งานรอวางแผน",
-        event: j.stage === "new" ? "pmjob" : undefined,
+        level: "info",
+        group: "งานรอวางแผน",
         title: j.cus,
-        detail:
-          j.scope +
-          (j.stage === "new"
-            ? ` · เข้ามา ${waiting > 0 ? `${waiting} วันแล้ว` : "วันนี้"}`
-            : " · ตรวจเอกสารแล้ว รอจัดแผนงาน"),
-        href: j.stage === "new" || gm ? "/pm/inbox" : "/pm/plan",
-        date: j.sentAt,
+        detail: `${j.scope} · ${mine ? "รอจัดแผนงาน" : `${empNameOf(j.takenBy)} รอจัดแผนงาน`}`,
+        href: gm ? "/pm/inbox" : planHref(j.pj),
+        date: j.takenAt || j.sentAt,
+      });
+    }
+    /* ทีมเสนองานของตัวเอง — รอ PM อนุมัติก่อนเริ่ม (เจ้าของอนุมัติ 20 ต.ค. 2569) */
+    for (const a of pm.asks ?? []) {
+      if (!askWaiting(a)) continue;
+      const home = a.pj ? pm.projects.find((p) => p.pj === a.pj) : undefined;
+      out.push({
+        id: `pmask-${a.id}`,
+        level: "soon",
+        group: "ทีมเสนองาน",
+        title: `${empNameOf(a.by)} เสนองาน ${a.name}`,
+        detail: `${home ? home.name || home.cus : LOOSE_NAME} · กำหนดส่ง ${thaiDate(a.due)}`,
+        href: "/pm/inbox",
+        date: a.at.slice(0, 10),
       });
     }
     /*
@@ -655,11 +701,16 @@ export function buildNotices(input: {
 
     /* ทีมส่งมาแล้วรอเราตัดสิน — ค้างที่นี่คือทั้งทีมหยุดรอ จึงขึ้นก่อนงานเลยกำหนด
        ดีลที่ยกเลิกแล้วไม่นับ — หน้างานรอตรวจก็กรองทิ้ง (pm-reviews-page.tsx) ถ้านับที่นี่ด้วย
-       กระดิ่งจะบอกจำนวนไม่ตรงกับหน้า แล้วกดเข้าไปก็ไม่เจอใบนั้น */
-    for (const p of pm.projects) {
+       กระดิ่งจะบอกจำนวนไม่ตรงกับหน้า แล้วกดเข้าไปก็ไม่เจอใบนั้น
+       งานนอกโปรเจคที่ส่งมาก็ตรวจที่หน้าเดียวกัน (taskHomes) */
+    /* ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) — PM ได้เฉพาะงานที่ตัวเองสั่ง · GM เห็นทั้งหมดเหมือนเดิม
+       งานที่ทีมงานสั่งเองไปขึ้นกระดิ่งของคนสั่ง (ส่วนของทีมงานข้างล่าง) */
+    const myReviewId = input.meId || USERS[role].employeeId;
+    for (const p of taskHomes(pm)) {
       if (p.status === "cancelled") continue;
       for (const [i, t] of p.tasks.entries()) {
         if (t.status !== "sent") continue;
+        if (!gm && reviewerOf(t, p) !== myReviewId) continue;
         const sub = lastSub(t);
         const waited = sub ? daysBetween(sub.at.split(" ")[0], today) : 0;
         out.push({
@@ -671,7 +722,7 @@ export function buildNotices(input: {
           detail: `${memberName(sub?.by ?? t.whos[0] ?? "")} ส่งมา${
             waited > 0 ? `เมื่อ ${waited} วันก่อน` : "วันนี้"
           }`,
-          href: gm ? projectHref(p.pj) : "/pm/reviews",
+          href: gm && !isLoose(p.pj) ? projectHref(p.pj) : "/pm/reviews",
           date: sub?.at.split(" ")[0] ?? t.due,
         });
       }
@@ -722,6 +773,55 @@ export function buildNotices(input: {
         });
       }
     }
+    /*
+     * งานเลยกำหนดที่มีงานอื่นรออยู่ (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 8) — ใบละงานก่อนหน้า ไม่ใช่ใบละคนที่รอ
+     * ระบบไม่เลื่อนกำหนดส่งของงานที่รอให้เอง PM เป็นคนตัดสินใจ จึงต้องบอกว่าใครรออยู่บ้าง
+     */
+    for (const p of pm.projects) {
+      if (p.status === "cancelled") continue;
+      for (const [i, prev] of p.tasks.entries()) {
+        const over = daysBetween(prev.due, today);
+        if (over <= 0) continue;
+        const waiting = p.tasks.filter((t) => blockers(p.tasks, t).includes(prev));
+        if (!waiting.length) continue;
+        out.push({
+          id: `pmprevlate-${p.pj}-${i}`,
+          level: "late",
+          group: "งานเลยกำหนด มีงานอื่นรออยู่",
+          event: "pmprevlate",
+          title: `${p.cus} · ${prev.name}`,
+          detail: `เลยกำหนด ${over} วัน · รออยู่ ${waiting.length} งาน: ${waiting
+            .map((t) => `${t.name} (${t.whos.map(memberName).join(", ") || "ยังไม่มีคนทำ"})`)
+            .join(", ")}`,
+          href: projectHref(p.pj),
+          date: prev.due,
+        });
+      }
+    }
+    /*
+     * งานที่คนทำกด "รอข้อมูล" เอง (รอนอกแผน — ผู้ใช้สั่ง 21 ต.ค. 2569)
+     * PM ต้องรู้ว่าใครรออะไรมากี่วัน จะได้ไปตามลูกค้า/ไฟล์ให้ · หายเองเมื่อคนทำกด "ได้ข้อมูลแล้ว" หรือส่งงาน
+     */
+    for (const p of pm.projects) {
+      if (p.status === "cancelled") continue;
+      for (const [i, t] of p.tasks.entries()) {
+        const w = t.waitingOn;
+        if (!w || t.status === "done") continue;
+        const days = manualWaitDays(t, today);
+        out.push({
+          id: `pmwaiting-${p.pj}-${i}-${w.since}`,
+          level: "info",
+          group: "งานรอข้อมูล",
+          title: `${p.cus} · ${t.name}`,
+          detail:
+            `${t.whos.map(memberName).join(", ") || "ยังไม่มีคนทำ"} · ${WAIT_KIND_LABEL[w.kind]}` +
+            (w.note ? ` — ${w.note}` : "") +
+            ` · รอมา ${days} วัน`,
+          href: projectHref(p.pj),
+          date: w.since.slice(0, 10),
+        });
+      }
+    }
   }
 
   // ═══ เรื่องของทีมงาน ═══════════════════════════════════════════
@@ -731,7 +831,23 @@ export function buildNotices(input: {
    */
   if (role === "staff" && input.meId) {
     const meId = input.meId;
-    for (const p of pm.projects) {
+    /* งานที่เสนอแล้ว PM ไม่อนุมัติ — ต้องรู้เหตุผล หายเองเมื่อกดรับทราบหรือพ้นช่วงแจ้ง */
+    for (const a of pm.asks ?? []) {
+      if (a.by !== meId || !a.no || a.gone) continue;
+      const day = a.no.at.slice(0, 10);
+      if (daysBetween(day, today) > DECIDED_DAYS) continue;
+      out.push({
+        id: `myask-no-${a.id}`,
+        level: "info",
+        group: "งานที่เสนอไม่ได้รับอนุมัติ",
+        title: a.name,
+        detail: a.no.why,
+        href: `${findLink("/my-tasks", a.name)}&stage=ask`,
+        date: day,
+      });
+    }
+    /* งานนอกโปรเจคที่อนุมัติแล้วเดินทางเดียวกับงานในโปรเจค (taskHomes) */
+    for (const p of taskHomes(pm)) {
       /*
        * ดีลถูกยกเลิก งานหยุด — แต่คนที่ถือใบงานอยู่ต้องรู้ ไม่ใช่ทำต่อไปเรื่อย ๆ แล้วมารู้ทีหลัง
        * (เจ้าของสั่ง 24 ก.ย. 2569) ขึ้นใบเดียวต่อโปรเจค ไม่ใช่ใบละงาน และหายเองเมื่อพ้นช่วงแจ้ง
@@ -752,6 +868,23 @@ export function buildNotices(input: {
         continue;
       }
       for (const [i, t] of p.tasks.entries()) {
+        /* ── งานของคนอื่นที่เราสั่ง (ผู้ตรวจ = ผู้สั่ง — ผู้ใช้สั่ง 27 ต.ค. 2569) ส่งมาแล้วรอเรา (ผู้ใช้สั่ง 21 ต.ค. 2569) ──
+           ทีมงานไม่มีหน้างานรอตรวจของ PM จึงพาไปแท็บ "รอฉันตรวจ" ในหน้างานที่ได้รับ */
+        if (t.status === "sent" && !t.whos.includes(meId) && reviewerOf(t, p) === meId) {
+          const sub = lastSub(t);
+          const waited = sub ? daysBetween(sub.at.split(" ")[0], today) : 0;
+          out.push({
+            id: `myreview-${p.pj}-${i}`,
+            level: waited >= 3 ? "late" : "soon",
+            group: "งานรอคุณตรวจ",
+            event: "taskreview",
+            title: `${p.cus} · ${t.name}`,
+            detail: `${memberName(sub?.by ?? t.whos[0] ?? "")} ส่งมา${waited > 0 ? `เมื่อ ${waited} วันก่อน` : "วันนี้"}`,
+            href: `${findLink("/my-tasks", t.name)}&stage=review`,
+            date: sub?.at.split(" ")[0] ?? t.due,
+          });
+          continue;
+        }
         if (!t.whos.includes(meId)) continue;
 
         /* ── งานที่เพิ่งมอบหมาย เพิ่งเลื่อนกำหนดส่ง หรือเพิ่งเปลี่ยนผู้รับผิดชอบ ──
@@ -783,7 +916,10 @@ export function buildNotices(input: {
             group: "งานตรวจผ่านแล้ว",
             event: "taskok",
             title: `${p.cus} · ${t.name}`,
-            detail: `PM ตรวจผ่านเมื่อ ${thaiDate(t.doneAt.slice(0, 10))} · เริ่มงานชิ้นถัดไปได้เลย`,
+            /* ชื่อผู้ตรวจจริง (= ผู้สั่ง) ไม่ใช่ "PM" เสมอ (ผู้ใช้สั่ง 21 · 27 ต.ค. 2569) */
+            detail: t.noReview
+              ? `ปิดงานเมื่อ ${thaiDate(t.doneAt.slice(0, 10))} (ไม่ต้องตรวจ) · เริ่มงานชิ้นถัดไปได้เลย`
+              : `${memberName(reviewerOf(t, p))} ตรวจผ่านเมื่อ ${thaiDate(t.doneAt.slice(0, 10))} · เริ่มงานชิ้นถัดไปได้เลย`,
             /* งานที่ผ่านแล้วอยู่แท็บ "ผ่านแล้ว" ต้องบอกหน้าให้สลับให้ ไม่งั้นกดไปแล้วไม่เจอใบนั้น */
             href: `${findLink("/my-tasks", t.name)}&stage=done`,
             date: t.doneAt.slice(0, 10),
@@ -804,6 +940,41 @@ export function buildNotices(input: {
             detail: nudge.tx,
             href: `${findLink("/my-tasks", t.name)}&stage=${t.status === "revise" ? "revise" : "recv"}`,
             date: nudge.at.slice(0, 10),
+          });
+        }
+
+        /* ── งานต่อกัน (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 8) ──
+           รอข้อมูลอยู่ = ยังส่งไม่ได้ จึงไม่เตือนให้ "ส่งงาน" · บอกเฉพาะตอนงานที่รออยู่เลยกำหนด ให้รู้ว่างานตัวเองจะเลื่อน
+           งานก่อนหน้าผ่านครบแล้ว → เริ่มงานได้ แทนการรอให้คนทำงานก่อนหน้ามาบอกในไลน์ */
+        const wait = blockers(p.tasks, t);
+        if (wait.length) {
+          const late = wait.filter((w) => daysBetween(w.due, today) > 0);
+          if (late.length) {
+            const worst = late.reduce((a, b) => (a.due < b.due ? a : b));
+            out.push({
+              id: `mytask-prevlate-${p.pj}-${i}`,
+              level: "info",
+              group: "งานก่อนหน้าเลยกำหนด",
+              event: "taskprevlate",
+              title: `${p.cus} · ${t.name}`,
+              detail: `รอ ${late.map((w) => w.name).join(", ")} · เลยกำหนด ${daysBetween(worst.due, today)} วัน — แจ้ง PM แล้ว`,
+              href: `${findLink("/my-tasks", t.name)}&stage=recv`,
+              date: worst.due,
+            });
+          }
+          continue;
+        }
+        const ready = readySince(p.tasks, t);
+        if (ready && daysBetween(ready.slice(0, 10), today) <= RECENT_DAYS) {
+          out.push({
+            id: `mytask-ready-${p.pj}-${i}`,
+            level: "soon",
+            group: "งานก่อนหน้าผ่านแล้ว เริ่มงานได้",
+            event: "taskready",
+            title: `${p.cus} · ${t.name}`,
+            detail: `${(t.after ?? []).join(", ")} ผ่านครบแล้ว · กำหนดส่ง ${thaiDate(t.due)}`,
+            href: `${findLink("/my-tasks", t.name)}&stage=recv`,
+            date: ready.slice(0, 10),
           });
         }
 
@@ -828,12 +999,16 @@ export function buildNotices(input: {
           out.push({
             id: `mytask-due-${p.pj}-${i}`,
             level: over > 0 ? "late" : "soon",
-            group: over > 0 ? "งานเลยกำหนดส่ง" : over === 0 ? "งานครบกำหนดวันนี้" : "งานครบกำหนดพรุ่งนี้",
+            group:
+              over > 0 ? "งานเลยกำหนดส่ง"
+              : over === 0 ? "งานครบกำหนดวันนี้"
+              : over === -1 ? "งานครบกำหนดพรุ่งนี้"
+              : `งานจะครบกำหนดใน ${-over} วัน`,
             event: over > 0 ? "taskoverdue" : "taskduesoon",
             title: `${p.cus} · ${t.name}`,
             detail:
               over > 0
-                ? `เลยกำหนด ${over} วัน ยังไม่ได้ส่งให้ PM ตรวจ`
+                ? `เลยกำหนด ${over} วัน ยังไม่ได้ส่งตรวจ`
                 : `ยังไม่ได้ส่ง · กำหนดส่ง ${thaiDate(t.due)}`,
             href: `${findLink("/my-tasks", t.name)}&stage=recv`,
             date: t.due,

@@ -78,7 +78,7 @@ const COLOR = Object.fromEntries(ALL_KINDS.map((k) => [k.key, k.color])) as Reco
  */
 const TASK_STATE: Record<string, { label: string; stage: string }> = {
   done: { label: "ส่งแล้ว", stage: "done" },
-  sent: { label: "รอ PM ตรวจ", stage: "sent" },
+  sent: { label: "รอตรวจ", stage: "sent" },
   revise: { label: "ต้องแก้ไข", stage: "revise" },
 };
 const TASK_TODO = { label: "ยังไม่ส่ง", stage: "recv" };

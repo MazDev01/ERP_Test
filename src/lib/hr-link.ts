@@ -489,6 +489,19 @@ export function useMySchedule(): DaySchedule {
   }, [hr.emp, role]);
 }
 
+/**
+ * ทดลองงานกับฝึกงานไม่มีโควต้าวันลา — ทดลองงานหยุดคือหักเงิน ฝึกงานหยุดคือหยุด
+ * จึงไม่แสดงการ์ดสิทธิ์คงเหลือและคำเตือนเกินสิทธิ์ (ผู้ใช้สั่ง 29 ต.ค. 2569)
+ */
+export function useNoLeaveQuota(): boolean {
+  const role = useRole();
+  const hr = useHr();
+  const me =
+    hr.emp.find((e) => e.id === ROLE_EMPLOYEE[role]) ??
+    hr.emp.find((e) => accountRoles(e.account).includes(role));
+  return me?.type === "probat" || me?.type === "intern";
+}
+
 /** เวลาทำงานของบทบาทที่ล็อกอินได้ (ใช้นอก React เช่นที่เก็บการแจ้งเตือน) */
 export function scheduleOfRole(emp: { id: string; pos?: string }[], role: Role): DaySchedule {
   const me = emp.find((e) => e.id === ROLE_EMPLOYEE[role]);

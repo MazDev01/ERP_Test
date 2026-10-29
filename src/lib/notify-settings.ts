@@ -47,11 +47,16 @@ export const NOTIFY_EVENTS = [
   // ── ทีมงานที่รับงานโปรเจค ──
   { key: "tasknew", title: "PM มอบหมายงานใหม่", action: "เริ่มทำ", level: "act", audience: "staff" },
   { key: "taskback", title: "PM ส่งงานกลับแก้", action: "แก้ แล้วส่งใหม่", level: "act", audience: "staff" },
-  { key: "taskduesoon", title: "งานครบกำหนดพรุ่งนี้ ยังไม่ส่ง", action: "ส่งงาน", level: "act", audience: "staff" },
+  /* เตือนล่วงหน้า 2 วันแทน "พรุ่งนี้" — PM ขอ (แผนที่ระบบ 20 ต.ค. 2569 หัวข้อ 8) */
+  { key: "taskduesoon", title: "งานจะครบกำหนดใน 2 วัน ยังไม่ส่ง", action: "ส่งงาน", level: "act", audience: "staff" },
+  { key: "taskready", title: "งานก่อนหน้าผ่านแล้ว เริ่มงานได้", action: "เริ่มทำ", level: "act", audience: "staff" },
+  { key: "taskprevlate", title: "งานก่อนหน้าที่รออยู่เลยกำหนด", action: "", level: "info", audience: "staff" },
   { key: "taskoverdue", title: "งานเลยกำหนด ยังไม่ส่ง", action: "ส่งงาน", level: "act", audience: "staff" },
   { key: "eventinvite", title: "PM เพิ่มเข้านัดหมาย", action: "เข้าร่วม", level: "act", audience: "staff" },
   { key: "chatnew", title: "มีข้อความใหม่ในแชทโปรเจค", action: "ตอบ", level: "act", audience: "staff" },
   { key: "taskok", title: "งานผ่านการตรวจ", action: "", level: "info", audience: "staff" },
+  /* ทีมงานที่สั่งงานคนอื่นเป็นผู้ตรวจงานนั้น — ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 21 · 27 ต.ค. 2569) */
+  { key: "taskreview", title: "มีงานส่งมาให้คุณตรวจ", action: "ตรวจ แล้วให้ผ่านหรือส่งกลับแก้", level: "act", audience: "staff" },
   { key: "eventchange", title: "PM เปลี่ยนเวลาหรือยกเลิกนัดหมาย", action: "", level: "info", audience: "staff" },
 
   // ── พนักงานขาย ──
@@ -87,15 +92,19 @@ export const NOTIFY_EVENTS = [
   { key: "probation", title: "พนักงานทดลองงานใกล้ครบกำหนด", action: "ประเมิน แล้วเปลี่ยนเป็นพนักงานประจำ", level: "act", audience: "hr" },
 
   // ── PM (GM ได้ชุดนี้ด้วย) ──
-  { key: "pmjob", title: "มีงานใหม่เข้า (งวด 1 ชำระแล้ว)", action: "รับงาน", level: "act", audience: "pm" },
+  /* GM มอบหมายงานให้ PM — PM รับงานเองไม่ได้แล้ว คีย์ pmjob ย้ายไปเป็นของ GM (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  { key: "pmassigned", title: "GM มอบหมายงานใหม่ให้คุณ", action: "วางแผนงาน", level: "act", audience: "pm" },
   { key: "pmreview", title: "พนักงานส่งงาน", action: "ตรวจ แล้วให้ผ่านหรือส่งกลับแก้", level: "act", audience: "pm" },
   { key: "pmlate", title: "งานในโปรเจคเลยกำหนด", action: "ติดตามคนทำ", level: "act", audience: "pm" },
+  { key: "pmprevlate", title: "งานเลยกำหนดและมีงานอื่นรออยู่", action: "ติดตามคนทำ หรือเลื่อนกำหนดงานที่รอ", level: "act", audience: "pm" },
   { key: "pmtransfer", title: "PM อีกคนโอนโปรเจคมาให้", action: "รับโปรเจค", level: "act", audience: "pm" },
   { key: "pmevent", title: "ใกล้ถึงเวลานัดหมายของตัวเอง", action: "เข้าร่วม", level: "act", audience: "pm" },
   { key: "pmcancel", title: "ดีลของโปรเจคที่ตัวเองดูแลถูกยกเลิก", action: "", level: "info", audience: "pm" },
 
   // ── GM ──
   { key: "gmapprove", title: "มีคำขอลา/โอที/เบิกค่าใช้จ่าย ที่ต้องให้ GM อนุมัติ", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "gm" },
+  /* คีย์เดิม pmjob — งานเข้าใหม่ (งวด 1 ชำระแล้ว) ตอนนี้ GM เป็นคนมอบหมาย PM (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  { key: "pmjob", title: "มีงานใหม่เข้า (งวด 1 ชำระแล้ว) รอมอบหมาย PM", action: "มอบหมาย PM", level: "act", audience: "gm" },
 
   // ── CEO (ไม่อยู่ในชุดพนักงานทุกคน) ──
   { key: "ceoapprove", title: "มีคำขอรออนุมัติ: ลาของ GM และบัญชีและบุคคล · โอทีของ SA/Dev · ค่าน้ำ ค่าไฟ อินเทอร์เน็ต", action: "อนุมัติหรือไม่อนุมัติ", level: "act", audience: "ceo" },

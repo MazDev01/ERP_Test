@@ -5,7 +5,8 @@
  *
  *   PM ส่งงานที่ตรวจผ่านแล้วให้ลูกค้า → ได้ลิงก์ /review/<token> หนึ่งรอบ (Draft N ต่องาน)
  *   ลูกค้าเปิดลิงก์ ไม่ต้องล็อกอิน → ดูไฟล์ คอมเมนต์ตามเวลาในวิดีโอ/ปักหมุดบนรูป → ส่งความเห็น หรืออนุมัติทั้งหมด
- *   PM เห็นความเห็น → ส่งให้ทีมแก้ (ใช้ทางตีกลับเดิม sendBackWork) หรือปิดงาน (approveWorkFlow)
+ *   ลูกค้าคอมเมนต์ → PM ส่งให้ทีมแก้ (ใช้ทางตีกลับเดิม sendBackWork) → ทีมส่งแก้ → PM ตรวจผ่าน = ส่งลูกค้ารอบใหม่
+ *   ลูกค้าอนุมัติ → งานปิดเองทันที (approveWorkFlow byClient) แก้/ตีกลับไม่ได้อีก (เจ้าของสั่ง 20 ต.ค. 2569)
  *
  * เฟส 1 ยังไม่มี backend ทุกอย่างอยู่ใน localStorage ของเบราว์เซอร์นี้ — ลิงก์จึงเปิดได้แค่ในเครื่องเดียวกัน
  * TODO เฟส 2: ตารางรอบตรวจที่เซิร์ฟเวอร์ + token แบบลงลายเซ็น (หมดอายุฝั่งเซิร์ฟเวอร์) + ที่เก็บไฟล์จริง
@@ -125,6 +126,46 @@ const DEMO_POSTER = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1280"
 <text x="90" y="400" font-family="sans-serif" font-size="34" fill="#ffd9de">Website intro · motion draft</text>
 </svg>`);
 
+/* แบนเนอร์คลินิกตัวอย่าง (รอบที่ลูกค้าคอมเมนต์แล้ว PM ส่งต่อให้ทีมแก้) */
+const DEMO_BANNER = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+<defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fdeff2"/><stop offset="1" stop-color="#f7d6de"/></linearGradient></defs>
+<rect width="1200" height="420" fill="url(#b)"/>
+<circle cx="930" cy="210" r="170" fill="#fff" opacity=".7"/><circle cx="930" cy="210" r="120" fill="#f2b8c6"/>
+<g font-family="sans-serif">
+<rect x="1010" y="28" width="150" height="44" rx="22" fill="#b0103a"/><text x="1036" y="57" font-size="18" font-weight="700" fill="#fff">ใสใส คลินิก</text>
+<text x="70" y="130" font-size="44" font-weight="800" fill="#5a0f22">เลเซอร์หน้าใส</text>
+<text x="70" y="185" font-size="30" font-weight="700" fill="#b0103a">โปรเดือนตุลาคม</text>
+<text x="70" y="245" font-size="15" fill="#7a5560">เหลือเพียง 1,990 บาท จากปกติ 3,500 บาท</text>
+<rect x="70" y="290" width="200" height="54" rx="27" fill="#b0103a"/><text x="112" y="324" font-size="19" font-weight="700" fill="#fff">จองคิวเลย</text>
+</g></svg>`);
+
+
+/* แบนเนอร์ร้านเค้กตัวอย่าง (รอบที่ลูกค้าคอมเมนต์แล้ว รอ PM ส่งต่อ) */
+const DEMO_CAKE = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+<rect width="1200" height="420" fill="#fbf1e4"/>
+<circle cx="900" cy="230" r="160" fill="#f3dcc0"/>
+<rect x="800" y="210" width="200" height="110" rx="14" fill="#8a5a3c"/><rect x="800" y="190" width="200" height="34" rx="12" fill="#f7e6ee"/>
+<rect x="895" y="140" width="10" height="50" fill="#f5a623"/><circle cx="900" cy="132" r="9" fill="#ffcf5a"/>
+<g font-family="sans-serif">
+<text x="70" y="70" font-size="22" font-weight="700" fill="#6b3f26">ใจงามเบเกอรี่</text>
+<text x="70" y="160" font-size="46" font-weight="800" fill="#4a2a18">เค้กวันเกิด</text>
+<text x="70" y="215" font-size="28" font-weight="700" fill="#a0673f">สั่งล่วงหน้า 2 วัน</text>
+<rect x="70" y="270" width="200" height="54" rx="27" fill="#d9b48f"/><text x="118" y="304" font-size="19" font-weight="700" fill="#fff">สั่งเค้ก</text>
+</g></svg>`);
+
+const DEMO_CAKE_POSTER = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="#4a2a18"/><circle cx="980" cy="200" r="240" fill="#fff" opacity=".06"/>
+<text x="90" y="340" font-family="sans-serif" font-size="64" font-weight="800" fill="#fff">ใจงามเบเกอรี่</text>
+<text x="90" y="410" font-family="sans-serif" font-size="32" fill="#f3dcc0">วิดีโอเปิดเว็บ · ร่างแรก</text>
+</svg>`);
+
+/* ภาพเฟรมของคอมเมนต์ในวิดีโอตัวอย่าง */
+const frameAt = (label: string) =>
+  svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="135" viewBox="0 0 240 135">
+<defs><linearGradient id="f" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b0000"/><stop offset="1" stop-color="#db0000"/></linearGradient></defs>
+<rect width="240" height="135" fill="url(#f)"/><text x="120" y="78" font-family="sans-serif" font-size="28" font-weight="700" fill="#fff" text-anchor="middle">${label}</text>
+</svg>`);
+
 /* token ตัวอย่าง — คงที่ เพื่อเปิดเดโมได้ทันที (ของจริงสุ่มด้วย newToken) */
 export const DEMO_TOKEN = "mtk7Qd2LxR9vWp4aZc";
 
@@ -192,6 +233,72 @@ const SEED: ReviewRound[] = [
       { id: "c-oct2-1", fileId: "f-oct2-cap", author: "พญ.อรวรรณ ใสสะอาด", text: "อนุมัติค่ะ โพสต์ที่ 4 ขอเปลี่ยนคำว่า 'หายขาด' เป็น 'ดูแลต่อเนื่อง' ตามกฎโฆษณาคลินิก", at: "2026-10-03 09:38", page: 2 },
     ],
   },
+  /*
+   * ตัวอย่างรอบที่ลูกค้าคอมเมนต์แล้ว แต่ PM ยังไม่ได้ส่งต่อ (เพิ่ม 20 ต.ค. 2569) — คู่กับงาน "ทำแบนเนอร์และวิดีโอเปิดหน้าเว็บ" ของ E05
+   * PM กดส่งให้ทีมแก้ → งานเป็นต้องแก้ไข ทีมเห็นรูปพร้อมหมุดในหน้างานที่ได้รับ
+   */
+  {
+    token: "jngBnrV5kQOct04Wd",
+    pj: "PJ-2569-0021",
+    taskName: "ทำแบนเนอร์และวิดีโอเปิดหน้าเว็บ",
+    round: 1,
+    createdAt: "2026-10-14 10:00",
+    createdBy: "ชนิกานต์ วัฒนกุล",
+    expiresAt: "2026-11-13",
+    message: "แบนเนอร์หน้าแรก 2 ขนาดและวิดีโอเปิดเว็บรอบแรกค่ะ ติดตรงไหนปักหมุดหรือคอมเมนต์ตามเวลาในวิดีโอได้เลยค่ะ",
+    contact: "วรรณา ใจงาม",
+    project: "เว็บไซต์และระบบสั่งเค้ก ใจงามเบเกอรี่",
+    files: [
+      { id: "f-oct4-desk", name: "แบนเนอร์-ใจงาม-เดสก์ท็อป.png", kind: "image", size: "740 KB", url: DEMO_CAKE },
+      { id: "f-oct4-mob", name: "แบนเนอร์-ใจงาม-มือถือ.png", kind: "image", size: "210 KB", local: true },
+      { id: "f-oct4-vid", name: "วิดีโอเปิดเว็บ-ใจงาม-20วิ.mp4", kind: "video", size: "8.4 MB", poster: DEMO_CAKE_POSTER, duration: 20, demo: true },
+    ],
+    status: "submitted",
+    submittedAt: "2026-10-15 20:30",
+    comments: [
+      { id: "c-oct4-1", fileId: "f-oct4-desk", author: "วรรณา ใจงาม", text: "ปุ่มสั่งเค้กสีจางไป ขอน้ำตาลเข้มแบบโลโก้ค่ะ", at: "2026-10-15 20:05", pin: { x: 14, y: 71, n: 1 } },
+      { id: "c-oct4-2", fileId: "f-oct4-desk", author: "วรรณา ใจงาม", text: "ภาพเค้กขอใหญ่ขึ้นอีกนิด ให้เห็นหน้าเค้ก", at: "2026-10-15 20:08", pin: { x: 75, y: 55, n: 2 } },
+      { id: "c-oct4-3", fileId: "f-oct4-desk", author: "วรรณา ใจงาม", text: "ชื่อร้านขอตัวใหญ่ขึ้นค่ะ", at: "2026-10-15 20:10", pin: { x: 12, y: 16, n: 3 } },
+      { id: "c-oct4-4", fileId: "f-oct4-mob", author: "วรรณา ใจงาม", text: "บนมือถือตัวหนังสือทับภาพเค้ก", at: "2026-10-15 20:14", pin: { x: 46, y: 52, n: 1 } },
+      { id: "c-oct4-5", fileId: "f-oct4-vid", author: "วรรณา ใจงาม", text: "ช่วงนี้ตัดภาพเร็วไป อยากให้ค้างภาพเค้กนานขึ้น", at: "2026-10-15 20:20", t: 6, frame: frameAt("0:06") },
+      { id: "c-oct4-6", fileId: "f-oct4-vid", author: "วรรณา ใจงาม", text: "ตอนจบขอใส่เบอร์โทรร้านด้วยค่ะ", at: "2026-10-15 20:24", t: 18, frame: frameAt("0:18") },
+    ],
+  },
+  /*
+   * ตัวอย่างรอบที่ PM ส่งความเห็นลูกค้าต่อให้ทีมแก้ (เพิ่ม 20 ต.ค. 2569 สำหรับสาธิตหมุดในหน้างานของทีม)
+   * คู่กับงาน "ทำแบนเนอร์หน้าเว็บคลินิก" ของ E05 ที่สถานะต้องแก้ไขอยู่แล้ว — forwardedAt ตรงกับ back.at ของงาน
+   * ไฟล์มือถือเป็น local ไม่มี url = ตัวอย่างไฟล์ที่เปิดไม่ได้นอกแท็บ PM (กรอบตัวแทนพร้อมหมุด)
+   * คอมเมนต์ c-oct3-4 PM ติ๊กแก้แล้ว — ทีมไม่เห็น
+   */
+  {
+    token: "sxBnrK8vTqOct03Zc",
+    pj: "PJ-2569-0022",
+    taskName: "ทำแบนเนอร์หน้าเว็บคลินิก",
+    round: 1,
+    createdAt: "2026-10-06 09:30",
+    createdBy: "ชนิกานต์ วัฒนกุล",
+    expiresAt: "2026-11-05",
+    message: "แบนเนอร์หน้าแรก 2 ขนาด และแบนเนอร์เคลื่อนไหวค่ะ ติดตรงไหนปักหมุดไว้ได้เลยค่ะ",
+    contact: "พญ.อรวรรณ ใสสะอาด",
+    project: "แคมเปญเลเซอร์หน้าใส คลินิกใสใส",
+    files: [
+      { id: "f-oct3-desk", name: "banner-ใสใส-เดสก์ท็อป.png", kind: "image", size: "620 KB", url: DEMO_BANNER },
+      { id: "f-oct3-mob", name: "banner-ใสใส-มือถือ.png", kind: "image", size: "160 KB", local: true },
+      { id: "f-oct3-vid", name: "แบนเนอร์เคลื่อนไหว-15วิ.mp4", kind: "video", size: "6.2 MB", poster: DEMO_POSTER, duration: 15, demo: true },
+    ],
+    status: "submitted",
+    submittedAt: "2026-10-06 19:40",
+    comments: [
+      { id: "c-oct3-1", fileId: "f-oct3-desk", author: "พญ.อรวรรณ ใสสะอาด", text: "ตัวอักษรราคาเล็กไป อยากให้ 1,990 บาทเด่นกว่านี้", at: "2026-10-06 19:20", pin: { x: 18, y: 58, n: 1 } },
+      { id: "c-oct3-2", fileId: "f-oct3-desk", author: "พญ.อรวรรณ ใสสะอาด", text: "โลโก้คลินิกต้องอยู่มุมซ้ายบนตามแบรนด์บุ๊กค่ะ", at: "2026-10-06 19:22", pin: { x: 90, y: 12, n: 2 } },
+      { id: "c-oct3-3", fileId: "f-oct3-desk", author: "พญ.อรวรรณ ใสสะอาด", text: "ปุ่มจองคิวขอเป็นสีเดียวกับเว็บหลัก", at: "2026-10-06 19:25", pin: { x: 14, y: 76, n: 3 } },
+      { id: "c-oct3-4", fileId: "f-oct3-desk", author: "พญ.อรวรรณ ใสสะอาด", text: "พื้นหลังชมพูอ่อนกว่านี้นิดนึง", at: "2026-10-06 19:27", done: true },
+      { id: "c-oct3-5", fileId: "f-oct3-mob", author: "พญ.อรวรรณ ใสสะอาด", text: "บนมือถือราคาอ่านไม่ออกเลยค่ะ", at: "2026-10-06 19:31", pin: { x: 50, y: 64, n: 1 } },
+      { id: "c-oct3-6", fileId: "f-oct3-mob", author: "พญ.อรวรรณ ใสสะอาด", text: "โลโก้ย้ายมาซ้ายบนเหมือนเดสก์ท็อป", at: "2026-10-06 19:33", pin: { x: 80, y: 10, n: 2 } },
+      { id: "c-oct3-7", fileId: "f-oct3-vid", author: "พญ.อรวรรณ ใสสะอาด", text: "ช่วงนี้โลโก้ขึ้นช้าไป ขอให้ขึ้นตั้งแต่วินาทีแรก", at: "2026-10-06 19:36", t: 4, frame: frameAt("0:04") },
+    ],
+    forwardedAt: "2026-10-07",
+  },
 ];
 
 const INITIAL: ClientReviewState = { rounds: SEED };
@@ -234,11 +341,29 @@ if (typeof window !== "undefined") {
     if (e.key !== STORE_KEY || !e.newValue) return;
     try {
       const v: unknown = JSON.parse(e.newValue);
-      if (isState(v)) store.set(migrate(v));
+      if (isState(v)) {
+        store.set(migrate(v));
+        syncClientOk();
+      }
     } catch {
       // ข้อมูลเสีย — คงของเดิมไว้
     }
   });
+}
+
+/*
+ * ลูกค้าอนุมัติในอีกแท็บ — สโตร์ของ PM ในแท็บนี้ยังถือของเก่า ปิดงานซ้ำในแท็บนี้ด้วย
+ * ไม่งั้นแท็บ PM เขียนทับสถานะ "เสร็จแล้ว" ที่แท็บลูกค้าเพิ่งบันทึก ตอน PM กดอะไรสักอย่าง
+ */
+function syncClientOk() {
+  const pm = pmSnapshot();
+  const s = store.get();
+  for (const r of s.rounds) {
+    if (r.status !== "approved" || !r.closedAt) continue;
+    if (latestRound(s, r.pj, r.taskName)?.token !== r.token) continue;
+    const t = pm.projects.find((p) => isRef(p, r.pj))?.tasks.find((x) => x.name === r.taskName);
+    if (t && !t.clientOk) approveWorkFlow(r.pj, r.taskName, r.closedAt, true);
+  }
 }
 
 export function useClientReviews() {
@@ -443,7 +568,7 @@ export function closeFromClient(token: string) {
   const r = findRound(store.get(), token);
   if (!r) return;
   const at = bkkStamp();
-  approveWorkFlow(r.pj, r.taskName, at);
+  approveWorkFlow(r.pj, r.taskName, at, true);
   patchRound(token, (x) => ({ ...x, closedAt: at }));
 }
 
@@ -484,7 +609,14 @@ export function submitRound(token: string, all: boolean) {
   const at = bkkStamp();
   const files = all ? r.files.map((f) => ({ ...f, approved: true })) : r.files;
   const approved = files.every((f) => f.approved) && (all || r.comments.length === 0);
-  patchRound(token, (x) => ({ ...x, files, status: approved ? "approved" : "submitted", submittedAt: at }));
+  /* ลูกค้าอนุมัติ = งานเสร็จทันที ไม่ต้องรอ PM กดปิด */
+  patchRound(token, (x) => ({
+    ...x,
+    files,
+    status: approved ? "approved" : "submitted",
+    submittedAt: at,
+    ...(approved ? { closedAt: at } : {}),
+  }));
   addProjectAct(r.pj, {
     kind: "status",
     who: r.contact || "ลูกค้า",
@@ -493,6 +625,12 @@ export function submitRound(token: string, all: boolean) {
       ? `ลูกค้าอนุมัติ ${r.taskName} รอบที่ ${r.round}`
       : `ลูกค้าส่งความเห็น ${r.comments.length} จุด ใน ${r.taskName} รอบที่ ${r.round}`,
   });
+  if (approved) approveWorkFlow(r.pj, r.taskName, at, true);
+}
+
+/** งานใบนี้เคยส่งให้ลูกค้าตรวจแล้ว — ต้องจบด้วยลูกค้าอนุมัติ PM ตรวจผ่านเองไม่ได้ */
+export function needsClientOk(s: ClientReviewState, pj: string, taskName: string) {
+  return s.rounds.some((r) => r.pj === pj && r.taskName === taskName);
 }
 
 /* ชื่อผู้คอมเมนต์ที่ลูกค้าแก้ไว้ — จำต่อเบราว์เซอร์ */

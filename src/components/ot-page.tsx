@@ -112,8 +112,10 @@ export function OtPage() {
     (a, b) => b.date.localeCompare(a.date) || b.submittedAt.localeCompare(a.submittedAt),
   );
 
+  /* โอทีวันแรงงานมีปีละวัน นับทั้งปีของเดือนที่ดู · เรตอื่นนับเดือนเดิม (ผู้ใช้สั่ง 27 ต.ค. 2569) */
   function hoursOfKind(kind: OtKind) {
-    return inMonth
+    const base = kind === "public" ? records.filter((r) => r.date.startsWith(`${view.getFullYear()}-`)) : inMonth;
+    return base
       .filter((r) => otKindOf(r.date) === kind)
       .reduce((sum, r) => sum + paidHours(r), 0);
   }
@@ -190,7 +192,7 @@ export function OtPage() {
               </span>
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              อนุมัติแล้วในเดือนนี้
+              {kind === "public" ? "อนุมัติแล้วในปีนี้" : "อนุมัติแล้วในเดือนนี้"}
             </p>
           </div>
         ))}

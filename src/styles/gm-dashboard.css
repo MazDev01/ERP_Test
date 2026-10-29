@@ -1,0 +1,269 @@
+/* แดชบอร์ด GM — ตามต้นแบบ gm-dashboard.html (21 ต.ค. 2569) ใช้ใน gm-dashboard-page.tsx เท่านั้น
+   ทุกอย่างอยู่ใต้ .gmd-page — สีเป็นตัวแปรของหน้านี้เอง ไม่แตะโทเคนกลาง
+   สีตัวหนังสือปรับเข้มกว่าต้นแบบเล็กน้อยให้ผ่าน 4.5:1 (ink-mute #8D97AD → #687290 · ตัวหนังสือสีแดงช้า/เขียวตามแผนใช้รุ่น -ink)
+   สีพื้นของแท่ง/โดนัท/ไอคอนคงตามต้นแบบ */
+.gmd-page{
+  --maz-red:#D0021B; --gmd-red-dark:#9C0014; --gmd-red-soft:#FDECEE; --gmd-red-line:#F6C9D0;
+  --gmd-bg:#F5F7FB; --gmd-line:#E8EDF4; --gmd-line-soft:#EEF1F6;
+  --gmd-ink:#1F2A44; --gmd-ink-soft:#5B6782; --gmd-ink-mute:#687290;
+  --gmd-ok:#3FA97F; --gmd-ok-ink:#1E7A55; --gmd-late:#E5485F; --gmd-late-ink:#C2283E;
+  --gmd-amber:#E9A23B; --gmd-blue:#5B8FE6; --gmd-idle:#B4BBCB; --gmd-track:#EEF1F8; --gmd-open:#C9CFDC;
+  --gmd-axis:#E3E7EF; --gmd-tick:#C9CFDC;
+  --gmd-tint-red:#FDE3E8; --gmd-tint-blue:#E6F0FE; --gmd-tint-amber:#FDF0D5; --gmd-tint-purple:#F1E6FD; --gmd-purple:#9B5DE5;
+}
+.gmd-page,.gmd-page *{box-sizing:border-box}
+.gmd-page [hidden]{display:none !important}
+.gmd-page a{color:inherit;text-decoration:none}
+.gmd-page button{font-family:inherit;cursor:pointer}
+.gmd-page h2{margin:0}
+.gmd-page ul{list-style:none;margin:0;padding:0}
+
+/* พื้นที่เนื้อหาของต้นแบบเริ่มชิดแถบข้าง/หัว — หักระยะขอบของ <main> ใน app-shell ออก แล้วใช้ระยะของต้นแบบเอง */
+.gmd-page{margin:-18px -16px 0;background:var(--gmd-bg);color:var(--gmd-ink)}
+@media (min-width:640px){ .gmd-page{margin-left:-30px;margin-right:-30px} }
+@media (min-width:768px){ .gmd-page{margin-bottom:-40px} }
+
+/* ===== เนื้อหาแดชบอร์ด ===== */
+.gmd-page{padding:18px 22px 32px 27px;font-size:13px;line-height:1.45;min-width:0}
+.gmd-page .gmd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.gmd-page .gmd-h1{margin:0;font-size:24px;line-height:32px;font-weight:600;padding-left:6px}
+.gmd-page .gmd-h1-line{display:block;width:36px;height:3px;border-radius:2px;background:var(--maz-red);margin:2px 0 15px 6px}
+
+.gmd-page .gmd-kpis{display:grid;grid-template-columns:minmax(0,332fr) minmax(0,327fr) minmax(0,334fr) minmax(0,341fr);gap:17px}
+.gmd-page .gmd-grid{display:grid;grid-template-columns:minmax(0,676fr) minmax(0,334fr) minmax(0,341fr);gap:17px;margin-top:20px;align-items:start}
+.gmd-page .gmd-col{display:flex;flex-direction:column;min-width:0}
+
+.gmd-page .gmd-card{background:#fff;border:1px solid var(--gmd-line);border-radius:14px;box-shadow:0 1px 2px rgba(30,45,80,.04);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+/* ความสูงตามต้นแบบ — การ์ดรายการใช้ min-height ให้ยืดได้ถ้าข้อมูลยาวกว่า (เช่นเดือนที่มี 6 สัปดาห์) · กราฟย่อต้องสูงคงที่ */
+.gmd-page .gmd-h-apv{min-height:308px}
+.gmd-page .gmd-h-prj{min-height:321px;margin-top:17px}
+.gmd-page .gmd-h-att{min-height:360px}
+.gmd-page .gmd-h-wl{min-height:264px;margin-top:22px}
+.gmd-page .gmd-h-cal{min-height:307px}
+.gmd-page .gmd-h-ot{height:185px;margin-top:18px}
+.gmd-page .gmd-h-fuel{height:121px;margin-top:20px}
+
+/* KPI */
+.gmd-page .gmd-kpi{height:110px;padding:13px 18px 0 19px;flex-direction:row;gap:24px;position:relative}
+.gmd-page .gmd-kpi:hover{border-color:var(--gmd-red-line)}
+.gmd-page .gmd-kpi-ic{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.gmd-page .gmd-kpi-ic svg{width:26px;height:26px;stroke-width:1.8}
+.gmd-page .gmd-tint-red{background:var(--gmd-tint-red);color:var(--maz-red)}
+.gmd-page .gmd-tint-blue{background:var(--gmd-tint-blue);color:var(--gmd-blue)}
+.gmd-page .gmd-tint-amber{background:var(--gmd-tint-amber);color:var(--gmd-amber)}
+.gmd-page .gmd-tint-purple{background:var(--gmd-tint-purple);color:var(--gmd-purple)}
+.gmd-page .gmd-kpi-body{flex:1;min-width:0;padding-top:4px}
+.gmd-page .gmd-kpi-lbl{display:block;font-size:13px;font-weight:500;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-kpi-val{display:block;font-size:29px;font-weight:600;line-height:36px;margin-top:2px}
+.gmd-page .gmd-kpi-val.gmd-late{color:var(--gmd-late-ink)}
+.gmd-page .gmd-kpi-val small{font-size:19px;font-weight:500;color:var(--gmd-ink-soft);margin-left:6px}
+.gmd-page .gmd-kpi-sub{display:block;font-size:12px;color:var(--gmd-ink-mute);line-height:18px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-kpi-sub.gmd-warn{color:var(--maz-red)}
+.gmd-page .gmd-kpi-go{position:absolute;right:14px;top:22px;color:var(--gmd-ink-mute)}
+.gmd-page .gmd-kpi-go svg{width:16px;height:16px;display:block}
+
+/* หัวการ์ด */
+.gmd-page .gmd-ch{display:flex;align-items:center;gap:10px;padding:14px 18px 11px 19px;border-bottom:1px solid var(--gmd-line-soft);flex:none}
+.gmd-page .gmd-ch-ic{width:30px;height:30px;border-radius:8px;background:var(--gmd-tint-red);color:var(--maz-red);display:flex;align-items:center;justify-content:center;flex:none}
+.gmd-page .gmd-ch-ic svg{width:17px;height:17px;stroke-width:1.8}
+.gmd-page .gmd-ch-t{font-size:16px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-btn-o{border:1px solid var(--gmd-red-line);background:#fff;color:var(--maz-red);border-radius:16px;padding:0 13px;height:28px;font-size:12px;font-weight:500;display:inline-flex;align-items:center;white-space:nowrap;flex:none}
+.gmd-page .gmd-btn-o:hover{background:var(--gmd-red-soft)}
+.gmd-page .gmd-cb{padding:10px 19px 14px;flex:1;min-height:0;display:flex;flex-direction:column}
+.gmd-page .gmd-cb-top{padding-top:12px}
+.gmd-page .gmd-empty{margin:12px 0 0;font-size:13px;color:var(--gmd-ink-soft)}
+
+/* รออนุมัติ */
+.gmd-page .gmd-tabs{display:flex;gap:8px;flex:none;flex-wrap:wrap}
+.gmd-page .gmd-tab{height:27px;padding:0 20px;border-radius:14px;border:0;background:#EEF2FA;color:var(--gmd-ink-soft);font-size:12px;font-weight:500}
+.gmd-page .gmd-tab[aria-selected="true"]{background:var(--maz-red);color:#fff}
+.gmd-page .gmd-apv-list{flex:1;min-height:0;margin-top:6px}
+.gmd-page .gmd-apv-row{display:flex;align-items:center;gap:12px;height:52px;border-bottom:1px solid var(--gmd-line-soft);padding:0 6px}
+.gmd-page .gmd-apv-list li:last-child .gmd-apv-row{border-bottom:0}
+.gmd-page .gmd-apv-row:hover{background:#FBFCFE}
+.gmd-page .gmd-apv-main{flex:1;min-width:0}
+.gmd-page .gmd-apv-name{display:block;font-size:14px;font-weight:600;line-height:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-apv-det{display:block;font-size:12px;color:var(--gmd-ink-mute);line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-apv-age{font-size:13px;font-weight:600;color:var(--gmd-ink-soft);white-space:nowrap}
+.gmd-page .gmd-apv-age.gmd-old{color:var(--maz-red)}
+.gmd-page .gmd-more{flex:none;display:flex;align-items:center;justify-content:center;gap:6px;height:32px;border-radius:9px;background:#FEF2F5;color:var(--maz-red);font-size:12px;font-weight:500;margin-top:4px}
+.gmd-page .gmd-more svg{width:14px;height:14px}
+
+/* การเข้างานวันนี้ — โดนัท */
+.gmd-page .gmd-donut-wrap{display:flex;justify-content:center;padding:6px 0 4px;position:relative}
+.gmd-page .gmd-donut-c{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;pointer-events:none}
+.gmd-page .gmd-donut-n{font-size:26px;font-weight:600;line-height:30px}
+.gmd-page .gmd-donut-s{font-size:12px;color:var(--gmd-ink-soft)}
+.gmd-page .gmd-leg{margin-top:8px}
+.gmd-page .gmd-leg li{display:flex;align-items:center;gap:10px;height:24px;font-size:13px}
+.gmd-page .gmd-leg i{width:10px;height:10px;border-radius:50%;flex:none}
+.gmd-page .gmd-leg b{margin-left:auto;font-weight:600}
+.gmd-page .gmd-att-foot{display:flex;align-items:center;gap:8px;border-top:1px solid var(--gmd-line-soft);margin-top:auto;padding-top:9px}
+.gmd-page .gmd-att-foot > span{flex:1;min-width:0}
+.gmd-page .gmd-att-foot svg{width:16px;height:16px;color:var(--gmd-ink-mute);flex:none}
+.gmd-page .gmd-lbl{display:block;font-size:11px;color:var(--gmd-ink-mute);line-height:15px}
+.gmd-page .gmd-val{display:block;font-size:13px;font-weight:600;line-height:18px}
+.gmd-page .gmd-mt3{margin-top:3px}
+
+/* ปฏิทิน */
+.gmd-page .gmd-cal-nav{display:flex;align-items:center;justify-content:space-between;flex:none}
+.gmd-page .gmd-cal-btn{width:40px;height:34px;border-radius:9px;border:1px solid var(--gmd-line);background:#fff;color:var(--gmd-ink-soft);display:flex;align-items:center;justify-content:center;padding:0}
+.gmd-page .gmd-cal-btn svg{width:16px;height:16px}
+.gmd-page .gmd-cal-m{font-size:15px;font-weight:600}
+.gmd-page .gmd-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));row-gap:8px;margin-top:10px;text-align:center}
+.gmd-page .gmd-cal-wd{font-size:12px;color:var(--gmd-ink-soft);height:20px;line-height:20px}
+.gmd-page .gmd-cal-d{display:block;height:24px;line-height:24px;font-size:12px;margin:0 auto;width:100%;max-width:32px;border-radius:6px;color:var(--gmd-ink)}
+.gmd-page .gmd-cal-d.gmd-ev{background:var(--gmd-tint-red);color:var(--maz-red);font-weight:500}
+.gmd-page .gmd-cal-d.gmd-today{background:var(--maz-red);color:#fff;font-weight:600}
+.gmd-page a.gmd-cal-d:hover{outline:1px solid var(--gmd-red-line)}
+
+/* ตัวอธิบายสี */
+.gmd-page .gmd-legend{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:12px;color:var(--gmd-ink-soft);flex:none}
+.gmd-page .gmd-legend span{display:inline-flex;align-items:center;gap:8px}
+.gmd-page .gmd-sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.gmd-page .gmd-sw-mark{width:2px;height:12px;border-radius:1px;background:var(--gmd-ink-mute);display:inline-block;margin:0 4px}
+
+/* ความคืบหน้าโปรเจค */
+.gmd-page .gmd-prj-list{margin-top:4px}
+.gmd-page .gmd-prj{display:flex;align-items:center;gap:18px;height:56px}
+.gmd-page .gmd-prj-n{width:150px;flex:none;min-width:0}
+.gmd-page .gmd-prj-t{display:block;font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-prj-c{display:block;font-size:11px;color:var(--gmd-ink-mute);line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-prj-bar{flex:1;position:relative;height:10px;background:var(--gmd-track);border-radius:5px}
+.gmd-page .gmd-prj-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--gmd-ok)}
+.gmd-page .gmd-prj-fill.gmd-behind{background:var(--gmd-late)}
+.gmd-page .gmd-prj-mark{position:absolute;top:-3px;width:2px;height:16px;background:var(--gmd-ink-mute);border-radius:1px;margin-left:-1px}
+.gmd-page .gmd-prj-s{width:76px;flex:none;text-align:right}
+.gmd-page .gmd-prj-st{display:block;font-size:12px;font-weight:600;line-height:17px}
+.gmd-page .gmd-prj-st.gmd-late{color:var(--gmd-late-ink)}
+.gmd-page .gmd-prj-st.gmd-ok{color:var(--gmd-ok-ink)}
+.gmd-page .gmd-prj-cnt{display:block;font-size:11px;color:var(--gmd-ink-mute);line-height:16px;white-space:nowrap}
+
+/* การทำงานรายคน (การ์ดเล็ก) */
+.gmd-page .gmd-card-sm .gmd-ch{padding:11px 16px 9px 18px}
+.gmd-page .gmd-card-sm .gmd-ch-t{font-size:14px}
+.gmd-page .gmd-card-sm .gmd-ch-ic{width:26px;height:26px}
+.gmd-page .gmd-card-sm .gmd-btn-o{height:24px;font-size:11px;padding:0 10px}
+.gmd-page .gmd-card-sm .gmd-cb{padding:8px 16px 10px 18px}
+.gmd-page .gmd-card-sm .gmd-legend{font-size:11px}
+.gmd-page .gmd-wl{margin-top:6px;flex:1;min-height:0}
+.gmd-page .gmd-wl li{display:flex;align-items:center;gap:10px;height:26px}
+.gmd-page .gmd-wl-n{width:62px;flex:none;min-width:0}
+.gmd-page .gmd-wl-name{display:block;font-size:11px;font-weight:600;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-wl-pos{display:block;font-size:9.5px;color:var(--gmd-ink-mute);line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-wl-bar{flex:1;height:6px;border-radius:3px;background:var(--gmd-track);position:relative}
+.gmd-page .gmd-wl-open{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--gmd-open)}
+.gmd-page .gmd-wl-late{position:absolute;top:0;bottom:0;border-radius:0 3px 3px 0;background:var(--gmd-late)}
+.gmd-page .gmd-wl-c{width:40px;text-align:right;font-size:11px;color:var(--gmd-ink-soft);flex:none;white-space:nowrap}
+.gmd-page .gmd-wl-more{font-size:11px;color:var(--maz-red);flex:none;text-align:right;line-height:14px}
+
+/* กราฟย่อ OT / ค่าน้ำมัน */
+.gmd-page .gmd-mini{padding:11px 16px 8px 18px;display:flex;flex-direction:column;height:100%;min-height:0}
+.gmd-page .gmd-mini-t{font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmd-page .gmd-mini-v{display:block;font-size:19px;font-weight:600;line-height:24px}
+.gmd-page .gmd-h-fuel .gmd-chart{margin-top:4px}
+.gmd-page .gmd-chart{flex:1;min-height:0;position:relative}
+.gmd-page .gmd-chart svg{display:block;position:absolute;inset:0;overflow:visible}
+.gmd-page .gmd-ax{font-size:9.5px;fill:var(--gmd-ink-mute);font-family:inherit}
+.gmd-page .gmd-ax-x{font-size:9.5px;fill:var(--gmd-ink-soft);font-family:inherit;font-weight:500}
+.gmd-page .gmd-pill-t{font-size:10.5px;font-weight:600;fill:var(--gmd-ink);font-family:inherit}
+
+/* ป้ายลอย */
+.gmd-page .gmd-tip{position:fixed;z-index:50;background:var(--gmd-ink);color:#fff;font-size:12px;line-height:17px;padding:6px 9px;border-radius:7px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.gmd-page .gmd-tip b,.gmd-page .gmd-tip span{display:block}
+.gmd-page .gmd-tip b{font-weight:600}
+
+@media (max-width:1440px){
+  .gmd-page .gmd-ch-t{font-size:14px}
+  .gmd-page .gmd-card-sm .gmd-ch-t{font-size:13px}
+}
+@media (max-width:1366px){
+  .gmd-page{padding:16px 16px 28px 18px}
+  .gmd-page .gmd-kpis,.gmd-page .gmd-grid{gap:12px}
+  .gmd-page .gmd-kpi{padding:13px 12px 0 14px;gap:12px}
+  .gmd-page .gmd-kpi-ic{width:42px;height:42px;border-radius:12px}
+  .gmd-page .gmd-kpi-ic svg{width:22px;height:22px}
+  .gmd-page .gmd-kpi-val{font-size:25px;line-height:32px}
+  .gmd-page .gmd-kpi-val small{font-size:16px}
+  .gmd-page .gmd-kpi-go{right:10px}
+  .gmd-page .gmd-ch{padding:12px 12px 10px 14px;gap:8px}
+  .gmd-page .gmd-ch-ic{width:26px;height:26px}
+  .gmd-page .gmd-btn-o{padding:0 9px;font-size:11px;height:26px}
+  .gmd-page .gmd-cb,.gmd-page .gmd-card-sm .gmd-cb,.gmd-page .gmd-mini{padding-left:14px;padding-right:12px}
+  .gmd-page .gmd-prj-n{width:128px}
+  .gmd-page .gmd-prj{gap:12px}
+  .gmd-page .gmd-card-sm .gmd-ch-ic{display:none}
+  .gmd-page .gmd-card-sm .gmd-btn-o{padding:0 8px}
+}
+@media (max-width:1199px){
+  .gmd-page .gmd-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gmd-page .gmd-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .gmd-page .gmd-col-a{grid-column:1 / -1}
+}
+@media (max-width:860px){
+  .gmd-page .gmd-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .gmd-page{padding:14px 16px 24px}
+  .gmd-page .gmd-kpis{grid-template-columns:minmax(0,1fr);gap:12px}
+  .gmd-page .gmd-grid{gap:12px;margin-top:12px}
+  .gmd-page .gmd-col .gmd-card{margin-top:12px}
+  .gmd-page .gmd-col .gmd-card:first-child{margin-top:0}
+  .gmd-page .gmd-card:not(.gmd-kpi){min-height:0}
+  .gmd-page .gmd-h-ot,.gmd-page .gmd-h-fuel{height:auto}
+  .gmd-page .gmd-ch-t{white-space:normal}
+  .gmd-page .gmd-prj{flex-wrap:wrap;height:auto;padding:8px 0;gap:6px 12px}
+  .gmd-page .gmd-prj-n{width:auto;flex:1}
+  .gmd-page .gmd-prj-bar{order:3;flex-basis:100%}
+  .gmd-page .gmd-chart{height:110px;flex:none}
+}
+
+/* ---------- อนิเมชันตอนเปิดหน้า (ผู้ใช้สั่ง 21 ต.ค. 2569) ----------
+   ทุกอย่างอยู่ใต้ .gmd-intro ซึ่งอยู่บนหน้าแค่ช่วงแรก (useIntro) — เปลี่ยนช่วงเวลาแล้วไม่เล่นซ้ำ
+   ลำดับ: หัวหน้า → การ์ดตัวเลขทีละใบ → การ์ดในแต่ละคอลัมน์ไล่ซ้ายไปขวา → แท่ง/เส้นกราฟค่อย ๆ วาด */
+@keyframes gmd-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes gmd-fade{from{opacity:0}to{opacity:1}}
+@keyframes gmd-grow-x{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes gmd-grow-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes gmd-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes gmd-spin-in{from{opacity:0;transform:rotate(-120deg) scale(.82)}to{opacity:1;transform:none}}
+@keyframes gmd-line-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
+.gmd-intro .gmd-head{animation:gmd-rise .5s cubic-bezier(.2,.8,.2,1) both}
+.gmd-intro .gmd-h1-line{transform-origin:left;animation:gmd-line-grow .6s cubic-bezier(.2,.8,.2,1) .15s both}
+
+/* การ์ดตัวเลข — ขึ้นทีละใบ */
+.gmd-intro .gmd-kpis > .gmd-card{animation:gmd-rise .55s cubic-bezier(.2,.8,.2,1) both}
+.gmd-intro .gmd-kpis > .gmd-card:nth-child(1){animation-delay:.08s}
+.gmd-intro .gmd-kpis > .gmd-card:nth-child(2){animation-delay:.14s}
+.gmd-intro .gmd-kpis > .gmd-card:nth-child(3){animation-delay:.2s}
+.gmd-intro .gmd-kpis > .gmd-card:nth-child(4){animation-delay:.26s}
+
+/* การ์ดในตาราง — คอลัมน์ไล่ซ้ายไปขวา ใบล่างตามใบบน */
+.gmd-intro .gmd-col > .gmd-card{animation:gmd-rise .6s cubic-bezier(.2,.8,.2,1) both}
+.gmd-intro .gmd-col:nth-child(1) > .gmd-card:nth-child(1){animation-delay:.32s}
+.gmd-intro .gmd-col:nth-child(2) > .gmd-card:nth-child(1){animation-delay:.38s}
+.gmd-intro .gmd-col:nth-child(3) > .gmd-card:nth-child(1){animation-delay:.44s}
+.gmd-intro .gmd-col:nth-child(1) > .gmd-card:nth-child(2){animation-delay:.5s}
+.gmd-intro .gmd-col:nth-child(2) > .gmd-card:nth-child(2){animation-delay:.56s}
+.gmd-intro .gmd-col:nth-child(3) > .gmd-card:nth-child(2){animation-delay:.62s}
+.gmd-intro .gmd-col:nth-child(3) > .gmd-card:nth-child(3){animation-delay:.68s}
+
+/* แท่งความคืบหน้าและงานรายคน — ยืดจากซ้าย หลังการ์ดขึ้นมาแล้ว */
+.gmd-intro .gmd-prj-fill,.gmd-intro .gmd-wl-open{transform-origin:left center;animation:gmd-grow-x .9s cubic-bezier(.2,.8,.2,1) .75s both}
+.gmd-intro .gmd-wl-late{transform-origin:left center;animation:gmd-grow-x .5s cubic-bezier(.2,.8,.2,1) 1.35s both}
+.gmd-intro .gmd-prj-mark{animation:gmd-fade .4s ease-out 1.4s both}
+
+/* โดนัทการเข้างาน — หมุนเข้ามา */
+.gmd-intro .gmd-donut-wrap > svg{animation:gmd-spin-in 1s cubic-bezier(.2,.8,.2,1) .55s both}
+.gmd-intro .gmd-donut-c{animation:gmd-fade .5s ease-out .9s both}
+
+/* กราฟ OT — เส้นวาดจากซ้ายไปขวา พื้นจางตามมา · กราฟค่าน้ำมัน — แท่งโตจากฐาน (หน่วงทีละแท่งใน tsx) */
+.gmd-intro .gmd-line-draw{stroke-dasharray:1;animation:gmd-draw 1.2s cubic-bezier(.4,0,.2,1) .8s both}
+.gmd-intro .gmd-area{animation:gmd-fade .7s ease-out 1.4s both}
+.gmd-intro .gmd-pop{animation:gmd-fade .35s ease-out 1.9s both}
+.gmd-intro .gmd-bar{transform-box:fill-box;transform-origin:50% 100%;animation:gmd-grow-y .7s cubic-bezier(.2,.8,.2,1) both}
+
+@media (prefers-reduced-motion:reduce){
+  .gmd-intro,.gmd-intro *{animation:none !important}
+}

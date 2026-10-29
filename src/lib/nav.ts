@@ -307,7 +307,21 @@ const HR: NavItem[] = [
  * เพราะผู้ใช้เอาเมนูนี้ออกจาก PM แล้ว GM จึงเป็นคนเดียวที่ใช้งาน
  */
 const GM: NavItem[] = [
-  { group: "ผู้จัดการทั่วไป", label: "แดชบอร์ด", icon: "chart", href: "/gm/dashboard" },
+  /* ประสิทธิภาพพนักงานเป็นเมนูย่อยของแดชบอร์ด GM — หน้ารายคน /gm/performance/<รหัส> ไฮไลต์เมนูย่อยนี้ด้วย (ผู้ใช้สั่ง 26 ต.ค. 2569) */
+  {
+    group: "ผู้จัดการทั่วไป",
+    label: "แดชบอร์ด",
+    icon: "chart",
+    href: "/gm/dashboard",
+    sub: [
+      { label: "ภาพรวม", href: "/gm/dashboard", title: "แดชบอร์ด" },
+      {
+        label: "ประสิทธิภาพพนักงาน",
+        href: "/gm/performance",
+        on: (p) => p === "/gm/performance" || p.startsWith("/gm/performance/"),
+      },
+    ],
+  },
   { group: "ผู้จัดการทั่วไป", label: "งานเข้าใหม่", icon: "inbox", href: "/pm/inbox" },
   { group: "ผู้จัดการทั่วไป", label: "โปรเจค", icon: "project", href: "/pm/projects" },
   { group: "ผู้จัดการทั่วไป", label: "ตารางงาน", icon: "leave", href: "/gm/calendar" },
@@ -655,8 +669,15 @@ function matchIn(items: NavItem[], pathname: string) {
     items.find((item) => item.sub?.some((s) => s.href === pathname)) ??
     items.find((item) => item.href === pathname) ??
     /* ต้องตัดที่ "/" — ไม่งั้น /presales-work (ทีมก่อนการขาย) ไปติดเมนู /presales ของฝ่ายขาย */
-    items.find((item) => item.href !== "/" && pathname.startsWith(item.href + "/"))
+    items.find((item) => item.href !== "/" && pathname.startsWith(item.href + "/")) ??
+    /* หน้าลึกใต้เมนูย่อย เช่น /gm/performance/<รหัส> ใต้ "ประสิทธิภาพพนักงาน" — ค้นท้ายสุด ของเดิมไม่เปลี่ยน (ผู้ใช้สั่ง 26 ต.ค. 2569) */
+    items.find((item) => item.sub?.some((s) => underSub(s.href, pathname)))
   );
+}
+
+/** pathname อยู่ลึกกว่าเมนูย่อยนี้ไหม — เมนูย่อยที่แยกด้วย query (?g= ?s=) และ "/" ไม่นับ */
+function underSub(href: string, pathname: string) {
+  return href !== "/" && !href.includes("?") && pathname.startsWith(href + "/");
 }
 
 /*
@@ -744,7 +765,8 @@ export function findItem(pathname: string, role: Role): NavItem | undefined {
 export function pageTitle(pathname: string, role: Role) {
   const item = findItem(pathname, role);
   if (!item) return "ERP MAZ";
-  const sub = item.sub?.find((s) => s.href === pathname);
+  /* ตรงตัวก่อน แล้วค่อยหน้าลึกใต้เมนูย่อย (หน้ารายคนของประสิทธิภาพพนักงาน · ผู้ใช้สั่ง 26 ต.ค. 2569) */
+  const sub = item.sub?.find((s) => s.href === pathname) ?? item.sub?.find((s) => underSub(s.href, pathname));
   return sub ? (sub.title ?? sub.label) : item.label;
 }
 

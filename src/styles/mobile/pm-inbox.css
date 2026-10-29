@@ -38,7 +38,7 @@
     box-shadow: 0 1px 2px rgba(40, 20, 25, 0.04);
   }
   .ib-m-card.tap { cursor: pointer; }
-  /* กระดานรับงาน (ผู้ใช้สั่ง 5 ต.ค. 2569) — งานที่มีคนรับไปแล้วจางลง แต่ตัวหนังสือยังอ่านได้ ≥4.5:1 */
+  /* มุมมอง GM: งานที่มอบหมาย PM แล้วจางลง (ผู้ใช้สั่ง 27 ต.ค. 2569 — เดิมกระดานรับงาน 5 ต.ค.) แต่ตัวหนังสือยังอ่านได้ ≥4.5:1 */
   .ib-m-card.taken { background: #f6f3f4; box-shadow: none; }
   .ib-m-card.taken .ib-m-ico { background: #ece7e8; color: #6e6164; }
   .ib-m-card.taken .ib-m-name { color: #5a4e51; }
@@ -69,7 +69,7 @@
   }
   .ib-m-src svg { flex: none; width: 14px; height: 14px; color: #8a7e81; }
   .ib-m-day { grid-area: day; padding-left: 19px; font-size: 12px; color: #9a8e91; }
-  /* ปุ่มตา "ดูรายละเอียด" อยู่ก่อนปุ่มรับงาน/ป้ายสถานะ (ผู้ใช้สั่ง 5 ต.ค. 2569) */
+  /* ปุ่มตา "ดูรายละเอียด" อยู่ก่อนปุ่มหลัก (มอบหมาย/เปลี่ยน PM · วางแผนงาน) (ผู้ใช้สั่ง 27 ต.ค. 2569) */
   .ib-m-take { grid-area: take; align-self: center; justify-self: end; display: flex; align-items: center; gap: 8px; }
   .ib-m-take > button:first-child { width: 38px; height: 38px; border-radius: 12px; }
   .ib-m-take .btn {
@@ -81,7 +81,7 @@
   }
 
   /* ── รายละเอียดงาน (.ib-take-dlg) ดูอย่างเดียว — แผ่นจากล่างจอมาจาก Sheet กลาง (styles/mobile/sheet.css)
-     ไม่มีช่องกรอกแล้ว รับงานผ่านกล่องยืนยัน ConfirmDialog (ผู้ใช้สั่ง 5 ต.ค. 2569) ── */
+     ไม่มีช่องกรอก · GM มอบหมาย PM ผ่านกล่องเลือก PM แยก (ผู้ใช้สั่ง 27 ต.ค. 2569) ── */
   .ib-take-dlg > .ui-sheet-body { padding-bottom: 18px; overflow-x: hidden; font-size: 13px; }
 
   /* เอกสารพอดีจอ: หัวกระดาษซ้อนลง คู่สัญญาเรียงลง ซ่อนคอลัมน์ลำดับที่ของใบเสนอราคา */

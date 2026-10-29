@@ -13,7 +13,7 @@ import { useOtRecords } from "@/lib/ot-store";
 import { hasNoApprover, useApprovalRoute, useRole } from "@/lib/role";
 import { currentProfile } from "@/lib/profile-data";
 import { breakOf, companySchedule, formatMinutesOfDay, minutesOfDay, type DaySchedule } from "@/lib/work-schedule";
-import { useMySchedule } from "@/lib/hr-link";
+import { useMySchedule, useNoLeaveQuota } from "@/lib/hr-link";
 import {
   CalendarIcon,
   CloseIcon,
@@ -133,6 +133,7 @@ export function LeaveDialog({
   }, [records, from, to]);
 
   const otRecords = useOtRecords();
+  const noQuota = useNoLeaveQuota();
   const noApprover = hasNoApprover(useRole(), "leave", useApprovalRoute());
   /* สิทธิ์จากตัวคำนวณชุดเดียวของระบบ — ตัวเลขในกล่องนี้ต้องตรงกับการ์ดในหน้าการลาเป๊ะ ๆ */
   const quota = leaveUsage(records, type, period);
@@ -183,7 +184,7 @@ export function LeaveDialog({
       blocked = true;
     }
   }
-  if (entitled <= 0) {
+  if (entitled <= 0 && !noQuota) {
     problems.push("ไม่มีสิทธิ์ลาประเภทนี้ในรอบปีนี้");
     blocked = true;
   }
@@ -198,7 +199,7 @@ export function LeaveDialog({
    * แต่ยังบอกแยกอีกบรรทัดว่ามีใบค้างอยู่กี่วัน ผู้ยื่นจะได้ไม่เซอร์ไพรส์ทีหลัง
    */
   const over = excessDays(records, type, days, period);
-  if (over > 0) {
+  if (over > 0 && !noQuota) {
     problems.push(
       `เกินสิทธิ์คงเหลือ ${fmtLeave(over)} — ส่วนที่เกินหักจากเงินเดือน`,
     );

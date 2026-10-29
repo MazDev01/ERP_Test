@@ -4,7 +4,7 @@
  * แดชบอร์ดของผู้จัดการโครงการ (ตามต้นแบบ dose-erp-maz/pm-dashboard.html)
  *
  * สี่ส่วนตามต้นแบบ
- *   1. การ์ดสรุปห้าใบ — งานเข้ารอรับ งานย่อยรอตรวจ โปรเจคที่กำลังทำ งานย่อยใกล้ครบกำหนด งานย่อยล่าช้า
+ *   1. การ์ดสรุปห้าใบ — งานที่ได้รับมอบหมาย (GM: งานรอมอบหมาย PM) งานย่อยรอตรวจ โปรเจคที่กำลังทำ งานย่อยใกล้ครบกำหนด งานย่อยล่าช้า
  *      ทุกการ์ดที่ขึ้นต้นด้วย "งานย่อย" นับเป็นใบงานในโปรเจค ไม่ใช่จำนวนโปรเจค (หน้า /pm/projects นับโปรเจค)
  *   2. ความคืบหน้าโปรเจค คู่กับงานเข้าใหม่
  *   3. งานที่ต้องติดตาม คู่กับปฏิทินนัดหมาย
@@ -30,7 +30,9 @@ import { colorOf, eventKind, eventsOn, isPsEvent, isSalesEvent } from "@/lib/pm-
 import { useSchedule } from "@/lib/pm-schedule-store";
 import { isHoliday } from "@/lib/holidays";
 import { memberName, usePm } from "@/lib/pm-store";
-import { serviceLabel } from "@/lib/pm-data";
+import { isAssignedJob, isJobOf, serviceLabel } from "@/lib/pm-data";
+import { useRole } from "@/lib/role";
+import { USERS } from "@/lib/mock-data";
 import { ClockIcon, InboxIcon, ProjectIcon, TasksIcon } from "./icons";
 
 /** งานย่อยหนึ่งใบพร้อมโปรเจคต้นทางและจำนวนวันที่เหลือ — ใช้ซ้ำหลายบล็อก จึงคิดครั้งเดียว */
@@ -54,7 +56,17 @@ export function PmDashboardPage() {
   const sc = useSchedule();
   const today = todayIso();
 
-  const projects = pm.projects;
+  /*
+   * PM เห็นเฉพาะโปรเจคที่ตัวเองเป็นเจ้าของ — งานที่ต้องติดตาม ตัวเลข และความคืบหน้า นับจากโปรเจคของตัวเองเท่านั้น
+   * GM (และบทบาทอื่นที่เปิดหน้านี้) เห็นทุกโปรเจคในบริษัท (ผู้ใช้สั่ง 21 ต.ค. 2569)
+   * งานเข้าใหม่ (ผู้ใช้สั่ง 27 ต.ค. 2569 — GM มอบหมาย PM แทนกระดานรับงานกลาง):
+   *   PM นับงานที่ GM มอบหมายให้ตัวเองและยังไม่ได้วางแผน · GM นับงานที่ยังรอมอบหมาย PM
+   */
+  const role = useRole();
+  const projects = useMemo(
+    () => (role === "pm" ? pm.projects.filter((p) => p.pm === USERS.pm.name) : pm.projects),
+    [pm.projects, role],
+  );
 
   const tasks = useMemo<TaskRow[]>(
     () => projects.flatMap((p) => p.tasks.map((t) => ({ p, t, left: daysBetween(today, t.due) }))),
@@ -69,11 +81,17 @@ export function PmDashboardPage() {
    * จำนวนโปรเจคทั้งหมดต้องตรงกับที่หน้า /pm/projects ขึ้น — หน้านั้นนับงานที่รับเข้าถึงขั้นวางแผน
    * แต่ยังไม่ได้แตกเฟสด้วย ถ้านับแค่ pm.projects ตัวเลขสองหน้าจะไม่ตรงกัน
    */
-  const awaitingPlan = pm.inbox.filter(
-    (j) => j.stage === "plan" && !projects.some((p) => p.pj === j.pj),
-  ).length;
+  /* PM นับเฉพาะงานที่ GM มอบหมายให้ตัวเอง — เทียบกับทุกโปรเจค ไม่ใช่เฉพาะของตัวเอง ไม่งั้นโปรเจคของ PM คนอื่นถูกนับว่ารอวางแผน */
+  const mineJobs = pm.inbox.filter(
+    (j) =>
+      (role === "pm" ? isJobOf(j, USERS.pm.name) : isAssignedJob(j)) && !pm.projects.some((p) => p.pj === j.pj),
+  );
+  const awaitingPlan = mineJobs.length;
   const totalProjects = projects.length + awaitingPlan;
-  const waiting = pm.inbox.filter((j) => j.stage === "new").length;
+  /* การ์ดแรก: PM = งานที่ได้รับมอบหมายรอวางแผน · GM (และบทบาทอื่นที่เปิดหน้านี้) = งานรอมอบหมาย PM */
+  const pmView = role === "pm";
+  const unassigned = pm.inbox.filter((j) => !isAssignedJob(j));
+  const waiting = pmView ? awaitingPlan : unassigned.length;
   /* งานที่ทีมส่งกลับมาแล้วรอ PM ตัดสิน — ค้างที่นี่คือทีมหยุดรอเรา จึงต้องเห็นบนแดชบอร์ด */
   const reviewRows = open.filter((x) => x.t.status === "sent");
   const review = reviewRows.length;
@@ -99,11 +117,11 @@ export function PmDashboardPage() {
       {/* มือถือ: การ์ดใบที่ห้าเหลือเดี่ยวอยู่แถวสุดท้าย ให้กินเต็มแถวแทนการเว้นช่องว่าง */}
       <div className="grid grid-cols-2 gap-3.5 max-sm:gap-2.5 max-sm:[&>*:last-child]:col-span-2 xl:grid-cols-5">
         {/* ใต้ตัวเลขเป็นแค่ลักษณนาม หัวการ์ดบอกความหมายอยู่แล้ว (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
-        <Kpi label="งานเข้ารอรับ" value={waiting} sub="งาน" tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
-        <Kpi label="งานย่อยรอตรวจ" value={review} sub="งาน" tone="job" icon={<TasksIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย PM"} value={waiting} sub="งาน" tone="info" icon={<InboxIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานรอตรวจ" value={review} sub="งาน" tone="job" icon={<TasksIcon className="size-[15px]" strokeWidth={1.9} />} />
         <Kpi label="โปรเจคที่กำลังทำ" value={running} sub="โปรเจค" tone="won" icon={<ProjectIcon className="size-[15px]" strokeWidth={1.9} />} />
-        <Kpi label="งานย่อยใกล้ครบกำหนด" value={soon} sub="งาน" tone="warn" icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
-        <Kpi label="งานย่อยล่าช้า" value={overdue} sub="งาน" tone="late" warn={overdue > 0} icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานใกล้ครบกำหนด" value={soon} sub="งาน" tone="warn" icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
+        <Kpi label="งานล่าช้า" value={overdue} sub="งาน" tone="late" warn={overdue > 0} icon={<ClockIcon className="size-[15px]" strokeWidth={1.9} />} />
       </div>
 
       {/* ความคืบหน้า · งานเข้าใหม่ · ประเภทงานที่รับมากที่สุด — งานเข้าใหม่กับโดนัทกว้างเท่ากัน (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
@@ -123,12 +141,12 @@ export function PmDashboardPage() {
           <ProjectProgress projects={projects} today={today} />
         </Card>
 
-        <NewJobs inbox={pm.inbox} />
+        <NewJobs rows={pmView ? mineJobs : unassigned} pmView={pmView} />
 
         <TopServices
           services={[
             ...projects.map((p) => p.service),
-            ...pm.inbox.filter((j) => j.stage === "plan" && !projects.some((p) => p.pj === j.pj)).map((j) => j.service),
+            ...mineJobs.filter((j) => !projects.some((p) => p.pj === j.pj)).map((j) => j.service),
           ]}
         />
       </div>
@@ -208,19 +226,17 @@ function TopServices({ services }: { services: string[] }) {
   );
 }
 
-/** งานเข้าใหม่ที่ยังไม่ได้รับเข้าโปรเจค — ตัวเลขใหญ่กับรายการสั้น ๆ ตามต้นแบบ */
-function NewJobs({ inbox }: { inbox: ReturnType<typeof usePm>["inbox"] }) {
-  const rows = [...inbox]
-    .filter((j) => j.stage === "new")
-    .sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+/** งานเข้าใหม่ — PM: งานที่ GM มอบหมายให้รอวางแผน · GM: งานรอมอบหมาย PM (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+function NewJobs({ rows: list, pmView }: { rows: ReturnType<typeof usePm>["inbox"]; pmView: boolean }) {
+  const rows = [...list].sort((a, b) => b.sentAt.localeCompare(a.sentAt));
   const extra = Math.max(0, rows.length - INBOX_CAP);
 
   return (
-    <Card title="งานเข้าใหม่">
+    <Card title={pmView ? "งานที่ได้รับมอบหมาย" : "งานรอมอบหมาย PM"}>
       {/* แต่ละงานเป็นแถวของตัวเอง มีเลขลำดับ ชื่องาน และลูกค้า อ่านแยกกันออก (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
       <ul className="text-[13px]">
         {rows.length === 0 ? (
-          <li className="text-muted-foreground">ไม่มีงานรอรับ</li>
+          <li className="text-muted-foreground">{pmView ? "ยังไม่มีงานที่ GM มอบหมายให้คุณ" : "ไม่มีงานรอมอบหมาย"}</li>
         ) : (
           <>
             {rows.slice(0, INBOX_CAP).map((j, i) => (

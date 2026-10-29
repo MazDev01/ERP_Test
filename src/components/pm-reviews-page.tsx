@@ -5,15 +5,20 @@
  *
  * หน้านี้คู่กับ "งานที่ได้รับ" ของทีมงาน (my-tasks-page.tsx) งานใบเดียวกันเดินสองทาง
  *   ทีมกดส่ง → status "sent" โผล่ที่นี่ → PM กดผ่าน (done) หรือส่งกลับแก้ (revise)
+ *   งานที่เคยส่งให้ลูกค้าตรวจแล้ว: ผ่าน = ส่งลูกค้ารอบใหม่ (wait) — เสร็จเมื่อลูกค้าอนุมัติเท่านั้น (เจ้าของสั่ง 20 ต.ค. 2569)
  *
  * ตีกลับต้องบอกเหตุผลเสมอ ไม่งั้นคนทำไม่รู้ว่าต้องแก้อะไรแล้วจะส่งกลับมาแบบเดิม
  */
 
 import { useMemo, useState } from "react";
-import { bkkStamp, daysBetween, thaiDate, todayIso } from "@/lib/format";
-import { isRef, lastSub, projName, projectHref, type Project, type ProjectTask } from "@/lib/pm-data";
+import { addDays, bkkStamp, daysBetween, thaiDate, todayIso } from "@/lib/format";
+import { DateField } from "./thai-date-picker";
+import { isInHouse, isRef, lastSub, projName, projectHref, type FileNote, type Project, type ProjectTask } from "@/lib/pm-data";
 import { approveWorkFlow } from "@/lib/flow";
-import { memberName, memberOf, sendBackWork, usePm } from "@/lib/pm-store";
+import { memberName, memberOf, reviewerOf, sendBackWork, taskHomes, usePm } from "@/lib/pm-store";
+import { useRole } from "@/lib/role";
+import { USERS } from "@/lib/mock-data";
+import { ASK_FROM_LABEL, isLoose } from "@/lib/task-ask";
 import { roleLabel } from "@/lib/pm-data";
 import { hrPos } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
@@ -22,8 +27,9 @@ import { Field, Sheet } from "./lead-dialogs";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { ClockIcon, TasksIcon } from "./icons";
 import Link from "next/link";
-import { roundStatus, useClientReviews, type ReviewRound } from "@/lib/client-review-store";
-import { roundChip } from "./client-review-pm";
+import { needsClientOk, roundStatus, useClientReviews, type ReviewRound } from "@/lib/client-review-store";
+import { ClientSendSheet, roundChip } from "./client-review-pm";
+import { FileNotesEditor } from "./file-notes";
 
 /** รอเกินกี่วันถึงขึ้นเตือนว่าค้างนาน — ตรงกับต้นแบบ */
 const WAITED_HOT = 3;
@@ -61,16 +67,24 @@ export function PmReviewsPage() {
   const ro = usePmReadOnly();
   const [tab, setTab] = useState<"team" | "client">("team");
   const clientCount = useClientRows().filter((x) => !x.r.forwardedAt && !x.r.closedAt).length;
+  const role = useRole();
+  const meId = USERS[role]?.employeeId ?? "";
 
   const rows = useMemo<Row[]>(() => {
-    const out = pm.projects
+    /* งานนอกโปรเจคที่ทีมเสนอแล้ว PM อนุมัติ ตรวจที่นี่เหมือนงานในโปรเจค
+       PM เห็นเฉพาะงานที่ตัวเองเป็นผู้ตรวจ (= งานที่ตัวเองสั่ง — ผู้ใช้สั่ง 27 ต.ค. 2569) · GM เห็นทั้งหมดเหมือนเดิม (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+    const out = taskHomes(pm)
       .filter((p) => p.status !== "cancelled")
-      .flatMap((p) => p.tasks.filter((t) => t.status === "sent").map((t) => ({ p, t })));
+      .flatMap((p) =>
+        p.tasks
+          .filter((t) => t.status === "sent" && (role === "gm" || reviewerOf(t, p) === meId))
+          .map((t) => ({ p, t })),
+      );
     /* ที่ส่งมาก่อนขึ้นก่อน คนที่รอนานที่สุดควรได้คำตอบก่อน */
     return out.sort((a, b) =>
       (lastSub(a.t)?.at ?? "").localeCompare(lastSub(b.t)?.at ?? ""),
     );
-  }, [pm.projects]);
+  }, [pm, role, meId]);
 
   return (
     <div className="space-y-4">
@@ -290,13 +304,38 @@ export function ReviewDialog({
 }) {
   const { p, t } = row;
   const [why, setWhy] = useState("");
+  /* คอมเมนต์บนไฟล์รอบล่าสุด — ตีกลับได้ด้วยเหตุผลหรือคอมเมนต์อย่างน้อย 1 จุด (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [notes, setNotes] = useState<FileNote[]>([]);
+  /* กำหนดส่งแก้ — ค่าตั้งต้น 2 วันนับจากวันที่ตีกลับ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  const [fixDue, setFixDue] = useState(() => addDays(todayIso(), 2));
   const [touched, setTouched] = useState(false);
+  const lastFiles = lastSub(t)?.files ?? [];
+  const missing = !why.trim() && notes.length === 0;
   /* รอบใหม่อยู่บนสุด คนตรวจจะได้เห็นของล่าสุดก่อนแล้วค่อยไล่ลงไปดูรอบก่อน */
   const subs = [...(t.subs ?? [])].reverse();
   const position = usePosition();
   const who = lastSub(t)?.by ?? t.whos[0] ?? "";
-  /* GM เปิดดูสิ่งที่ส่งมาได้ แต่ PM เป็นคนตัดสินผลตรวจ */
-  const ro = usePmReadOnly();
+  /* ตัดสินผลตรวจได้เฉพาะผู้ตรวจ (= ผู้สั่ง) ของงานใบนี้ หรือ GM — คนอื่นเปิดดูได้อย่างเดียว (ผู้ใช้สั่ง 21 · 27 ต.ค. 2569) */
+  const role = useRole();
+  const reviewer = reviewerOf(t, p);
+  const ro = usePmReadOnly() || !(role === "gm" || USERS[role]?.employeeId === reviewer);
+  /* งานภายใน (ไม่มีลูกค้า) ไม่มีทางส่งให้ลูกค้าตรวจเลย (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  const inHouse = isInHouse(p);
+  /* เคยส่งให้ลูกค้าตรวจแล้ว — PM ผ่านเองไม่ได้ ต้องส่งลูกค้ารอบใหม่ · งาน "ไม่ต้องตรวจ" ส่งลูกค้าไม่ได้ */
+  const toClient = !t.noReview && !inHouse && needsClientOk(useClientReviews(), p.pj, t.name);
+  /* ส่งให้ลูกค้าเป็นงานของ PM/GM — ผู้ตรวจที่เป็นทีมงานให้ผ่านรอบนี้ไม่ได้ ให้ PM ส่งลูกค้าเอง */
+  const clientBlocked = toClient && role !== "pm" && role !== "gm";
+  const [sendClient, setSendClient] = useState(false);
+  /*
+   * งานที่แผนติ๊ก "ต้องให้ลูกค้าตรวจ" — ค่าตั้งต้นหลังผ่านคือส่งให้ลูกค้าตรวจ · งานอื่นค่าตั้งต้นคือผ่านแล้วปิดงาน
+   * ผู้ตรวจที่เป็น PM/GM ยังเลือกเองได้ทั้งสองทาง (ผู้ใช้สั่ง 21 ต.ค. 2569)
+   */
+  const wantClient = Boolean(t.clientReview) && !t.noReview && !inHouse;
+  const canClient = !t.noReview && !inHouse && !isLoose(p.pj) && (role === "pm" || role === "gm");
+  const [afterPass, setAfterPass] = useState<"client" | "close">(wantClient ? "client" : "close");
+  const passToClient = toClient || (canClient && afterPass === "client");
+
+  if (sendClient) return <ClientSendSheet project={p} task={t} onClose={onDone} />;
 
   return (
     <Sheet
@@ -314,8 +353,8 @@ export function ReviewDialog({
             className="btn flex-1 justify-center !bg-destructive !text-white max-sm:!h-12 max-sm:!rounded-[14px] max-sm:basis-0 sm:flex-none"
             onClick={() => {
               setTouched(true);
-              if (!why.trim()) return;
-              sendBackWork(p.pj, t.name, why.trim(), bkkStamp());
+              if (missing) return;
+              sendBackWork(p.pj, t.name, why.trim(), bkkStamp(), undefined, notes, fixDue);
               onDone();
             }}
           >
@@ -323,13 +362,17 @@ export function ReviewDialog({
           </button>
           <button
             type="button"
-            className="btn solid flex-1 justify-center !bg-[var(--success)] !text-white max-sm:!h-12 max-sm:!rounded-[14px] max-sm:basis-0 max-sm:grow-[1.4] sm:flex-none"
+            disabled={clientBlocked}
+            title={clientBlocked ? "งานนี้ต้องส่งให้ลูกค้าตรวจรอบใหม่ — PM เป็นผู้ส่ง" : undefined}
+            className="btn solid flex-1 justify-center !bg-[var(--success)] !text-white disabled:opacity-50 max-sm:!h-12 max-sm:!rounded-[14px] max-sm:basis-0 max-sm:grow-[1.4] sm:flex-none"
             onClick={() => {
+              if (clientBlocked) return;
+              if (passToClient) return setSendClient(true);
               approveWorkFlow(p.pj, t.name, bkkStamp());
               onDone();
             }}
           >
-            ผ่าน
+            {passToClient ? "ผ่าน · ส่งให้ลูกค้าตรวจ" : "ผ่าน"}
           </button>
         </>
       }
@@ -337,14 +380,57 @@ export function ReviewDialog({
       <Section title="งาน">
         <Row2 k="ชื่องาน" v={t.name} />
         <Row2 k="โปรเจค" v={projName(p)} />
-        <Row2 k="ลูกค้า" v={p.cus} />
+        {isLoose(p.pj) ? (
+          t.origin && <Row2 k="ใครขอมา" v={`${ASK_FROM_LABEL[t.origin.from]} · ${t.origin.fromName}`} />
+        ) : (
+          <Row2 k="ลูกค้า" v={p.cus} />
+        )}
         <Row2 k="กำหนดส่ง" v={thaiDate(t.due)} />
       </Section>
 
       <Section title="ผู้ส่ง">
         <Row2 k="ชื่อ" v={whoName(who)} />
         <Row2 k="ตำแหน่ง" v={position(who) || "—"} />
+        <Row2 k="ผู้ตรวจ" v={nameOf(memberName(reviewer))} />
       </Section>
+      {clientBlocked && (
+        <p className="mb-4 rounded-[10px] bg-[var(--warning-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--warning)]">
+          งานนี้เคยส่งให้ลูกค้าตรวจแล้ว ผ่านรอบนี้ต้องส่งลูกค้ารอบใหม่ — PM เป็นผู้ส่ง ส่งกลับแก้ได้ตามปกติ
+        </p>
+      )}
+      {/* หลังผ่านแล้วไปไหน — เลือกได้เฉพาะ PM/GM · ค่าตั้งต้นตามที่แผนกำหนด (ผู้ใช้สั่ง 21 ต.ค. 2569) */}
+      {!ro && !toClient && canClient && (
+        <fieldset className="mb-4">
+          <legend className="mb-2 text-[13px] font-semibold">ผ่านแล้ว</legend>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="after-pass"
+                className="size-4 accent-[var(--primary)]"
+                checked={afterPass === "client"}
+                onChange={() => setAfterPass("client")}
+              />
+              ส่งให้ลูกค้าตรวจ{wantClient ? " (ตามแผน)" : ""}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="after-pass"
+                className="size-4 accent-[var(--primary)]"
+                checked={afterPass === "close"}
+                onChange={() => setAfterPass("close")}
+              />
+              ปิดงานเลย{wantClient ? "" : " (ตามแผน)"}
+            </label>
+          </div>
+        </fieldset>
+      )}
+      {!ro && !toClient && wantClient && !canClient && (
+        <p className="mb-4 rounded-[10px] bg-[var(--info-soft)] px-3.5 py-[9px] text-[12.5px] font-semibold text-[var(--info)]">
+          งานนี้ต้องให้ลูกค้าตรวจ — ผ่านแล้ว PM เป็นผู้ส่งให้ลูกค้าตรวจต่อ
+        </p>
+      )}
 
       <section className="mt-4">
         <h3 className="mb-2 text-[13px] font-semibold">
@@ -380,7 +466,7 @@ export function ReviewDialog({
         <Field
           label="สิ่งที่ต้องแก้"
           error={
-            touched && !why.trim()
+            touched && missing
               ? "ส่งกลับให้แก้ต้องบอกว่าต้องแก้อะไร ผู้ทำงานจะได้รู้ว่าต้องทำอะไรต่อ"
               : undefined
           }
@@ -395,6 +481,22 @@ export function ReviewDialog({
             className="field-control h-[86px] resize-y py-2.5 leading-relaxed"
           />
         </Field>
+        <Field label="กำหนดส่งแก้">
+          <DateField value={fixDue} onChange={(v) => v && setFixDue(v)} label="กำหนดส่งแก้" min={todayIso()} />
+        </Field>
+        {lastFiles.length > 0 && (
+          <div>
+            <p className="mb-1.5 block text-[12.5px] font-semibold text-muted-foreground">คอมเมนต์บนไฟล์</p>
+            <FileNotesEditor
+              files={lastFiles}
+              notes={notes}
+              onChange={(n) => {
+                setNotes(n);
+                if (touched) setTouched(false);
+              }}
+            />
+          </div>
+        )}
       </div>
       )}
     </Sheet>

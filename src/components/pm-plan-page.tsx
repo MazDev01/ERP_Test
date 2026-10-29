@@ -1,7 +1,7 @@
 "use client";
 
 /*
- * จัดคิวงาน (ตามต้นแบบ pm-plan.html) — PM วางแผนงานที่รับเข้ามาแล้วก่อนเปิดเป็นโปรเจค
+ * จัดคิวงาน (ตามต้นแบบ pm-plan.html) — PM วางแผนงานที่ GM มอบหมายให้ก่อนเปิดเป็นโปรเจค (ผู้ใช้สั่ง 27 ต.ค. 2569)
  *
  * งานที่มีข้อเสนอได้เฟสและงานย่อยมาเป็นโครงตั้งต้น งานที่ไม่มีเริ่มจากกระดานว่างแล้วสร้างเฟสเอง
  * PM ทำได้ — เพิ่ม/แก้เฟส · เพิ่มงานในเฟส · ลากจัดลำดับในเฟส · เลือกคนและวัน · มอบหมายหลายงานพร้อมกัน
@@ -13,13 +13,14 @@
  */
 
 import { ROLE_EMPLOYEE, useHrTime } from "@/lib/hr-link";
-import { hrPos } from "@/lib/hr-data";
+import { hrPos, type PosKey } from "@/lib/hr-data";
 import { useHr } from "@/lib/hr-store";
 import { empReqLeaveHours, useEmpRequests } from "@/lib/emp-requests";
 import { fmtLeaveHours, leaveHoursOf } from "@/lib/leave-data";
 import { HR_LEAVE_LABEL, leaveRowHours } from "@/lib/hr-data";
 import { useAllLeave } from "@/lib/leave-store";
-import type { Role } from "@/lib/role";
+import { useRole, type Role } from "@/lib/role";
+import { USERS } from "@/lib/mock-data";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +30,9 @@ import { useProfile } from "@/lib/profile-data";
 import {
   fileKind,
   fileKindLabel,
+  isInHouse,
+  isAssignedJob,
+  isJobOf,
   isRef,
   projectHref,
   teamRoles,
@@ -42,12 +46,14 @@ import {
 } from "@/lib/pm-data";
 import {
   confirmPlan,
+  memberName,
   memberOf,
   replanProject,
   savePlanDraft,
   type DraftPhase,
   type DraftTask,
   type PlannedTask,
+  taskHomes,
   usePm,
   useTeam,
 } from "@/lib/pm-store";
@@ -57,6 +63,7 @@ import {
   FileIcon,
   ChevronDownIcon,
   CloseIcon,
+  LinkIcon,
   LockIcon,
   PencilIcon,
   PlusIcon,
@@ -73,6 +80,7 @@ import { AddDocButton, AddDocsDialog, DocChips, RenameButton, RenameDialog } fro
 import { useAddOption } from "./add-option";
 import { ReadOnlyNote, usePmReadOnly } from "./pm-readonly";
 import { useCrumb } from "@/lib/crumb";
+import { autoAfter, resolveAfter } from "@/lib/task-deps";
 
 /*
  * งานย่อยและเฟสระหว่างวางแผน — รูปเดียวกับร่างในสโตร์ (pm-store: DraftTask/DraftPhase)
@@ -102,6 +110,8 @@ type Target = {
   planEnd: string;
   firstDay: string;
   project?: Project;
+  /** PM ที่ GM มอบหมายงานนี้ให้ (ชื่อเต็ม) — เป็นเจ้าของโปรเจคตอนยืนยันแผน (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  owner?: string;
   initial: () => Board;
 };
 
@@ -116,6 +126,7 @@ function targetOfJob(j: InboxJob): Target {
     planStart: j.planStart,
     planEnd: j.planEnd,
     firstDay: j.projectStart || j.planStart || todayIso(),
+    owner: j.takenBy,
     initial: () => blankBoard(j),
   };
 }
@@ -133,7 +144,8 @@ function targetOfProject(p: Project): Target {
     firstDay: p.start,
     project: p,
     initial: () => ({
-      phases: p.phases.map((ph) => ({ name: ph.name, role: ph.role, start: ph.start, end: ph.end })),
+      /* own ติดมาด้วย — เฟสที่ PM สร้างเองไม่มีงานต่อกันอัตโนมัติแม้แก้แผนรอบหลัง (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+      phases: p.phases.map((ph) => ({ name: ph.name, role: ph.role, start: ph.start, end: ph.end, par: ph.par, own: ph.own })),
       plan: p.phases.map((ph, pi) =>
         p.tasks
           .map((t, i) => ({ t, i }))
@@ -148,6 +160,12 @@ function targetOfProject(p: Project): Target {
             brief: t.brief,
             files: t.files.map((f) => ({ ...f })),
             from: i,
+            /* งานที่เดินอยู่แล้วคงงานต่อกันเดิมไว้ ไม่มี = เริ่มได้ทันที
+               ห้ามปล่อยเป็น "ตามเฟส" ไม่งั้นแก้แผนครั้งเดียว งานที่กำลังทำอยู่จะถูกล็อกทั้งกระดาน */
+            after: t.after ? [...t.after] : [],
+            /* ผู้ตรวจไม่ติดมา — ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+            noReview: t.noReview || undefined,
+            clientReview: t.clientReview || undefined,
           })),
       ),
     }),
@@ -177,10 +195,19 @@ export function PmPlanPage() {
     [...pm.projects, ...pm.inbox].find((x) => isRef(x, rawParam))?.pj ?? rawParam;
   /* โปรเจคที่ถูกยกเลิกแล้ววางแผนต่อไม่ได้ — ไม่เอาเข้ารายการให้เลือก */
   const linked = pm.projects.find((p) => p.pj === fromParam && p.status !== "cancelled");
+  /*
+   * GM มอบหมายงานให้ PM (ผู้ใช้สั่ง 27 ต.ค. 2569) — PM วางแผนได้เฉพาะงานในกล่องที่ GM มอบหมายให้ตัวเอง
+   * GM เปิดได้ทุกงานที่มี PM ดูแลแล้วเหมือนเดิม (usePmReadOnly ไม่ล็อก GM) · งานที่ยังรอมอบหมายยังวางแผนไม่ได้
+   */
+  const role = useRole();
+  const myName = USERS[role]?.name ?? "";
+  const canPlanJob = (j: InboxJob) => (role === "gm" ? isAssignedJob(j) : isJobOf(j, myName));
   const targets: Target[] = [
     ...(linked ? [targetOfProject(linked)] : []),
-    ...pm.inbox.filter((j) => j.stage === "plan").map(targetOfJob),
+    ...pm.inbox.filter(canPlanJob).map(targetOfJob),
   ];
+  /* ลิงก์ชี้มาที่งานในกล่องที่ไม่ได้มอบหมายให้คนนี้ — บอกตรง ๆ ไม่สลับไปงานอื่น */
+  const notMine = pm.inbox.find((j) => j.pj === fromParam && !canPlanJob(j));
   /* ไม่มีตัวเลือกโปรเจคบนหน้านี้แล้ว — เลือกจากการเปิดโฟลเดอร์ใน /pm/projects (ผู้ใช้สั่ง 5 ต.ค. 2569) */
   const job = targets.find((t) => t.pj === fromParam) ?? targets[0];
   const [renaming, setRenaming] = useState(false);
@@ -192,15 +219,43 @@ export function PmPlanPage() {
   const gone = Boolean(fromParam) && !targets.some((t) => t.pj === fromParam);
   const cancelled = pm.projects.find((p) => p.pj === fromParam && p.status === "cancelled");
 
+  /* ทีมจากทะเบียนเดียวกับฝ่ายบุคคล — คนที่พ้นสภาพแล้วมอบหมายงานใหม่ไม่ได้ */
+  const team = useMarketingTeam();
+  /*
+   * ระบบร่างแผนให้ PM แค่ตรวจแล้วยืนยัน (ผู้ใช้สั่ง 21 ต.ค. 2569)
+   * งานใหม่ที่ยังไม่มีร่าง — เติมผู้รับผิดชอบ วัน และรายละเอียดให้ตั้งแต่เปิดกระดาน ยืนยันแผนได้ทันที
+   * โปรเจคที่เดินอยู่แล้วไม่เติมเอง ใช้ปุ่ม "เติมช่องที่ว่างให้" แทน
+   */
+  const fillCtx: FillCtx = { team, projects: pm.projects, scope: job?.scope ?? "" };
   /* ร่างเก็บในสโตร์ คีย์ด้วยเลขที่โปรเจค — สลับงานไปมาหรือรีโหลดแล้วสิ่งที่กรอกไว้ไม่หาย */
   const draft = job ? pm.drafts[job.pj] : undefined;
-  const board: Board = job ? (draft ?? job.initial()) : { phases: [], plan: [] };
+  const board: Board = job
+    ? (draft ?? (job.project ? job.initial() : fillEmpty(job.initial(), fillCtx, false).board))
+    : { phases: [], plan: [] };
   const { phases, plan } = board;
+  /* ช่องที่ยังว่างและระบบเติมให้ได้ — มีเมื่อไรขึ้นปุ่ม "เติมช่องที่ว่างให้" (แก้แผนโปรเจคเดิมเติมเฉพาะงานที่เพิ่มใหม่) */
+  const fillable = job ? fillEmpty(board, fillCtx, Boolean(job.project)).n : 0;
+  /* งานภายใน (ไม่มีลูกค้า) — ไม่มีตัวเลือกให้ลูกค้าตรวจ (ผู้ใช้สั่ง 21 ต.ค. 2569) */
+  const inHouse = job ? isInHouse(job.project ?? job.docs ?? { cus: job.cus }) : false;
 
   const [picked, setPicked] = useState<Record<string, boolean>>({});
-  /* ทีมจากทะเบียนเดียวกับฝ่ายบุคคล — คนที่พ้นสภาพแล้วมอบหมายงานใหม่ไม่ได้ */
-  const team = useTeam().filter((m) => !m.left);
   const nameOfEmp = useNameOf();
+  /*
+   * บรรทัดเสริมบนการ์ด — ขึ้นเฉพาะข้อยกเว้น (ผู้ใช้สั่ง 21 ต.ค. 2569)
+   * ไม่ต้องตรวจ / ส่งลูกค้าตรวจ · "รอ …" เฉพาะงานเก่าที่ตั้งงานต่อกันไว้ต่างจากแม่แบบ
+   * ไม่มี "ตรวจโดย …" แล้ว ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569)
+   */
+  const cardNotes = (t: Draft, pi: number): string[] => {
+    const review = t.noReview ? "ไม่ต้องตรวจ" : t.clientReview && !inHouse ? "ส่งลูกค้าตรวจ" : "";
+    let wait = "";
+    if (t.after !== undefined) {
+      const own = resolveAfter(phases, plan, pi, t.after);
+      const tpl = new Set(autoAfter(phases, plan, pi));
+      const same = own.length === tpl.size && own.every((n) => tpl.has(n));
+      if (own.length && !same) wait = `รอ ${own.length === 1 ? own[0] : `${own.length} งานก่อนหน้า`}`;
+    }
+    return [review, wait].filter(Boolean);
+  };
   const [bulkWho, setBulkWho] = useState(team[0]?.id ?? "");
   const [open, setOpen] = useState<Spot | null>(null);
   const [doc, setDoc] = useState<"quo" | "prop" | null>(null);
@@ -276,7 +331,11 @@ export function PmPlanPage() {
                 <span className="num">{fromParam}</span>{" "}
                 {cancelled
                   ? `ถูกยกเลิกเมื่อ ${cancelled.cancelled ? thaiDate(cancelled.cancelled.at.slice(0, 10)) : "แล้ว"} โดย ${cancelled.cancelled?.by ? nameOfEmp(cancelled.cancelled.by) : "ฝ่ายที่เกี่ยวข้อง"}`
-                  : ""}
+                  : notMine
+                    ? isAssignedJob(notMine)
+                      ? "งานนี้มอบหมายให้ PM คนอื่นแล้ว"
+                      : "งานนี้ยังรอ GM มอบหมาย PM"
+                    : ""}
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2.5">
                 <Link
@@ -325,6 +384,11 @@ export function PmPlanPage() {
           due: t.due,
           brief: t.brief,
           files: t.files,
+          /* ระบบเติมงานต่อกันจากแม่แบบตอนยืนยันแผน — เฟสที่สร้างเองไม่มี · ค่าเดิมของข้อมูลเก่าใช้ตามเดิม */
+          after: resolveAfter(phases, plan, pi, t.after),
+          /* ไม่ส่งผู้ตรวจ — ผู้ตรวจ = ผู้สั่งเสมอ (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+          noReview: t.noReview,
+          clientReview: inHouse || t.noReview ? undefined : t.clientReview,
         }),
       ),
     );
@@ -334,6 +398,8 @@ export function PmPlanPage() {
       role: ph.role ?? plan[pi]?.find((t) => t.role)?.role ?? teamRoles()[0].key,
       start: ph.start,
       end: ph.end,
+      par: ph.par,
+      own: ph.own || undefined,
     }));
     if (job.project) {
       /* โปรเจคที่เดินงานอยู่ — บันทึกแผนใหม่แล้วกลับไปหน้าโปรเจคนั้น (ร่างถูกล้างในสโตร์แล้ว) */
@@ -341,7 +407,8 @@ export function PmPlanPage() {
       router.push(projectHref(job.pj));
       return;
     }
-    confirmPlan(job.pj, tasks, `${me.name} (PM)`, outPhases);
+    /* เจ้าของโปรเจค = PM ที่ GM มอบหมาย ไม่ใช่คนที่กดยืนยัน (GM วางแผนแทนได้) (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+    confirmPlan(job.pj, tasks, `${job.owner || me.name} (PM)`, outPhases);
     /* ยืนยันแล้วกลับไปหน้ารายการโปรเจคตามต้นแบบ — โฟลเดอร์ของงานนี้โผล่ในรายการทันที */
     router.push("/pm/projects");
   }
@@ -399,6 +466,23 @@ export function PmPlanPage() {
         </div>
         <div className="tools w-full flex-wrap items-center md:w-auto md:flex-nowrap">
           {/* ปุ่มแนบไฟล์อยู่ข้างปุ่มบันทึกแผนงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
+          {/* ร่างเดิมที่ยังมีช่องว่าง — ให้ระบบเติมแบบเดียวกับแผนใหม่ เฉพาะช่องที่ว่าง ไม่ทับที่ PM เลือกไว้ (ผู้ใช้สั่ง 21 ต.ค. 2569) */}
+          {!ro && fillable > 0 && (
+            <button
+              type="button"
+              className="btn glass-thin whitespace-nowrap"
+              title="ระบบเติมผู้รับผิดชอบ วัน และรายละเอียดให้เฉพาะช่องที่ยังว่าง"
+              onClick={() =>
+                edit((b) => {
+                  const r = fillEmpty(b, fillCtx, Boolean(job.project)).board;
+                  b.phases = r.phases;
+                  b.plan = r.plan;
+                })
+              }
+            >
+              เติมช่องที่ว่างให้
+            </button>
+          )}
           {!ro && <AddDocButton className="pl-docbtn whitespace-nowrap" label="แนบไฟล์" onClick={() => setAddingDoc(true)} />}
           {!ro && confirmButton("pl-confirm-top")}
         </div>
@@ -445,7 +529,11 @@ export function PmPlanPage() {
                 edit((b) => {
                   for (const k of pickedKeys) {
                     const t = at(b.plan, k);
-                    if (t && !t.whos.includes(bulkWho)) t.whos.push(bulkWho);
+                    if (t && !t.whos.includes(bulkWho)) {
+                      t.whos.push(bulkWho);
+                      /* PM เลือกคนเองแล้ว — คำบอก "แนะนำจากตำแหน่ง…" หายไป */
+                      t.autoFill = unflag(t.autoFill, "who");
+                    }
                   }
                 })
               }
@@ -565,6 +653,7 @@ export function PmPlanPage() {
                     <TaskCard
                       key={`${pi}-${ti}-${t.name}`}
                       task={t}
+                      notes={cardNotes(t, pi)}
                       outside={Boolean(t.start && t.due && (t.start < ph.start || t.due > ph.end))}
                       order={ti + 1}
                       checked={Boolean(picked[key(pi, ti)])}
@@ -725,6 +814,7 @@ export function PmPlanPage() {
       {adding !== null && phases[adding] && (
         <AddTaskDialog
           phase={phases[adding]}
+          pj={job?.pj}
           onClose={() => setAdding(null)}
           onSave={(t) => {
             edit((b) => {
@@ -738,6 +828,7 @@ export function PmPlanPage() {
       {open && plan[open.phase]?.[open.index] && (
         <TaskDialog
           phase={phases[open.phase]}
+          pj={job?.pj}
           color={phaseColor(open.phase)}
           spot={open}
           task={plan[open.phase][open.index]}
@@ -871,14 +962,16 @@ function PhaseDialog({
 
 function AddTaskDialog({
   phase,
+  pj,
   onClose,
   onSave,
 }: {
   phase: PlanPhase;
+  pj?: string;
   onClose: () => void;
   onSave: (t: Draft) => void;
 }) {
-  const team = useTeam().filter((m) => !m.left);
+  const team = useMarketingTeam();
   const [name, setName] = useState("");
   const [role, setRole] = useState<TeamRole | "">(phase.role ?? "");
   const [who, setWho] = useState("");
@@ -891,10 +984,13 @@ function AddTaskDialog({
   const [brief, setBrief] = useState("");
   const [pick, setPick] = useState<"s" | "e" | null>(null);
   const [warn, setWarn] = useState(false);
-  const people = team.filter((m) => !role || m.roles.includes(role));
+  /* เลือกคนได้อิสระทุกคนในทีม ไม่กรองตามตำแหน่งของเฟส · บอกตำแหน่งท้ายชื่อเหมือนหน้าต่างงาน (ผู้ใช้สั่ง 27 ต.ค. 2569) */
+  const hr = useHr();
+  const people = team;
   /* ลาของแต่ละคนที่ทับช่วงงาน — บอกท้ายชื่อในรายการ และเตือนใต้ช่องเมื่อเลือกคนนั้น (ตามต้นแบบ) */
   const clashOf = useLeaveClash();
   const whoClash = who ? clashOf(who, start, due) : [];
+  const busyOf = useBusyOf(pj);
   const ok = Boolean(name.trim() && start && due && due >= start);
 
   return (
@@ -945,9 +1041,12 @@ function AddTaskDialog({
             <option value="">ยังไม่มอบหมาย</option>
             {people.map((m) => {
               const c = clashOf(m.id, start, due);
+              const emp = hr.emp.find((e) => e.id === m.id);
+              const busy = busyOf(m.id, start, due).length;
               return (
-                <option key={m.id} value={m.id}>
-                  {m.name}
+                <option key={m.id} value={m.id} style={busyStyle(busy)}>
+                  {whoLabel(m, emp?.pos)}
+                  {busyTag(busy)}
                   {c.length ? ` — ${leaveText(c[0])}` : ""}
                 </option>
               );
@@ -958,6 +1057,7 @@ function AddTaskDialog({
               คนนี้{whoClash.map(leaveText).join(" และ ")} อยู่ในช่วงงานนี้
             </p>
           )}
+          <BusyList list={who ? busyOf(who, start, due) : []} />
         </Field>
       </div>
       <div className="grid gap-x-4 sm:grid-cols-2">
@@ -1053,6 +1153,83 @@ function printDoc() {
   window.setTimeout(() => document.body.classList.remove("print-doc"), 400);
 }
 
+/* งานที่คนนี้ถืออยู่และวันทับช่วงของงานที่กำลังมอบ — บอกจำนวนในดรอปดาวน์ และรายการใต้ช่องเมื่อเลือกแล้ว (ผู้ใช้สั่ง 29 ต.ค. 2569)
+   ไม่นับงานที่เสร็จแล้ว โปรเจคที่ยกเลิก และตัวงานที่กำลังแก้อยู่เอง */
+type Busy = { name: string; where: string; start: string; due: string };
+function useBusyOf(pj?: string) {
+  const pm = usePm();
+  return useCallback(
+    (id: string, start: string, due: string, self?: string): Busy[] => {
+      if (!id || !start || !due) return [];
+      return taskHomes(pm)
+        .filter((p) => p.status !== "cancelled")
+        .flatMap((p) =>
+          p.tasks
+            .filter(
+              (t) =>
+                t.status !== "done" &&
+                t.whos.includes(id) &&
+                Boolean(t.start && t.due) &&
+                t.start <= due &&
+                t.due >= start &&
+                !(pj && isRef(p, pj) && t.name === self),
+            )
+            .map((t) => ({ name: t.name, where: p.name || p.cus, start: t.start, due: t.due })),
+        )
+        .sort((a, b) => a.start.localeCompare(b.start));
+    },
+    [pm, pj],
+  );
+}
+
+/* สถานะงานชน: 1–2 งาน เหลือง · 3 งานขึ้นไป แดง (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+function busyTag(n: number) {
+  return n ? `  ${n >= 3 ? "🔴" : "🟡"} ${n} งาน` : "";
+}
+function busyStyle(n: number): React.CSSProperties | undefined {
+  return n ? { color: n >= 3 ? "var(--destructive)" : "var(--warning)" } : undefined;
+}
+
+function BusyList({ list }: { list: Busy[] }) {
+  if (!list.length) return null;
+  return (
+    <div className="mt-1.5 text-[12px]">
+      <p className="font-semibold" style={busyStyle(list.length)}>
+        {list.length >= 3 ? "🔴" : "🟡"} ถืองานช่วงนี้อยู่ {list.length} งาน
+      </p>
+      <ul className="mt-1 space-y-0.5 text-muted-foreground">
+        {list.map((b, i) => (
+          <li key={i}>
+            {b.name} · {b.where} · {thaiDate(b.start)} – {thaiDate(b.due)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* คนที่ PM มอบงานได้ = ตำแหน่งในแผนก marketing เท่านั้น ไม่รวมคนที่พ้นสภาพ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+function useMarketingTeam() {
+  const hr = useHr();
+  return useTeam().filter((m) => {
+    const emp = hr.emp.find((e) => e.id === m.id);
+    return !m.left && Boolean(emp) && hrPos(emp!.pos).dept === "marketing";
+  });
+}
+
+/* ตัวเลือกผู้รับผิดชอบ = "ตำแหน่งเต็ม (ชื่อ)" เช่น System Analysis (นุ่น) — ตำแหน่งย่อเขียนเต็มเฉพาะในดรอปดาวน์นี้ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+const POS_FULL: Record<string, string> = {
+  SA: "System Analysis",
+  PM: "Project Manager",
+  GM: "General Manager",
+  BD: "Business Development",
+  Dev: "Developer",
+};
+function whoLabel(m: Member, pos?: PosKey) {
+  const label = pos ? hrPos(pos).label : m.roles.map(roleLabel).join(" | ");
+  return `${POS_FULL[label] ?? label} (${m.name})`;
+}
+
 // ─── ตัวเลือกผู้รับผิดชอบในแถบมอบหมายพร้อมกัน ────────────────────────
 
 /*
@@ -1080,7 +1257,7 @@ function WhoPicker({
         const emp = hr.emp.find((e) => e.id === m.id);
         return (
           <option key={m.id} value={m.id}>
-            {m.name} · {emp ? hrPos(emp.pos).label : m.roles.map(roleLabel).join(" | ")}
+            {whoLabel(m, emp?.pos)}
           </option>
         );
       })}
@@ -1139,8 +1316,13 @@ function PlainSelect({
 /* วันบนการ์ดตัดปีออก เพราะอยู่ในกรอบเฟสเดียวกันอยู่แล้ว */
 const short = (iso: string) => thaiDate(iso).replace(/\s\d{4}$/, "");
 
+/*
+ * การ์ดบอกแค่ชื่องาน คน และวันที่ (ผู้ใช้สั่ง 21 ต.ค. 2569)
+ * บรรทัดอื่นขึ้นเฉพาะข้อยกเว้น (notes) และคำเตือนเดิม (ลาทับช่วงงาน · นอกกรอบเฟส)
+ */
 function TaskCard({
   task,
+  notes,
   outside,
   order,
   checked,
@@ -1155,6 +1337,8 @@ function TaskCard({
   onDragEnd,
 }: {
   task: Draft;
+  /** บรรทัดข้อยกเว้น — การตรวจที่ไม่ใช่ค่าตั้งต้น · งานต่อกันเดิมที่ต่างจากแม่แบบ */
+  notes: string[];
   /** วันของงานเลยกรอบเฟส */
   outside: boolean;
   order: number;
@@ -1251,14 +1435,12 @@ function TaskCard({
             {task.start && task.due ? `${short(task.start)} – ${short(task.due)}` : "ยังไม่กำหนด"}
             {outside && " · นอกกรอบเฟส"}
           </MetaRow>
-          {/* คนทำต้องได้โจทย์ ไม่ใช่แค่ชื่องาน — การ์ดจึงบอกตั้งแต่บนกระดานว่าใบไหนยังไม่มี */}
-          <MetaRow icon={<FileIcon className="size-[13px]" />} none={!task.brief && !task.files?.length}>
-            {task.brief
-              ? `${task.brief}${task.files?.length ? ` · ${task.files.length} ไฟล์` : ""}`
-              : task.files?.length
-                ? `${task.files.length} ไฟล์แนบ`
-                : "ยังไม่มีรายละเอียดงาน"}
-          </MetaRow>
+          {/* ไม่มีบรรทัดรายละเอียด/ไฟล์ "รอ…/เริ่มได้ทันที" และผู้ตรวจประจำการ์ดแล้ว — ขึ้นเฉพาะที่ต่างจากค่าตั้งต้น (ผู้ใช้สั่ง 21 ต.ค. 2569) */}
+          {notes.map((n) => (
+            <MetaRow key={n} icon={n.startsWith("รอ ") ? <LinkIcon className="size-[13px]" /> : <CheckIcon className="size-[13px]" />}>
+              <span title={n}>{n}</span>
+            </MetaRow>
+          ))}
           {clash.length > 0 && (
             <span
               title="มอบงานในช่วงที่ผู้รับผิดชอบลา"
@@ -1344,11 +1526,13 @@ function LockLine({
 // ─── การ์ดรายละเอียดงานย่อย ──────────────────────────────────────
 
 /*
- * สิ่งที่ต้องกรอกคือคนทำและวันเริ่ม-ส่ง ท้ายกล่องบอกสถานะพร้อมปุ่มเสร็จสิ้น (ตามต้นแบบ)
+ * หน้าต่างนี้ใช้แก้ข้อยกเว้น ไม่ใช่ฟอร์มให้กรอกทุกช่อง — ระบบเติมคน วัน และรายละเอียดไว้ก่อน (ผู้ใช้สั่ง 21 ต.ค. 2569)
+ * ท้ายกล่องบอกสถานะพร้อมปุ่มบันทึก
  * ตำแหน่งของงานใช้เตือนเวลาเลือกคนข้ามสาย — งานไม่มีตำแหน่งใช้ของเฟส ไม่มีทั้งคู่ก็ไม่เตือน
  */
 function TaskDialog({
   phase,
+  pj,
   color,
   spot,
   task,
@@ -1357,6 +1541,7 @@ function TaskDialog({
   onEdit,
 }: {
   phase: PlanPhase;
+  pj?: string;
   color: string;
   spot: Spot;
   task: Draft;
@@ -1364,11 +1549,12 @@ function TaskDialog({
   onClose: () => void;
   onEdit: (fn: (t: Draft) => void) => void;
 }) {
-  const team = useTeam().filter((m) => !m.left);
+  const team = useMarketingTeam();
   const hr = useHr();
   /* วันลาของทีม — อนุมัติแล้ว (ใบลาจริง + ทะเบียนฝ่ายบุคคล) และใบที่ยื่นไว้รออนุมัติ (ต้นแบบ PM_LEAVE_PENDING) */
   const clashOf = useLeaveClash();
   const leaveIn = (id: string) => clashOf(id, task.start, task.due).map(leaveText).join(" · ");
+  const busyOf = useBusyOf(pj);
   const [pick, setPick] = useState<"s" | "e" | null>(null);
   const role = task.role ?? phase.role;
   const fits = (m: Member) => !role || m.roles.includes(role);
@@ -1394,9 +1580,10 @@ function TaskDialog({
           >
             {ready ? "พร้อมมอบหมาย" : !task.whos.length ? "ยังไม่มีผู้รับผิดชอบ" : "ยังไม่ได้กำหนดวัน"}
           </span>
+          {/* ทุกช่องบันทึกตั้งแต่ตอนแก้ ปุ่มนี้แค่ปิดหน้าต่าง — ใช้คำว่า "บันทึก" ตามที่เจ้าของสั่ง (ผู้ใช้สั่ง 21 ต.ค. 2569) */}
           <button type="button" className="btn solid btn-solid" onClick={onClose}>
             <CheckIcon className="size-[14px]" strokeWidth={2.3} />
-            เสร็จสิ้น
+            บันทึก
           </button>
         </>
       }
@@ -1414,6 +1601,7 @@ function TaskDialog({
               onChange={(id) =>
                 onEdit((t) => {
                   t.whos = id ? [id] : [];
+                  t.autoFill = unflag(t.autoFill, "who");
                 })
               }
             >
@@ -1421,13 +1609,16 @@ function TaskDialog({
               {/* ชื่อกับตำแหน่งตามทะเบียนพนักงานฝ่ายบุคคล ไม่มีวันลา (ผู้ใช้สั่ง 8 ต.ค. 2569) */}
               {team.map((m) => {
                 const emp = hr.emp.find((e) => e.id === m.id);
+                const busy = busyOf(m.id, task.start, task.due, task.name).length;
                 return (
-                  <option key={m.id} value={m.id}>
-                    {m.name} · {emp ? hrPos(emp.pos).label : m.roles.map(roleLabel).join(" | ")}
+                  <option key={m.id} value={m.id} style={busyStyle(busy)}>
+                    {whoLabel(m, emp?.pos)}
+                    {busyTag(busy)}
                   </option>
                 );
               })}
             </PlainSelect>
+            <BusyList list={task.whos[0] ? busyOf(task.whos[0], task.start, task.due, task.name) : []} />
             {offFit > 0 && (
               <p className="mt-1.5 text-[11.5px] font-semibold text-destructive">
                 มี {offFit} คนที่ไม่ได้อยู่ตำแหน่ง “{role ? roleLabel(role) : ""}”
@@ -1460,6 +1651,7 @@ function TaskDialog({
                   onEdit((t) => {
                     t.start = iso;
                     if (t.due && t.due < iso) t.due = iso;
+                    t.autoFill = unflag(t.autoFill, "dates");
                   });
                   setPick(null);
                 }}
@@ -1478,6 +1670,7 @@ function TaskDialog({
                   onEdit((t) => {
                     t.due = iso;
                     if (t.start && t.start > iso) t.start = iso;
+                    t.autoFill = unflag(t.autoFill, "dates");
                   });
                   setPick(null);
                 }}
@@ -1497,6 +1690,7 @@ function TaskDialog({
               const v = e.target.value;
               onEdit((t) => {
                 t.brief = v;
+                t.autoFill = unflag(t.autoFill, "brief");
               });
             }}
             placeholder="บอกให้ชัดว่าต้องทำอะไร ส่งอะไร และมีอะไรที่ต้องระวัง"
@@ -1505,8 +1699,9 @@ function TaskDialog({
             /* .field-control ล็อกความสูงไว้ — ต้องกำหนดผ่าน style ถึงจะสูงจริง */
             style={{ height: 160 }}
           />
-
         </section>
+
+        {/* ไม่มีส่วนการตรวจงานในหน้าต่างงานแล้ว — ผู้ตรวจคือผู้สั่งเสมอ ไม่ต้องตั้งอะไร (ผู้ใช้สั่ง 27 ต.ค. 2569) */}
       </div>
     </Sheet>
   );
@@ -1640,7 +1835,7 @@ function useLeaveClash() {
 /** กระดานตั้งต้นจากข้อเสนอ — งานที่ไม่มีข้อเสนอเริ่มจากกระดานว่าง */
 function blankBoard(job: InboxJob): Board {
   return {
-    phases: job.phases.map((ph) => ({ name: ph.name, role: ph.role, start: ph.start, end: ph.end })),
+    phases: job.phases.map((ph) => ({ name: ph.name, role: ph.role, start: ph.start, end: ph.end, par: ph.par })),
     plan: job.phases.map((ph) =>
       ph.tasks.map((name) => ({ name, role: ph.role, whos: [], start: "", due: "" })),
     ),
@@ -1650,8 +1845,87 @@ function blankBoard(job: InboxJob): Board {
 function cloneBoard(b: Board): Board {
   return {
     phases: b.phases.map((ph) => ({ ...ph })),
-    plan: b.plan.map((list) => list.map((t) => ({ ...t, whos: [...t.whos], files: t.files?.map((f) => ({ ...f })) }))),
+    plan: b.plan.map((list) =>
+      list.map((t) => ({
+        ...t,
+        whos: [...t.whos],
+        files: t.files?.map((f) => ({ ...f })),
+        autoFill: t.autoFill ? { ...t.autoFill } : undefined,
+      })),
+    ),
   };
+}
+
+// ─── ระบบร่างแผนให้ (ผู้ใช้สั่ง 21 ต.ค. 2569) ─────────────────────────
+
+type FillCtx = { team: Member[]; projects: Project[]; scope: string };
+
+/** PM แก้ช่องนี้เองแล้ว — ล้างธง "ระบบเติมให้" ของช่องนั้น ไม่เหลือธงก็ไม่เก็บ */
+function unflag(f: Draft["autoFill"], k: "who" | "dates" | "brief"): Draft["autoFill"] {
+  if (!f?.[k]) return f;
+  const next = { ...f, [k]: undefined };
+  return next.who || next.dates || next.brief ? next : undefined;
+}
+
+/** แบ่งช่วงเฟสให้งานในเฟสเรียงต่อกันเท่า ๆ กัน (นับวันปฏิทิน อย่างน้อยงานละ 1 วัน งานสุดท้ายจบวันจบเฟส) */
+function splitSpan(start: string, end: string, n: number): { start: string; due: string }[] {
+  if (!start || !end || end < start || n <= 0) return [];
+  const days = daysBetween(start, end) + 1;
+  return Array.from({ length: n }, (_, i) => {
+    const a = Math.floor((i * days) / n);
+    const b = Math.max(a, Math.floor(((i + 1) * days) / n) - 1);
+    return { start: addDays(start, a), due: addDays(start, Math.min(b, days - 1)) };
+  });
+}
+
+/*
+ * เติมเฉพาะช่องที่ว่าง ไม่ทับที่ PM เลือกไว้ — ใช้ทั้งตอนเปิดกระดานใหม่และปุ่ม "เติมช่องที่ว่างให้"
+ *   ผู้รับผิดชอบ: คนในทีม (ไม่รวมคนที่พ้นสภาพ) ที่มีตำแหน่งของงาน/เฟส และงานค้างน้อยสุด เท่ากันเอาคนแรกในรายการ
+ *                นับงานที่เพิ่งเติมในกระดานนี้ด้วย ไม่งั้นงานทั้งเฟสไปกองที่คนเดียว
+ *   วัน: แบ่งช่วงเฟสให้งานเรียงต่อกัน · รายละเอียด: ข้อเสนอยังไม่มีข้อความรายงาน จึงสร้างประโยคสั้นจากชื่องาน เฟส และขอบเขต
+ * onlyNew = แก้แผนโปรเจคที่เดินอยู่ — เติมเฉพาะงานที่เพิ่มใหม่ งานเดิมไม่แตะ
+ * คืนจำนวนช่องที่เติม (0 = ไม่มีอะไรให้เติม ซ่อนปุ่ม)
+ */
+function fillEmpty(b: Board, ctx: FillCtx, onlyNew: boolean): { board: Board; n: number } {
+  const next = cloneBoard(b);
+  let n = 0;
+  const load = new Map(ctx.team.map((m) => [m.id, openTaskCount(ctx.projects, m.id)]));
+  for (const t of next.plan.flat()) for (const id of t.whos) load.set(id, (load.get(id) ?? 0) + 1);
+  next.phases.forEach((ph, pi) => {
+    const list = next.plan[pi] ?? [];
+    const slots = splitSpan(ph.start, ph.end, list.length);
+    list.forEach((t, ti) => {
+      if (onlyNew && t.from !== undefined) return;
+      const auto = { ...t.autoFill };
+      const role = t.role ?? ph.role;
+      if (!t.whos.length && role) {
+        let pick: Member | undefined;
+        for (const m of ctx.team) {
+          if (!m.roles.includes(role)) continue;
+          if (!pick || (load.get(m.id) ?? 0) < (load.get(pick.id) ?? 0)) pick = m;
+        }
+        if (pick) {
+          t.whos = [pick.id];
+          load.set(pick.id, (load.get(pick.id) ?? 0) + 1);
+          auto.who = true;
+          n += 1;
+        }
+      }
+      if ((!t.start || !t.due) && slots[ti]) {
+        t.start = slots[ti].start;
+        t.due = slots[ti].due;
+        auto.dates = true;
+        n += 1;
+      }
+      if (!t.brief?.trim()) {
+        t.brief = `${t.name} ในเฟส ${ph.name}${ctx.scope.trim() ? ` · ขอบเขต: ${ctx.scope.trim()}` : ""}`;
+        auto.brief = true;
+        n += 1;
+      }
+      if (auto.who || auto.dates || auto.brief) t.autoFill = auto;
+    });
+  });
+  return { board: next, n };
 }
 
 function key(phase: number, index: number) {

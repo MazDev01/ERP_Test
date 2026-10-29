@@ -1,0 +1,293 @@
+/* ประสิทธิภาพพนักงาน (GM) — /gm/performance และหน้ารายคน (ผู้ใช้สั่ง 26 ต.ค. 2569)
+   วางใต้ .gmd-page เพื่อใช้สี/ระยะ/การ์ดชุดเดียวกับแดชบอร์ด GM (gm-dashboard.css) ไม่แตะโทเคนกลาง
+   ตัวหนังสือทุกสีผ่าน 4.5:1 บนพื้นของตัวเอง */
+.gpf-page{
+  --gpf-good-bg:#E3F3EB; --gpf-watch-bg:#FDF0D5; --gpf-watch-ink:#7A4E00; --gpf-low-bg:#FDE3E8; --gpf-none-bg:#EEF1F6;
+}
+
+/* ===== แถบเครื่องมือ (ค้นหา ตัวกรอง ช่วงเวลา มุมมอง) — ตัวกรอง ไม่ใช่เมนูนำทาง ===== */
+.gpf-page .gpf-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:18px}
+.gpf-page .gpf-sel{position:relative;display:block}
+.gpf-page .gpf-sel select{height:36px;min-width:150px;padding:0 36px 0 12px;border:1px solid var(--gmd-line);border-radius:10px;background:#fff;color:var(--gmd-ink);font:inherit;font-size:13px;appearance:none;cursor:pointer}
+.gpf-page .gpf-sel select:focus-visible{outline:2px solid var(--maz-red);outline-offset:1px}
+.gpf-page .gpf-sel svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--gmd-ink-soft);pointer-events:none}
+.gpf-page .gpf-view{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:#EEF2FA;margin-left:auto}
+.gpf-page .gpf-view button{width:34px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--gmd-ink-soft);display:flex;align-items:center;justify-content:center}
+.gpf-page .gpf-view button[aria-pressed="true"]{background:#fff;color:var(--maz-red);box-shadow:0 1px 2px rgba(30,45,80,.12)}
+.gpf-page .gpf-view button:focus-visible{outline:2px solid var(--maz-red);outline-offset:1px}
+.gpf-page .gpf-view svg{width:18px;height:18px}
+.gpf-page .gpf-count{font-size:12px;color:var(--gmd-ink-mute);margin:-6px 0 12px 2px}
+
+/* ===== มุมมองตาราง (Grid) ===== */
+.gpf-page .gpf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:18px 16px;align-items:start}
+.gpf-page .gpf-tile{display:block;width:100%;padding:6px;border:1px solid transparent;border-radius:14px;background:transparent;text-align:center;color:var(--gmd-ink);transition:transform .16s ease,border-color .16s ease,background-color .16s ease,box-shadow .16s ease}
+.gpf-page .gpf-tile:hover{transform:translateY(-2px);border-color:var(--gmd-red-line);background:#fff;box-shadow:0 4px 12px rgba(30,45,80,.08)}
+.gpf-page .gpf-tile:focus-visible{outline:2px solid var(--maz-red);outline-offset:2px}
+.gpf-page .gpf-tile[aria-expanded="true"]{background:var(--gmd-red-soft);border-color:var(--gmd-red-line)}
+.gpf-page .gpf-tile[aria-expanded="true"] .gpf-photo{box-shadow:0 0 0 3px var(--maz-red)}
+.gpf-page .gpf-nick{display:block;margin-top:8px;font-size:13px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* รูปสี่เหลี่ยมจัตุรัส 1:1 เสมอ — ห้ามวงกลม */
+.gpf-page .gpf-photo{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:1 / 1;border-radius:12px;overflow:hidden;font-weight:600;font-size:34px;line-height:1;user-select:none}
+.gpf-page .gpf-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.gpf-page .gpf-photo.gpf-sm{width:40px;height:40px;flex:none;border-radius:8px;font-size:16px}
+.gpf-page .gpf-photo.gpf-lg{width:104px;height:104px;flex:none;border-radius:14px;font-size:40px}
+.gpf-page .gpf-tint-0{background:#FDE3E8;color:#9C0014}
+.gpf-page .gpf-tint-1{background:#E6F0FE;color:#24508F}
+.gpf-page .gpf-tint-2{background:#FDF0D5;color:#7A4E00}
+.gpf-page .gpf-tint-3{background:#F1E6FD;color:#5E2E9E}
+.gpf-page .gpf-tint-4{background:#E3F3EB;color:#1E6A4A}
+
+/* ===== ส่วนที่กางออกในแถว (ต่อท้ายแถวของรูปที่เลือก กว้างเต็มแถว) ===== */
+.gpf-page .gpf-expand{grid-column:1 / -1;display:grid;grid-template-rows:1fr;opacity:1;animation:gpf-open .26s cubic-bezier(.2,.8,.2,1) both}
+.gpf-page .gpf-expand > div{min-height:0}
+.gpf-page .gpf-expand.gpf-closing{animation:gpf-close .2s ease-in both}
+@keyframes gpf-open{from{grid-template-rows:0fr;opacity:0}to{grid-template-rows:1fr;opacity:1}}
+@keyframes gpf-close{from{grid-template-rows:1fr;opacity:1}to{grid-template-rows:0fr;opacity:0}}
+.gpf-page .gpf-panel{position:relative;margin-top:10px;background:#fff;border:1px solid var(--gmd-line);border-radius:14px;box-shadow:0 2px 10px rgba(30,45,80,.06);padding:16px 20px 18px}
+.gpf-page .gpf-panel-in{animation:gpf-fade .22s ease-out both}
+@keyframes gpf-fade{from{opacity:0}to{opacity:1}}
+/* ปลายแหลมชี้ขึ้นไปที่รูปที่เลือก — ตำแหน่งซ้ายคำนวณจากคอลัมน์จริงใน tsx */
+.gpf-page .gpf-caret{position:absolute;top:-8px;width:16px;height:16px;margin-left:-8px;background:#fff;border-left:1px solid var(--gmd-line);border-top:1px solid var(--gmd-line);transform:rotate(45deg);border-top-left-radius:3px}
+.gpf-page .gpf-panel-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.gpf-page .gpf-panel-name{font-size:16px;font-weight:600}
+.gpf-page .gpf-panel-sub{font-size:12px;color:var(--gmd-ink-mute)}
+.gpf-page .gpf-panel-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--gmd-line-soft)}
+
+/* ===== มุมมองรายการ (List) ===== */
+.gpf-page .gpf-list{background:#fff;border:1px solid var(--gmd-line);border-radius:14px;overflow:hidden}
+.gpf-page .gpf-list > li + li{border-top:1px solid var(--gmd-line-soft)}
+.gpf-page .gpf-row{display:flex;align-items:center;gap:12px;width:100%;padding:10px 16px;border:0;background:transparent;text-align:left;color:var(--gmd-ink);transition:background-color .14s ease}
+.gpf-page .gpf-row:hover{background:#FBFCFE}
+.gpf-page .gpf-row:focus-visible{outline:2px solid var(--maz-red);outline-offset:-2px}
+.gpf-page .gpf-row[aria-expanded="true"]{background:var(--gmd-red-soft)}
+.gpf-page .gpf-row[aria-expanded="true"] .gpf-photo{box-shadow:0 0 0 2px var(--maz-red)}
+.gpf-page .gpf-row .gpf-nick{margin:0;flex:1;min-width:0;text-align:left;font-size:14px}
+.gpf-page .gpf-row-ch{width:16px;height:16px;color:var(--gmd-ink-mute);flex:none;transition:transform .2s ease}
+.gpf-page .gpf-row[aria-expanded="true"] .gpf-row-ch{transform:rotate(180deg)}
+.gpf-page .gpf-list .gpf-expand{display:grid}
+.gpf-page .gpf-list .gpf-panel{margin:0;border:0;border-radius:0;box-shadow:none;border-top:1px solid var(--gmd-line-soft);background:#FCFDFE}
+
+/* ===== ตัววัด 3 แถบ ===== */
+.gpf-page .gpf-measures{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 26px}
+.gpf-page .gpf-m{min-width:0}
+.gpf-page .gpf-m-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gpf-page .gpf-m-t{font-size:14px;font-weight:600}
+.gpf-page .gpf-m-main{margin-top:6px;font-size:13px;line-height:19px}
+.gpf-page .gpf-m-main b{font-size:20px;font-weight:600;margin-right:2px}
+.gpf-page .gpf-m-extra{font-size:12px;color:var(--gmd-ink-soft);line-height:18px}
+.gpf-page .gpf-track{position:relative;height:8px;border-radius:4px;background:var(--gmd-track);margin:8px 0 6px;overflow:hidden}
+.gpf-page .gpf-fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.gpf-page .gpf-fill.gpf-good{background:var(--gmd-ok)}
+.gpf-page .gpf-fill.gpf-watch{background:var(--gmd-amber)}
+.gpf-page .gpf-fill.gpf-low{background:var(--gmd-late)}
+.gpf-page .gpf-m-def{font-size:12px;color:var(--gmd-ink-mute);line-height:17px}
+.gpf-page .gpf-chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:11px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.gpf-page .gpf-chip i{width:7px;height:7px;border-radius:2px;display:inline-block}
+.gpf-page .gpf-chip.gpf-good{background:var(--gpf-good-bg);color:var(--gmd-ok-ink)}
+.gpf-page .gpf-chip.gpf-good i{background:var(--gmd-ok)}
+.gpf-page .gpf-chip.gpf-watch{background:var(--gpf-watch-bg);color:var(--gpf-watch-ink)}
+.gpf-page .gpf-chip.gpf-watch i{background:var(--gmd-amber)}
+.gpf-page .gpf-chip.gpf-low{background:var(--gpf-low-bg);color:var(--gmd-red-dark)}
+.gpf-page .gpf-chip.gpf-low i{background:var(--gmd-late)}
+.gpf-page .gpf-chip.gpf-none{background:var(--gpf-none-bg);color:var(--gmd-ink-soft)}
+.gpf-page .gpf-chip.gpf-none i{background:var(--gmd-idle)}
+.gpf-page .gpf-mock{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;border:1px dashed #C99A3B;background:var(--gpf-watch-bg);color:var(--gpf-watch-ink);font-size:11.5px;font-weight:600;white-space:nowrap}
+.gpf-page .gpf-legend{font-size:11.5px;color:var(--gmd-ink-mute);line-height:17px}
+.gpf-page .gpf-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border-radius:17px;background:var(--maz-red);color:#fff !important;font-size:13px;font-weight:600;white-space:nowrap}
+.gpf-page .gpf-btn:hover{background:var(--gmd-red-dark)}
+.gpf-page .gpf-btn:focus-visible{outline:2px solid var(--maz-red);outline-offset:2px}
+.gpf-page .gpf-btn svg{width:15px;height:15px}
+.gpf-page .gpf-empty{padding:28px 8px;text-align:center;color:var(--gmd-ink-soft);font-size:13px}
+
+/* ===== หน้ารายคน ===== */
+.gpf-page .gpf-back{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--gmd-ink-soft);margin:0 0 12px 2px}
+.gpf-page .gpf-back:hover{color:var(--maz-red)}
+.gpf-page .gpf-back svg{width:15px;height:15px}
+.gpf-page .gpf-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;margin-top:10px}
+.gpf-page .gpf-facts dt{font-size:11.5px;color:var(--gmd-ink-mute)}
+.gpf-page .gpf-facts dd{margin:0;font-size:13px;font-weight:600}
+.gpf-page .gpf-note{margin-top:12px;font-size:12px;color:var(--gmd-ink-soft)}
+.gpf-page .gpf-scroll{overflow-x:auto}
+.gpf-page .gpf-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.gpf-page .gpf-table th{text-align:left;font-weight:600;color:var(--gmd-ink-soft);font-size:12px;padding:7px 10px;border-bottom:1px solid var(--gmd-line);white-space:nowrap}
+.gpf-page .gpf-table td{padding:8px 10px;border-bottom:1px solid var(--gmd-line-soft);vertical-align:top}
+.gpf-page .gpf-table tr:last-child td{border-bottom:0}
+.gpf-page .gpf-table .gpf-num{text-align:right;white-space:nowrap}
+.gpf-page .gpf-tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.gpf-page .gpf-tag.gpf-ontime{background:var(--gpf-good-bg);color:var(--gmd-ok-ink)}
+.gpf-page .gpf-tag.gpf-late{background:var(--gpf-low-bg);color:var(--gmd-red-dark)}
+.gpf-page .gpf-tag.gpf-waited{background:#E6F0FE;color:#24508F}
+.gpf-page .gpf-tag.gpf-open{background:var(--gpf-none-bg);color:var(--gmd-ink-soft)}
+.gpf-page .gpf-muted{font-size:12px;color:var(--gmd-ink-mute)}
+
+/* กราฟแท่งอัตราส่งตรงเวลารายเดือน — สีเดียว (ชุดข้อมูลเดียว ไม่ต้องมีคำอธิบายสี) */
+
+@media (max-width:860px){
+  .gpf-page .gpf-measures{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:640px){
+  .gpf-page .gpf-grid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:14px 10px}
+  .gpf-page .gpf-photo{font-size:28px}
+  .gpf-page .gpf-tools > *{flex:1 1 auto}
+  .gpf-page .gpf-view{margin-left:0;flex:none}
+  .gpf-page .gpf-sel select{min-width:0;width:100%}
+  .gpf-page .gpf-panel{padding:14px 14px 16px}
+}
+/* ===== หน้ารายคน — จัดวางตามต้นแบบ gm-performance-person.html (ผู้ใช้สั่ง 26 ต.ค. 2569) =====
+   กริด 12 คอลัมน์ ระยะ 24px การ์ดขาวมุมมน ไม่ซ้อนการ์ด · สีจากโทเคนของ gm-dashboard.css ตัวหนังสือผ่าน 4.5:1 */
+.gmd-page.gpf-page .gpd-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:24px}
+.gmd-page.gpf-page .gpd-c12{grid-column:span 12}
+.gmd-page.gpf-page .gpd-c8{grid-column:span 8}
+.gmd-page.gpf-page .gpd-c6{grid-column:span 6}
+.gmd-page.gpf-page .gpd-c4{grid-column:span 4}
+.gmd-page.gpf-page .gpd-card{background:#fff;border:1px solid var(--gmd-line);border-radius:16px;padding:20px 22px;box-shadow:0 1px 2px rgba(30,45,80,.04);min-width:0}
+.gmd-page.gpf-page .gpd-ch{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.gmd-page.gpf-page .gpd-t{margin:0;font-size:15px;font-weight:600;line-height:1.35}
+.gmd-page.gpf-page .gpd-s{font-size:12.5px;color:var(--gmd-ink-soft);margin-top:2px}
+.gmd-page.gpf-page .gpd-chip{display:inline-block;font-size:12px;font-weight:500;line-height:20px;border-radius:999px;padding:0 10px;white-space:nowrap}
+.gmd-page.gpf-page .gpd-chip.gpd-ok{color:var(--gmd-ok-ink);background:var(--gpf-good-bg)}
+.gmd-page.gpf-page .gpd-chip.gpd-warn{color:var(--gpf-watch-ink);background:var(--gpf-watch-bg)}
+.gmd-page.gpf-page .gpd-chip.gpd-bad{color:var(--gmd-red-dark);background:var(--gpf-low-bg)}
+.gmd-page.gpf-page .gpd-chip.gpd-leave{color:#24508F;background:var(--gmd-tint-blue)}
+.gmd-page.gpf-page .gpd-chip.gpd-off{color:var(--gmd-ink-soft);background:var(--gpf-none-bg)}
+.gmd-page.gpf-page .gpd-chip.gpd-cnt{color:var(--gmd-red-dark);background:var(--gmd-red-soft)}
+.gmd-page.gpf-page .gpd-red{color:var(--gmd-late-ink)}
+.gmd-page.gpf-page .gpd-none{color:var(--gmd-ink-soft);padding:12px 0}
+
+/* หัว */
+.gmd-page.gpf-page .gpd-head{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
+.gmd-page.gpf-page .gpd-head .gpf-photo.gpf-lg{width:112px;height:112px;font-size:44px}
+.gmd-page.gpf-page .gpd-who{flex:1 1 320px;min-width:0}
+.gmd-page.gpf-page .gpd-nick{margin:0;font-size:24px;font-weight:700;line-height:1.25}
+.gmd-page.gpf-page .gpd-name{color:var(--gmd-ink-soft);margin-top:2px;font-size:14px}
+.gmd-page.gpf-page .gpd-dl{display:grid;grid-template-columns:repeat(5,minmax(0,auto));justify-content:start;gap:12px 32px;margin:16px 0 0}
+.gmd-page.gpf-page .gpd-dl div{min-width:0}
+.gmd-page.gpf-page .gpd-dl dt{font-size:12px;color:var(--gmd-ink-soft)}
+.gmd-page.gpf-page .gpd-dl dd{margin:2px 0 0;font-size:14px;font-weight:500}
+.gmd-page.gpf-page .gpd-per{display:flex;flex-direction:column;align-items:flex-end;gap:8px;margin-left:auto}
+.gmd-page.gpf-page .gpd-range{font-size:12.5px;color:var(--gmd-ink-soft)}
+
+/* การ์ดสรุป */
+.gmd-page.gpf-page .gpd-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+.gmd-page.gpf-page .gpd-scard{background:#fff;border:1px solid var(--gmd-line);border-radius:16px;padding:16px 18px;box-shadow:0 1px 2px rgba(30,45,80,.04);min-width:0}
+.gmd-page.gpf-page .gpd-scard-l{font-size:13px;color:var(--gmd-ink-soft)}
+.gmd-page.gpf-page .gpd-scard-v{font-size:28px;font-weight:700;line-height:1.25;margin-top:4px}
+.gmd-page.gpf-page .gpd-scard-u{font-size:14px;font-weight:500;color:var(--gmd-ink-soft);margin-left:4px}
+.gmd-page.gpf-page .gpd-scard-c{font-size:12.5px;color:var(--gmd-ink-soft);margin-top:2px}
+
+/* กราฟแท่งซ้อนรายเดือน */
+.gmd-page.gpf-page .gpd-legend{display:flex;gap:6px 14px;font-size:12.5px;color:var(--gmd-ink-soft);flex-wrap:wrap}
+.gmd-page.gpf-page .gpd-legend span{display:inline-flex;align-items:center;gap:6px}
+.gmd-page.gpf-page .gpd-legend i{display:block;width:10px;height:10px;border-radius:3px}
+.gmd-page.gpf-page .gpd-lg-ok{background:var(--gmd-ok)}
+.gmd-page.gpf-page .gpd-lg-late{background:var(--gmd-late)}
+.gmd-page.gpf-page .gpd-svg{display:block;width:100%;height:auto}
+.gmd-page.gpf-page .gpd-svg text{font-family:inherit}
+.gmd-page.gpf-page .gpd-axis{stroke:var(--gmd-axis)}
+.gmd-page.gpf-page .gpd-bar-ok{fill:var(--gmd-ok)}
+.gmd-page.gpf-page .gpd-bar-late{fill:var(--gmd-late)}
+.gmd-page.gpf-page .gpd-bar-v{font-size:13px;font-weight:600;fill:var(--gmd-ink)}
+.gmd-page.gpf-page .gpd-bar-x{font-size:12.5px;fill:var(--gmd-ink-soft)}
+
+/* รายการความสูงคงที่ + เลื่อนภายใน + จางขอบล่าง */
+.gmd-page.gpf-page .gpd-scroll{position:relative}
+.gmd-page.gpf-page .gpd-scroll-in{overflow-y:auto}
+.gmd-page.gpf-page .gpd-scroll.gpd-fade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:28px;pointer-events:none;background:linear-gradient(rgba(255,255,255,0),#fff)}
+.gmd-page.gpf-page .gpd-lrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--gmd-line-soft)}
+.gmd-page.gpf-page .gpd-lrow:last-child{border-bottom:0}
+.gmd-page.gpf-page .gpd-lt{font-weight:500}
+.gmd-page.gpf-page .gpd-ls{font-size:12.5px;color:var(--gmd-ink-soft);margin-top:1px}
+.gmd-page.gpf-page .gpd-lr{text-align:right;flex:none}
+.gmd-page.gpf-page .gpd-foot{display:flex;justify-content:space-between;gap:12px;align-items:baseline;border-top:1px solid var(--gmd-line);margin-top:8px;padding-top:12px}
+.gmd-page.gpf-page .gpd-foot-l{font-size:13px;color:var(--gmd-ink-soft)}
+.gmd-page.gpf-page .gpd-foot-v{font-weight:600}
+
+/* ตาราง */
+.gmd-page.gpf-page .gpd-tbl{width:100%;border-collapse:collapse}
+.gmd-page.gpf-page .gpd-tbl th{position:sticky;top:0;z-index:1;background:#fff;text-align:left;font-size:12px;font-weight:600;color:var(--gmd-ink-soft);padding:8px 10px;border-bottom:1px solid var(--gmd-line);white-space:nowrap}
+.gmd-page.gpf-page .gpd-tbl td{padding:10px;border-bottom:1px solid var(--gmd-line-soft);vertical-align:top}
+.gmd-page.gpf-page .gpd-tbl tr:last-child td{border-bottom:0}
+.gmd-page.gpf-page .gpd-tbl .num{text-align:right}
+.gmd-page.gpf-page .gpd-tbl td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.gmd-page.gpf-page .gpd-tags{display:inline-flex;flex-wrap:wrap;gap:4px}
+
+/* การเข้างาน */
+.gmd-page.gpf-page .gpd-stats{display:flex;flex-wrap:wrap;gap:16px 36px;margin-bottom:18px}
+.gmd-page.gpf-page .gpd-stat-l{font-size:12.5px;color:var(--gmd-ink-soft)}
+.gmd-page.gpf-page .gpd-stat-v{font-size:20px;font-weight:700;margin-top:2px}
+.gmd-page.gpf-page .gpd-stat-v small{font-size:13px;font-weight:500;color:var(--gmd-ink-soft);margin-left:4px}
+.gmd-page.gpf-page .gpd-heat{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.gmd-page.gpf-page .gpd-hdays{display:flex;flex-direction:column;gap:var(--hg);padding-top:18px;font-size:11px;color:var(--gmd-ink-mute);flex:none}
+.gmd-page.gpf-page .gpd-hdays span{display:block;height:var(--hc);line-height:var(--hc)}
+.gmd-page.gpf-page .gpd-hweeks{display:flex;gap:var(--hg)}
+.gmd-page.gpf-page .gpd-hw{display:flex;flex-direction:column;gap:var(--hg)}
+.gmd-page.gpf-page .gpd-hm{display:block;height:14px;margin-bottom:4px;font-size:11px;color:var(--gmd-ink-mute);white-space:nowrap;width:var(--hc);overflow:visible}
+.gmd-page.gpf-page .gpd-hc{display:block;width:var(--hc);height:var(--hc);border-radius:3px;background:var(--gmd-track)}
+.gmd-page.gpf-page .gpd-hc.ok{background:var(--gmd-ok)}
+.gmd-page.gpf-page .gpd-hc.late{background:var(--gmd-amber)}
+.gmd-page.gpf-page .gpd-hc.early{background:var(--gmd-purple)}
+.gmd-page.gpf-page .gpd-hc.le{background:var(--gmd-late)}
+.gmd-page.gpf-page .gpd-hc.lv{background:var(--gmd-blue)}
+.gmd-page.gpf-page .gpd-hc.no{background:#6B7280}
+.gmd-page.gpf-page .gpd-hc.hol{background:var(--gmd-line)}
+.gmd-page.gpf-page .gpd-hc.out{background:transparent}
+.gmd-page.gpf-page .gpd-legend-heat{margin-top:10px}
+.gmd-page.gpf-page .gpd-legend-heat i.gpd-hc{width:10px;height:10px}
+.gmd-page.gpf-page .gpd-sub{font-weight:600;font-size:13.5px;margin:20px 0 4px}
+
+/* การลา */
+.gmd-page.gpf-page .gpd-q{margin-bottom:12px}
+.gmd-page.gpf-page .gpd-q-h{display:flex;justify-content:space-between;gap:10px;font-size:13.5px}
+.gmd-page.gpf-page .gpd-q-v{color:var(--gmd-ink-soft);text-align:right}
+.gmd-page.gpf-page .gpd-q-v.over{color:var(--gmd-late-ink);font-weight:600}
+.gmd-page.gpf-page .gpd-trk{display:flex;height:8px;border-radius:999px;background:var(--gmd-track);margin-top:6px;overflow:hidden}
+.gmd-page.gpf-page .gpd-trk span{display:block;height:100%}
+.gmd-page.gpf-page .gpd-trk .f{background:var(--gmd-blue)}
+.gmd-page.gpf-page .gpd-trk .x{background:var(--gmd-late)}
+.gmd-page.gpf-page .gpd-hr{border:0;border-top:1px solid var(--gmd-line);margin:16px 0 4px}
+.gmd-page.gpf-page .gpd-hr + .gpd-sub{margin-top:12px}
+
+/* KPI */
+.gmd-page.gpf-page .gpd-k{padding:10px 0;border-bottom:1px solid var(--gmd-line-soft)}
+.gmd-page.gpf-page .gpd-k:last-child{border-bottom:0}
+.gmd-page.gpf-page .gpd-k-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.gmd-page.gpf-page .gpd-k-n{font-weight:500}
+.gmd-page.gpf-page .gpd-k-v{font-size:12.5px;color:var(--gmd-ink-soft);margin-top:2px}
+.gmd-page.gpf-page .gpd-ktrk{position:relative;display:block;height:8px;border-radius:999px;background:var(--gmd-track);margin-top:8px}
+.gmd-page.gpf-page .gpd-ktrk .f{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--maz-red)}
+.gmd-page.gpf-page .gpd-ktrk .t{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--gmd-ink)}
+
+/* ความประพฤติ — การ์ดบางบรรทัดเดียว */
+.gmd-page.gpf-page .gpd-slim{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:16px;padding-bottom:16px}
+.gmd-page.gpf-page .gpd-slim-v{color:var(--gmd-ink-soft)}
+
+@media (max-width:1100px){
+  .gmd-page.gpf-page .gpd-c8,.gmd-page.gpf-page .gpd-c6,.gmd-page.gpf-page .gpd-c4{grid-column:span 12}
+  .gmd-page.gpf-page .gpd-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .gmd-page.gpf-page .gpd-dl{grid-template-columns:repeat(3,minmax(0,auto))}
+}
+@media (max-width:640px){
+  .gmd-page.gpf-page .gpd-grid{gap:16px}
+  .gmd-page.gpf-page .gpd-card{padding:16px}
+  .gmd-page.gpf-page .gpd-head{gap:16px}
+  .gmd-page.gpf-page .gpd-head .gpf-photo.gpf-lg{width:80px;height:80px;font-size:32px}
+  .gmd-page.gpf-page .gpd-per{align-items:stretch;margin-left:0;width:100%}
+  .gmd-page.gpf-page .gpd-dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gmd-page.gpf-page .gpd-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .gmd-page.gpf-page .gpd-scard-v{font-size:24px}
+  /* ตารางกลายเป็นการ์ด */
+  .gmd-page.gpf-page .gpd-tbl thead{display:none}
+  .gmd-page.gpf-page .gpd-tbl,.gmd-page.gpf-page .gpd-tbl tbody,.gmd-page.gpf-page .gpd-tbl tr,.gmd-page.gpf-page .gpd-tbl td{display:block;width:100%}
+  .gmd-page.gpf-page .gpd-tbl tr{padding:10px 0;border-bottom:1px solid var(--gmd-line-soft)}
+  .gmd-page.gpf-page .gpd-tbl tr:last-child{border-bottom:0}
+  .gmd-page.gpf-page .gpd-tbl td{border:0;padding:2px 0;text-align:left}
+  .gmd-page.gpf-page .gpd-tbl td.num{text-align:left}
+  .gmd-page.gpf-page .gpd-tbl td[data-l]::before{content:attr(data-l);display:block;font-size:11.5px;color:var(--gmd-ink-mute)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .gpf-page .gpf-expand,.gpf-page .gpf-expand.gpf-closing,.gpf-page .gpf-panel-in{animation:none}
+  .gpf-page .gpf-tile,.gpf-page .gpf-fill,.gpf-page .gpf-row-ch{transition:none}
+  .gpf-page .gpf-tile:hover{transform:none}
+}

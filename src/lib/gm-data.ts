@@ -15,6 +15,7 @@
 import { useMemo } from "react";
 import { empReqLeaveHours, useEmpRequests } from "./emp-requests";
 import { fmtLeaveHours, leaveHoursOf } from "./leave-data";
+import { fuelAmount, fuelRate } from "./expense-data";
 import { useAllClaims } from "./expense-store";
 import { addDays, thaiMonth } from "./format";
 import { HR_LEAVE_LABEL, ROLE_EMPLOYEE, leaveRowHours } from "./hr-data";
@@ -59,6 +60,8 @@ export type GmPending = {
   /** leave: ประเภทการลา + ช่วงวัน (ให้หน้าจอจัดรูปวันที่เอง) */
   from?: string;
   to?: string;
+  /** ot: วันที่ทำโอที */
+  date?: string;
   /** "yyyy-mm-dd hh:mm" เวลาที่ยื่น — เรียงเก่าสุดก่อน */
   at: string;
 };
@@ -148,7 +151,7 @@ export function useGmPending(): GmPending[] {
       if (kind === "ot")
         for (const v of ots[from])
           if (v.status === "รออนุมัติ")
-            out.push({ key: `ot-${from}-${v.id}`, kind, name, what: `ทำงานล่วงเวลา ${v.hours} ชม.`, at: v.submittedAt || `${v.date} 00:00` });
+            out.push({ key: `ot-${from}-${v.id}`, kind, name, what: `OT ${v.hours} ชม.`, date: v.date, at: v.submittedAt || `${v.date} 00:00` });
       if (kind === "expense")
         for (const v of claims[from])
           if (v.status === "รออนุมัติ")
@@ -157,27 +160,81 @@ export function useGmPending(): GmPending[] {
     const nameOf = new Map(hr.emp.map((e) => [e.id, displayName(e)]));
     for (const r of extra) {
       if (r.to !== GM || r.status !== "pending") continue;
+      /* ใบของ GM เองไม่เข้าคิวของตัวเอง */
+      if (r.emp === ROLE_EMPLOYEE.gm) continue;
       const name = nameOf.get(r.emp) ?? r.emp;
       if (r.kind === "leave")
         out.push({ key: `emp-${r.id}`, kind: "leave", name, what: r.leaveType ?? "ลา", from: r.from, to: r.toDate || r.from, at: r.at });
       else if (r.kind === "ot")
-        out.push({ key: `emp-${r.id}`, kind: "ot", name, what: `ทำงานล่วงเวลา ${r.hours ?? 0} ชม.`, at: r.at });
+        out.push({ key: `emp-${r.id}`, kind: "ot", name, what: `OT ${r.hours ?? 0} ชม.`, date: r.date, at: r.at });
       else out.push({ key: `emp-${r.id}`, kind: "expense", name, what: `ค่าน้ำมัน ${thaiMonth(r.month ?? "")}`, at: r.at });
     }
     return out.sort((a, b) => a.at.localeCompare(b.at));
   }, [hr.emp, extra, leaves, ots, claims, route]);
 }
 
-/** ชั่วโมงโอทีที่อนุมัติแล้วทั้งบริษัทในเดือนนี้ (yyyy-mm) */
-export function useApprovedOtHours(month: string): number {
+/** ช่วงวันที่หนึ่งช่วงของกราฟ (yyyy-mm-dd ทั้งสองข้าง รวมวันสุดท้าย) */
+export type DateSpan = { from: string; to: string };
+
+/** วันที่ตกช่วงไหน — ไม่ตกช่วงไหนเลย = -1 */
+function spanIndex(spans: DateSpan[], iso: string) {
+  if (!iso) return -1;
+  return spans.findIndex((b) => iso >= b.from && iso <= b.to);
+}
+const spansKey = (spans: DateSpan[]) => spans.map((b) => `${b.from}_${b.to}`).join(",");
+const spansOf = (key: string): DateSpan[] =>
+  key
+    ? key.split(",").map((k) => {
+        const [from, to] = k.split("_");
+        return { from, to };
+      })
+    : [];
+
+/** ชั่วโมงโอทีที่อนุมัติแล้วทั้งบริษัท แยกตามช่วงวันที่ (ตามวันที่ทำโอที) ตามลำดับของ spans */
+export function useApprovedOt(spans: DateSpan[]): number[] {
+  /* useHrTime รวมโอทีที่อนุมัติแล้วใน emp-requests ไว้แล้ว (hr-link · addEmpRequests) — นับซ้ำที่นี่อีกจะเกินสองเท่า */
   const time = useHrTime();
-  const extra = useEmpRequests();
+  const key = spansKey(spans);
   return useMemo(() => {
-    let h = 0;
-    for (const rec of Object.values(time)) for (const x of rec.ot ?? []) if (x.d.slice(0, 7) === month) h += x.h;
-    /* โอทีของทีมงานที่ยังไม่มีบัญชี — อนุมัติแล้วยังไม่ไหลเข้าทะเบียน */
-    for (const r of extra)
-      if (r.kind === "ot" && r.status === "approved" && (r.date ?? "").slice(0, 7) === month) h += r.approvedHours ?? r.hours ?? 0;
-    return Math.round(h * 100) / 100;
-  }, [time, extra, month]);
+    const ss = spansOf(key);
+    const h = ss.map(() => 0);
+    for (const rec of Object.values(time))
+      for (const x of rec.ot ?? []) {
+        const i = spanIndex(ss, x.d);
+        if (i >= 0) h[i] += x.h;
+      }
+    return h.map((v) => Math.round(v * 100) / 100);
+  }, [time, key]);
+}
+
+/**
+ * ค่าเดินทาง (ค่าน้ำมัน) ในใบเบิกที่ GM อนุมัติแล้ว แยกตามช่วงวันที่ (ตามวันที่เดินทางของแต่ละแถว) ตามลำดับของ spans
+ * ใบของบทบาทตามสายอนุมัติ + ใบของทีมงานใน emp-requests ที่ส่งถึง GM · ไม่รวมใบของ GM เอง
+ * ค่าคอมมิชชั่น CEO เป็นผู้อนุมัติ ไม่ใช่ GM จึงไม่นับที่นี่ (ผู้ใช้สั่ง 20 ต.ค. 2569)
+ */
+export function useGmApprovedTravel(spans: DateSpan[]): number[] {
+  const claims = useAllClaims();
+  const extra = useEmpRequests();
+  const route = useApprovalRoute();
+  const key = spansKey(spans);
+  return useMemo(() => {
+    const ss = spansOf(key);
+    const sum = ss.map(() => 0);
+    const add = (iso: string, v: number) => {
+      const i = spanIndex(ss, iso);
+      if (i >= 0) sum[i] += v;
+    };
+    for (const { kind, from } of approvesFor(GM, route)) {
+      if (kind !== "expense") continue;
+      for (const c of claims[from] ?? []) {
+        if (c.status !== "อนุมัติแล้ว") continue;
+        for (const f of c.fuel) add(f.date || `${c.month}-01`, fuelAmount(f));
+      }
+    }
+    for (const r of extra) {
+      if (r.to !== GM || r.kind !== "expense" || r.status !== "approved" || r.emp === ROLE_EMPLOYEE.gm) continue;
+      for (const f of r.fuel ?? []) add(f.date || `${r.month ?? ""}-01`, (Number(f.km) || 0) * fuelRate());
+    }
+    return sum.map((v) => Math.round(v));
+  }, [claims, extra, route, key]);
 }
