@@ -230,7 +230,7 @@ export function HrPayslipPage() {
       {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
         {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
-        <h1 className="page-h1">สลิปเงินเดือน</h1>
+        <h1 className="page-h1">{day ? "สลิปค่าจ้าง" : "สลิปเงินเดือน"}</h1>
         <div className="tools ml-auto">
           {day ? (
             <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
@@ -339,7 +339,7 @@ export function HrPayslipPage() {
                       href={payHref("/hr/payroll", g.group, month, day ? dayRange : null)}
                       className="mt-1 block font-semibold text-primary underline"
                     >
-                      ไปปิดรอบที่หน้าคำนวณเงินเดือน
+                      {day ? "ไปปิดรอบที่หน้าคำนวณค่าจ้าง" : "ไปปิดรอบที่หน้าคำนวณเงินเดือน"}
                     </Link>
                   </td>
                 </tr>
@@ -419,7 +419,7 @@ export function HrPayslipPage() {
                   href={payHref("/hr/payroll", g.group, month, day ? dayRange : null)}
                   className="mt-2 block font-semibold text-primary underline"
                 >
-                  ไปปิดรอบที่หน้าคำนวณเงินเดือน
+                  {day ? "ไปปิดรอบที่หน้าคำนวณค่าจ้าง" : "ไปปิดรอบที่หน้าคำนวณเงินเดือน"}
                 </Link>
               </>
             ) : rows.length === 0 ? (

@@ -35,6 +35,7 @@ import {
   withLoginAccounts,
   fillSlip,
   normalizeExtra,
+  freezeGuarantee,
   hrCycle,
   payFromAfterPass,
   type CycleSum,
@@ -436,6 +437,11 @@ export function deleteEmployee(id: string) {
   store.update((s) => ({ ...s, emp: s.emp.filter((e) => e.id !== id) }));
 }
 
+/** ยอดหัก กยศ. และยอดยกมาเงินประกันผลงาน (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+export function setEmpPayCuts(id: string, cuts: Pick<Employee, "studentLoan" | "guaranteeOpening">) {
+  store.update((s) => ({ ...s, emp: s.emp.map((e) => (e.id === id ? { ...e, ...cuts } : e)) }));
+}
+
 export function updateEmpProfile(id: string, profile: EmpProfile, by: string) {
   store.update((s) => ({
     ...s,
@@ -801,7 +807,11 @@ export function closePayrun(
     /* ต้องให้ CEO อนุมัติยอดก่อน (ผู้ใช้สั่ง 19 ต.ค. 2569) */
     if (!payApproved(s, month, group)) return s;
     done = true;
-    return { ...s, payruns: closeIn(s.payruns, month, today, by, group, sum) };
+    return {
+      ...s,
+      payruns: closeIn(s.payruns, month, today, by, group, sum),
+      extras: group === "month" ? freezeGuarantee(s.extras, month, sum.lines) : s.extras,
+    };
   });
   /* ปิดไม่สำเร็จ (ยังไม่อนุมัติ) — ผู้เรียกต้องไม่บันทึกใบเบิกว่าจ่ายแล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */
   return done;

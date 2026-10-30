@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { baht, bkkStamp, thaiMonth, thaiStamp } from "@/lib/format";
 import { GROUP_LABEL, payApproval, payFieldLabel, payKeyLabel, payNamesOf, paySnapOf, probRoundLabel, dailyRoundRange, isDailyRoundKey, type CycleSum, type PayApproval, type PayGroup } from "@/lib/hr-data";
 import { decidePayroll, useHr } from "@/lib/hr-store";
@@ -207,7 +207,7 @@ function PayChangeList({ ap }: { ap: PayApproval }) {
 }
 
 /** "ยอดเงินเดือนรออนุมัติ" ในหน้าคำขออนุมัติของ CEO — ขึ้นเฉพาะตอนมีรอบรออยู่ */
-export function PayrollWaitingList() {
+export function PayrollWaitingList({ empty = null }: { empty?: ReactNode } = {}) {
   const hr = useHr();
   const sumOf = usePayrollSumFn();
   usePayrollAutoResubmit();
@@ -218,7 +218,7 @@ export function PayrollWaitingList() {
       return { key, runKey, group, sum: sumOf(runKey, group), ver: hr.payApprove[key]?.ver ?? 0 };
     })
     .sort((x, y) => x.runKey.localeCompare(y.runKey) || (x.group === "month" ? -1 : 1));
-  if (waiting.length === 0) return null;
+  if (waiting.length === 0) return <>{empty}</>;
   return (
     <section className="glass rounded-[14px]">
       <h2 className="px-5 pt-[15px] pb-2 text-[15px] font-bold">

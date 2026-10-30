@@ -31,6 +31,7 @@ import {
   inPeriod,
   inRange,
   isDaily,
+  guaranteeHeld,
   isDailyRoundKey,
   lateDeduction,
   lateMin,
@@ -173,7 +174,7 @@ export function slipModel(x: SlipInput) {
     cut: cutTotal,
     wht: pay.wht,
     ss: day ? 0 : pay.ss,
-    guarantee: it.guarantee ?? 0,
+    guaranteeBack: it.guaranteeBack ?? 0,
     reimb,
     /* ยอดสุทธิที่คำนวณ/บันทึกไว้ — บรรทัดข้างบนบวกลบแล้วได้เท่านี้ */
     net: pay.net,
@@ -275,20 +276,26 @@ export type SlipYtd = { gross: number; tax: number; ss: number; guarantee: numbe
 /**
  * ยอดสะสมปีปฏิทินของวันจ่าย — สลิปที่เผยแพร่แล้วก่อนใบนี้ในปีเดียวกัน + ใบนี้
  * ใบนี้อาจยังไม่เผยแพร่ (ฝ่ายบุคคลเปิดตรวจก่อนส่ง) จึงบวกจากตัวเลขของใบนี้เองเสมอ
- * เงินสะสมประกันผลงาน = ผลรวม "หัก ประกันผลงาน" (ผู้ใช้สั่ง 16 ต.ค. 2569)
+ * เงินสะสมประกันผลงาน = ยอดสะสมต่อเนื่องข้ามปี ไม่ใช่ยอดของปีนี้ (ผู้ใช้สั่ง 30 ต.ค. 2569)
+ * เงินประกันที่คืนเป็นเงินของพนักงานเอง ไม่นับเป็นรายได้สะสม
  */
 export function slipYtd(hr: Hr, emp: Employee, time: Time, src: ComSource, key: string, cur: SlipModel): SlipYtd {
   const at = slipPayDate(key);
   const year = at.slice(0, 4);
-  const sum: SlipYtd = { gross: cur.earn, tax: cur.wht, ss: cur.ss, guarantee: cur.guarantee };
+  const guaranteeMonth = isDailyRoundKey(key) ? dailyRoundRange(key).to.slice(0, 7) : key;
+  const sum: SlipYtd = {
+    gross: r2(cur.earn - cur.guaranteeBack),
+    tax: cur.wht,
+    ss: cur.ss,
+    guarantee: guaranteeHeld(emp, guaranteeMonth, hr.extras),
+  };
   for (const s of publishedSlips(hr, emp, time, src)) {
     const d = slipPayDate(s.key);
     if (s.key === key || d.slice(0, 4) !== year || d > at) continue;
     const m = slipModel(inputOfLine(emp, s, time));
-    sum.gross += m.earn;
+    sum.gross += m.earn - m.guaranteeBack;
     sum.tax += m.wht;
     sum.ss += m.ss;
-    sum.guarantee += m.guarantee;
   }
   return { gross: r2(sum.gross), tax: r2(sum.tax), ss: r2(sum.ss), guarantee: r2(sum.guarantee) };
 }
@@ -473,7 +480,7 @@ export function PayslipPaper({
             <tr>
               <td className={`num ${BD} px-2 py-1.5`}>{amt(ytd.gross)}</td>
               <td className={`num ${BD} px-2 py-1.5`}>{amt(ytd.tax)}</td>
-              {/* ผลรวม "หัก ประกันผลงาน" ของปีนี้ (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+              {/* ยอดสะสมต่อเนื่องข้ามปี (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
               <td className={`num ${BD} px-2 py-1.5`}>{amt(ytd.guarantee)}</td>
               <td className={`num ${BD} px-2 py-1.5`}>{amt(ytd.ss)}</td>
             </tr>

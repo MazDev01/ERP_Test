@@ -80,6 +80,13 @@ const TILES: { label: string; href: string; grad: string; icon: ReactNode }[] = 
     grad: "linear-gradient(150deg,#2EC4B6,#13867D)",
     icon: (<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M8 12h8M8 16h5" /></>),
   },
+  /* โอทีต้องเข้าได้จากหน้าหลักมือถือ — การ์ดแบบเดียวกับช่องอื่น ไอคอนเดียวกับเมนูโอที (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  {
+    label: "โอที",
+    href: "/ot",
+    grad: "linear-gradient(150deg,#F2A93B,#D9731A)",
+    icon: (<><path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /><circle cx="12" cy="12" r="3.6" /></>),
+  },
 ];
 const TILE_SHADOW = "inset 0 1px 0 rgba(255,255,255,.35), 0 10px 18px -10px rgba(90,20,30,.55)";
 

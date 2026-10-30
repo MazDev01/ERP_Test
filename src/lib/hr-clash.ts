@@ -21,7 +21,8 @@ import { fmtLeaveHours } from "./leave-data";
  *   false = ปุ่มปิดรอบกดไม่ได้ พร้อมบอกเหตุผล (หน้าคำนวณเงินเดือนก็กันปิดรอบด้วย)
  * TODO: ⚠️ เปลี่ยนเป็น false ก่อนขึ้นระบบจริง (production)
  */
-export const TESTING_ALLOW_CLOSE = true;
+/* ปิดช่วงทดสอบแล้ว — ต้องแก้ให้ครบก่อนจึงปิดรอบได้ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+export const TESTING_ALLOW_CLOSE = false;
 
 export const clashKey = (emp: string, d: string) => `${emp}|${d}`;
 

@@ -298,6 +298,26 @@ function toRequest(it: Item, name: string, full: string, sub: string): ApprovalR
   };
 }
 
+/** คำขออนุมัติเงินเดือน — เมนูย่อยใต้คำขออนุมัติ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+export function CeoPayrollApprovalsPage() {
+  return (
+    <div className="space-y-4">
+      <div className="bar">
+        <div>
+          <h1>คำขออนุมัติเงินเดือน</h1>
+        </div>
+      </div>
+      <PayrollWaitingList
+        empty={
+          <section className="glass rounded-[14px] px-5 py-10 text-center text-[13.5px] text-muted-foreground">
+            ไม่มีคำขออนุมัติเงินเดือน
+          </section>
+        }
+      />
+    </div>
+  );
+}
+
 export function CeoApprovalsPage() {
   const params = useSearchParams();
   const reqId = params.get("req") ?? "";
@@ -314,9 +334,7 @@ export function CeoApprovalsPage() {
       {/* วันหยุดบริษัทที่ฝ่ายบุคคลส่งมา — ขึ้นเฉพาะตอนมีคำขอรออยู่ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
       <HolidayStrip />
 
-      {/* ยอดเงินเดือนรออนุมัติ — ขึ้นเฉพาะตอนฝ่ายบุคคลส่งมา (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
-      <PayrollWaitingList />
-
+      {/* ยอดเงินเดือนรออนุมัติย้ายไปเมนูย่อย "เงินเดือน" (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
       <TimeRequests openId={reqId} />
     </div>
   );

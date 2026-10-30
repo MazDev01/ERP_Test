@@ -8,16 +8,16 @@
  * รอบเงินเดือนที่ปิดไปแล้วแก้ไม่ได้ — วันที่เริ่มใช้ต้องอยู่หลังวันปิดรอบล่าสุด
  */
 
-import { useState } from "react";
-import { HR_OT_DIVISOR, hrPos } from "@/lib/hr-data";
+import { useEffect, useRef, useState } from "react";
+import { HR_OT_DIVISOR, hrActivePositions, hrPos } from "@/lib/hr-data";
 import { AdminHead, Card, Input2, inputCls } from "./admin-ui";
 import { AreaMap } from "./area-map";
-import { CrosshairIcon } from "./icons";
+import { CheckIcon, CrosshairIcon, PlusIcon, TrashIcon } from "./icons";
 import { DateField } from "./thai-date-picker";
 import { thaiDate, todayIso } from "@/lib/format";
 import { minutesOfDay, formatMinutes, formatMinutesOfDay } from "@/lib/work-schedule";
 import { logChange } from "@/lib/admin-log";
-import { DEFAULT_POS_SCHEDULES, saveAttFrom, saveSection, useSystemSettings, type AttChange, type PosSchedule, type LateMode, type RateSettings, type ScheduleSettings } from "@/lib/system-settings";
+import { saveAttFrom, saveSection, settings, useSystemSettings, type AttChange, type PosSchedule, type LateMode, type RateSettings, type ScheduleSettings } from "@/lib/system-settings";
 import { Card as UiCard, Input2 as UiInput2, SaveBar, useSectionDraft } from "./admin-ui";
 import { baht, thaiMonth } from "@/lib/format";
 import { RADIUS_MAX, RADIUS_MIN, locate, mapLink, saveWorkplace, useAreaSettings, workplaceOf } from "@/lib/work-area";
@@ -37,6 +37,95 @@ function timesProblem(d: { start: string; end: string; lunchStart: string; lunch
   if (t(d.end) <= t(d.start)) return "เวลาเลิกงานต้องหลังเวลาเข้างาน";
   if (t(d.lunchEnd) <= t(d.lunchStart)) return "เวลาสิ้นสุดพักเที่ยงต้องหลังเวลาเริ่มพัก";
   if (t(d.lunchStart) < t(d.start) || t(d.lunchEnd) > t(d.end)) return "ช่วงพักเที่ยงต้องอยู่ในเวลาทำงาน";
+  return "";
+}
+
+/* ดรอปดาวน์เลือกตำแหน่ง — แผงรายการแบบเดียวกับช่อง "ส่งให้" ของระบบ ไม่ใช้ select ของเบราว์เซอร์ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+function PosPicker({
+  value,
+  options,
+  onPick,
+}: {
+  value: string;
+  options: { v: string; label: string }[];
+  onPick: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", off);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", off);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  const picked = options.find((o) => o.v === value);
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((x) => !x)}
+        className="field-control flex h-10 w-full cursor-pointer items-center justify-between gap-2 text-left text-[14px]"
+      >
+        <span className={`clip min-w-0 flex-1 ${picked ? "" : "text-muted-foreground"}`}>
+          {picked ? picked.label : "เลือกตำแหน่ง"}
+        </span>
+        <span aria-hidden className="shrink-0 text-[11px] text-muted-foreground">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          aria-label="ตำแหน่ง"
+          className="glass-solid scroll-stable absolute top-[calc(100%+6px)] right-0 left-0 z-90 max-h-[280px] overflow-auto rounded-[13px] p-1.5"
+        >
+          {options.map((o) => (
+            <li
+              key={o.v}
+              role="option"
+              aria-selected={o.v === value}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onPick(o.v);
+                setOpen(false);
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-[9px] px-[11px] py-2.5 text-[13.5px] transition-colors hover:bg-accent"
+            >
+              <span className="clip min-w-0 flex-1">{o.label}</span>
+              {o.v === value && <CheckIcon className="size-4 shrink-0 text-primary" strokeWidth={2.4} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* โอทีย้ายมาต่อท้ายเวลาทำงานในหน้านี้ (ผู้ใช้สั่ง 30 ต.ค. 2569) — บันทึกแล้วมีผลทันที ไม่มีวันเริ่มใช้แยก */
+const OT_KEYS = ["otStart", "holLunchStart", "holLunchEnd", "holDinnerStart", "holDinnerEnd"] as const;
+type OtDraft = Pick<ScheduleSettings, (typeof OT_KEYS)[number]>;
+const otOf = (x: ScheduleSettings): OtDraft => ({
+  otStart: x.otStart,
+  holLunchStart: x.holLunchStart,
+  holLunchEnd: x.holLunchEnd,
+  holDinnerStart: x.holDinnerStart,
+  holDinnerEnd: x.holDinnerEnd,
+});
+function otProblem(o: OtDraft) {
+  if (OT_KEYS.some((k) => !/^\d{2}:\d{2}$/.test(o[k]))) return "กรอกเวลาโอทีให้ครบทุกช่อง";
+  if (minutesOfDay(o.holLunchEnd) <= minutesOfDay(o.holLunchStart)) return "พักเที่ยงโอทีวันหยุด เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม";
+  if (minutesOfDay(o.holDinnerEnd) <= minutesOfDay(o.holDinnerStart)) return "พักเย็นโอทีวันหยุด เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม";
   return "";
 }
 
@@ -88,24 +177,37 @@ export function AdminAttendancePage() {
   }));
   const [at, setAt] = useState(() => (minAt && minAt > todayIso() ? minAt : todayIso()));
   /*
-   * เวลาทำงานเฉพาะตำแหน่ง — ตอนนี้มีแค่แม่บ้าน (ผู้ใช้สั่ง 16 ต.ค. 2569)
+   * เวลาทำงานเฉพาะตำแหน่ง — เลือกตำแหน่งได้หลายตำแหน่ง (ผู้ใช้สั่ง 30 ต.ค. 2569)
    * บันทึกแล้วมีผลทันที ไม่มีวันเริ่มใช้แยก · ลงประวัติการตั้งค่าเหมือนช่องอื่น
    */
-  const posSaved: PosSchedule =
-    s.positionSchedules.find((p) => p.pos === "maid") ?? DEFAULT_POS_SCHEDULES[0];
-  const [pd, setPd] = useState<PosSchedule>(posSaved);
-  const posBad = timesProblem(pd);
-  const posDirty = POS_TIME_LABEL.some(([k]) => pd[k] !== posSaved[k]);
-  const posLabel = hrPos(pd.pos).label;
+  const posSaved = s.positionSchedules;
+  const [pl, setPl] = useState<PosSchedule[]>(posSaved);
+  const posBad =
+    pl
+      .map((p) => {
+        const b = p.pos ? timesProblem(p) : "เลือกตำแหน่ง";
+        return b ? `${p.pos ? hrPos(p.pos).label : "ตำแหน่งที่เพิ่ม"}: ${b}` : "";
+      })
+      .find(Boolean) ?? "";
+  const posDirty = JSON.stringify(pl) !== JSON.stringify(posSaved);
   /* เริ่มโอทีของตำแหน่ง = เลิกงานของตำแหน่ง + ช่วงพักเย็นยาวเท่าของบริษัท (ดู scheduleFor) */
-  const posOt = posBad
-    ? ""
-    : formatMinutesOfDay(
-        Math.min(
-          24 * 60 - 1,
-          minutesOfDay(pd.end) + Math.max(0, minutesOfDay(s.schedule.otStart) - minutesOfDay(s.schedule.end)),
-        ),
-      );
+  const posOt = (p: PosSchedule) =>
+    formatMinutesOfDay(
+      Math.min(
+        24 * 60 - 1,
+        minutesOfDay(p.end) + Math.max(0, minutesOfDay(s.schedule.otStart) - minutesOfDay(s.schedule.end)),
+      ),
+    );
+  const setPos = (i: number, patch: Partial<PosSchedule>) =>
+    setPl((x) => x.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const addPos = () =>
+    setPl((x) => [
+      ...x,
+      { pos: "", start: s.schedule.start, end: s.schedule.end, lunchStart: s.schedule.lunchStart, lunchEnd: s.schedule.lunchEnd },
+    ]);
+  const [ot, setOt] = useState<OtDraft>(() => otOf(s.schedule));
+  const otDirty = OT_KEYS.some((k) => ot[k] !== s.schedule[k]);
+  const otBad = otProblem(ot);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -124,11 +226,12 @@ export function AdminAttendancePage() {
     lat !== place.lat ||
     lng !== place.lng ||
     Math.round(km) !== place.radius;
-  const dirty = mainDirty || posDirty;
-  const allBad = bad || (posBad ? `${posLabel}: ${posBad}` : "");
+  const dirty = mainDirty || posDirty || otDirty;
+  const allBad = bad || posBad || otBad;
 
   function reset() {
-    setPd(posSaved);
+    setPl(posSaved);
+    setOt(otOf(s.schedule));
     setD({
       start: s.schedule.start,
       end: s.schedule.end,
@@ -159,18 +262,33 @@ export function AdminAttendancePage() {
       return;
     }
     if (posDirty) {
-      const list = s.positionSchedules.some((p) => p.pos === pd.pos)
-        ? s.positionSchedules.map((p) => (p.pos === pd.pos ? pd : p))
-        : [...s.positionSchedules, pd];
-      saveSection("positionSchedules", list);
-      const diff = POS_TIME_LABEL.filter(([k]) => pd[k] !== posSaved[k]).map(
-        ([k, label]) => `${label} ${posSaved[k]} → ${pd[k]}`,
-      );
-      logChange("เวลาทำงาน", `เวลาทำงานเฉพาะตำแหน่ง ${posLabel} · ${diff.join(" · ")}`);
+      saveSection("positionSchedules", pl);
+      const before = new Map(posSaved.map((p) => [p.pos, p]));
+      const now = new Set(pl.map((p) => p.pos));
+      const notes = [
+        ...pl.flatMap((p) => {
+          const o = before.get(p.pos);
+          if (!o) return [`เพิ่ม ${hrPos(p.pos).label} ${p.start}–${p.end} · พักเที่ยง ${p.lunchStart}–${p.lunchEnd}`];
+          const diff = POS_TIME_LABEL.filter(([k]) => p[k] !== o[k]).map(([k, label]) => `${label} ${o[k]} → ${p[k]}`);
+          return diff.length ? [`${hrPos(p.pos).label} ${diff.join(" · ")}`] : [];
+        }),
+        ...posSaved.filter((p) => !now.has(p.pos)).map((p) => `ลบ ${hrPos(p.pos).label}`),
+      ];
+      if (notes.length) logChange("เวลาทำงาน", `เวลาทำงานเฉพาะตำแหน่ง ${notes.join(" · ")}`);
       setErr("");
-      /* แก้แค่เวลาของตำแหน่ง ไม่ต้องสร้างชุดเวลาบริษัทใหม่ในประวัติ */
-      if (!mainDirty) return;
     }
+    if (otDirty) {
+      saveSection("schedule", { ...settings().schedule, ...ot });
+      logChange(
+        "เวลาทำงาน",
+        OT_KEYS.filter((k) => ot[k] !== s.schedule[k])
+          .map((k) => `${SCHED_LABEL[k]} ${s.schedule[k]} → ${ot[k]}`)
+          .join(" · "),
+      );
+      setErr("");
+    }
+    /* แก้แค่เวลาของตำแหน่งหรือโอที ไม่ต้องสร้างชุดเวลาบริษัทใหม่ในประวัติ */
+    if (!mainDirty) return;
     if (!at) {
       setErr("เลือกวันที่เริ่มใช้ค่าใหม่");
       return;
@@ -223,38 +341,118 @@ export function AdminAttendancePage() {
             )}
           </p>
 
-          {/* เวลาทำงานเฉพาะตำแหน่ง — ตอนนี้มีแค่แม่บ้าน (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
+          {/* เวลาทำงานเฉพาะตำแหน่ง — เลือกตำแหน่งจากดรอปดาวน์ เพิ่มได้หลายตำแหน่ง เกิน 5 ตำแหน่งเลื่อนดู (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
           <div className="mt-5 border-t border-border pt-4">
             <h3 className="text-[13.5px] font-bold">เวลาทำงานเฉพาะตำแหน่ง</h3>
-            <div className="mt-3 rounded-[12px] border border-border px-3 py-3 sm:px-4">
-              <b className="text-[13.5px] font-semibold">{posLabel}</b>
-              <div className="mt-2 grid gap-4 sm:grid-cols-2">
-                {POS_TIME_LABEL.map(([k, label]) => (
-                  <Input2 key={k} label={k === "start" ? "เวลาเข้างาน" : k === "end" ? "เวลาเลิกงาน" : label}>
-                    <Time24Input
-                      value={pd[k]}
-                      onChange={(e) => setPd((x) => ({ ...x, [k]: e.target.value }))}
-                      className={`${inputCls} num`}
-                    />
-                  </Input2>
-                ))}
-              </div>
-              <p className="mt-3 text-[12.5px] text-muted-foreground">
-                {posBad ? (
-                  <b className="font-semibold text-destructive">{posBad}</b>
-                ) : (
-                  <>
-                    เวลาทำงานจริง{" "}
-                    <b className="font-semibold text-foreground">
-                      {formatMinutes(
-                        minutesOfDay(pd.end) - minutesOfDay(pd.start) - (minutesOfDay(pd.lunchEnd) - minutesOfDay(pd.lunchStart)),
+            {pl.length > 0 && (
+              <div className={`mt-3 space-y-3 ${pl.length > 5 ? "max-h-[1060px] overflow-y-auto pr-1" : ""}`}>
+                {pl.map((p, i) => {
+                  const pb = p.pos ? timesProblem(p) : "";
+                  return (
+                    <div key={i} className="rounded-[12px] border border-border px-3 py-3 sm:px-4">
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                          <Input2 label="ตำแหน่ง">
+                            <PosPicker
+                              value={p.pos}
+                              /* ตำแหน่งที่แถวอื่นเลือกไปแล้วไม่ขึ้นซ้ำ */
+                              options={hrActivePositions(p.pos).filter((o) => o.v === p.pos || !pl.some((x) => x.pos === o.v))}
+                              onPick={(v) => setPos(i, { pos: v })}
+                            />
+                          </Input2>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn glass-thin h-10"
+                          aria-label="ลบตำแหน่งนี้"
+                          onClick={() => setPl((x) => x.filter((_, j) => j !== i))}
+                        >
+                          <TrashIcon className="size-4" />
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-4">
+                        {POS_TIME_LABEL.map(([k, label]) => (
+                          <Input2 key={k} label={k === "start" ? "เวลาเข้างาน" : k === "end" ? "เวลาเลิกงาน" : label}>
+                            <Time24Input
+                              value={p[k]}
+                              onChange={(e) => setPos(i, { [k]: e.target.value })}
+                              className={`${inputCls} num`}
+                            />
+                          </Input2>
+                        ))}
+                      </div>
+                      {p.pos && (
+                        <p className="mt-3 text-[12.5px] text-muted-foreground">
+                          {pb ? (
+                            <b className="font-semibold text-destructive">{pb}</b>
+                          ) : (
+                            <>
+                              เวลาทำงานจริง{" "}
+                              <b className="font-semibold text-foreground">
+                                {formatMinutes(
+                                  minutesOfDay(p.end) - minutesOfDay(p.start) - (minutesOfDay(p.lunchEnd) - minutesOfDay(p.lunchStart)),
+                                )}
+                                /วัน
+                              </b>{" "}
+                              · เริ่มนับโอทีวันธรรมดา <b className="num font-semibold text-foreground">{posOt(p)} น.</b>
+                            </>
+                          )}
+                        </p>
                       )}
-                      /วัน
-                    </b>{" "}
-                    · เริ่มนับโอทีวันธรรมดา <b className="num font-semibold text-foreground">{posOt} น.</b>
-                  </>
-                )}
-              </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button type="button" className="btn glass-thin mt-3" onClick={addPos}>
+              <PlusIcon className="size-4" />
+              เพิ่มตำแหน่ง
+            </button>
+          </div>
+
+          {/* โอทีต่อท้ายเวลาทำงาน วันธรรมดากับวันหยุดคนละบรรทัด (ผู้ใช้สั่ง 30 ต.ค. 2569)
+              วันหยุดหักช่วงพักเที่ยง/พักเย็นออกจากชั่วโมงโอที (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="text-[13.5px] font-bold">โอทีวันธรรมดา</h3>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <Input2 label={SCHED_LABEL.otStart ?? ""}>
+                <Time24Input
+                  value={ot.otStart}
+                  onChange={(e) => setOt((x) => ({ ...x, otStart: e.target.value }))}
+                  className={`${inputCls} num`}
+                />
+              </Input2>
+            </div>
+          </div>
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="text-[13.5px] font-bold">
+              โอทีวันหยุด <small className="font-normal text-muted-foreground">ช่วงพักที่ไม่นับเป็นชั่วโมงโอที</small>
+            </h3>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["พักเที่ยง", "holLunchStart", "holLunchEnd"],
+                  ["พักเย็น", "holDinnerStart", "holDinnerEnd"],
+                ] as const
+              ).map(([label, from, to]) => (
+                <Input2 key={from} label={label}>
+                  <div className="flex items-center gap-2">
+                    <Time24Input
+                      value={ot[from]}
+                      onChange={(e) => setOt((x) => ({ ...x, [from]: e.target.value }))}
+                      className={`${inputCls} num`}
+                      wrapperClassName="min-w-0 flex-1"
+                    />
+                    <span className="text-muted-foreground">–</span>
+                    <Time24Input
+                      value={ot[to]}
+                      onChange={(e) => setOt((x) => ({ ...x, [to]: e.target.value }))}
+                      className={`${inputCls} num`}
+                      wrapperClassName="min-w-0 flex-1"
+                    />
+                  </div>
+                </Input2>
+              ))}
             </div>
           </div>
         </Card>
@@ -388,23 +586,46 @@ function describeLate(a: RateSettings, b: RateSettings) {
   return out;
 }
 
-export function PayAndLate() {
+/* ค่าร่างของการ์ดรอบเงินเดือน — แยกเป็น hook ให้หน้าการคำนวณเงินเดือนรวมแถบบันทึกเหลือแถบเดียว (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+export function usePayAndLate() {
   const d = useSectionDraft("schedule", "เวลาทำงาน", describeSched);
   const r = useSectionDraft("rates", "เวลาทำงาน", describeLate);
   const s = d.draft;
   const late = r.draft;
   const mode = modeOf(late.lateMode);
-  const wagePerMin = SAMPLE_SALARY / HR_OT_DIVISOR.days / HR_OT_DIVISOR.hours / 60;
   const bad =
     !(Number.isInteger(s.payCutDay) && s.payCutDay >= 1 && s.payCutDay <= 28)
       ? "วันตัดรอบเงินเดือนต้องเป็นวันที่ 1–28"
       : mode === "fixed" && !(late.latePerMinute > 0 && late.latePerMinute <= 100)
           ? "หักมาสายนาทีละต้องมากกว่า 0 และไม่เกิน 100 บาท"
-          : !(minutesOfDay(s.holLunchEnd) > minutesOfDay(s.holLunchStart))
-            ? "พักเที่ยงโอทีวันหยุด เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม"
-            : !(minutesOfDay(s.holDinnerEnd) > minutesOfDay(s.holDinnerStart))
-              ? "พักเย็นโอทีวันหยุด เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม"
-              : "";
+          : "";
+  return {
+    d,
+    r,
+    bad,
+    dirty: d.dirty || r.dirty,
+    isDefault: d.isDefault && modeOf(r.saved.lateMode) === "wage",
+    save() {
+      if (d.dirty) d.save();
+      if (r.dirty) r.save();
+    },
+    cancel() {
+      d.cancel();
+      r.cancel();
+    },
+    toDefault() {
+      d.toDefault();
+    },
+  };
+}
+export type PayLate = ReturnType<typeof usePayAndLate>;
+
+export function PayAndLate({ pl }: { pl: PayLate }) {
+  const { d, r } = pl;
+  const s = d.draft;
+  const late = r.draft;
+  const mode = modeOf(late.lateMode);
+  const wagePerMin = SAMPLE_SALARY / HR_OT_DIVISOR.days / HR_OT_DIVISOR.hours / 60;
   const set = <K extends keyof ScheduleSettings>(k: K, v: ScheduleSettings[K]) => d.setDraft({ ...s, [k]: v });
   const [cy, cm] = SAMPLE_MONTH.split("-").map(Number);
   const cutText = `${thaiMonth(SAMPLE_MONTH)} = วันที่ ${s.payCutDay + 1} เดือนก่อน ถึงวันที่ ${s.payCutDay} ของเดือนนี้`;
@@ -413,7 +634,7 @@ export function PayAndLate() {
 
   return (
     <>
-      <UiCard title="รอบเงินเดือน เริ่มนับโอที และการหักมาสาย">
+      <UiCard title="รอบเงินเดือนและการหักมาสาย">
         <div className={`grid gap-4 sm:grid-cols-2 ${mode === "fixed" ? "lg:grid-cols-3" : ""}`}>
           <UiInput2 label={SCHED_LABEL.payCutDay ?? ""}>
             <input
@@ -460,53 +681,8 @@ export function PayAndLate() {
             </UiInput2>
           )}
         </div>
-        {/* โอทีแยกวันธรรมดากับวันหยุด — วันหยุดหักช่วงพักเที่ยง/พักเย็นออกจากชั่วโมงโอที (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
-        <div className="mt-5 grid gap-4 border-t border-border pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-          <div className="space-y-3">
-            <h3 className="text-[13.5px] font-bold">โอทีวันธรรมดา</h3>
-            <UiInput2 label={SCHED_LABEL.otStart ?? ""}>
-              <Time24Input value={s.otStart} onChange={(e) => set("otStart", e.target.value)} className={`${inputCls} num`} />
-            </UiInput2>
-          </div>
-          <div className="space-y-3">
-            <h3 className="text-[13.5px] font-bold">
-              โอทีวันหยุด <small className="font-normal text-muted-foreground">ช่วงพักที่ไม่นับเป็นชั่วโมงโอที</small>
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {(
-                [
-                  ["พักเที่ยง", "holLunchStart", "holLunchEnd"],
-                  ["พักเย็น", "holDinnerStart", "holDinnerEnd"],
-                ] as const
-              ).map(([label, from, to]) => (
-                <UiInput2 key={from} label={label}>
-                  <div className="flex items-center gap-2">
-                    <Time24Input value={s[from]} onChange={(e) => set(from, e.target.value)} className={`${inputCls} num`} wrapperClassName="min-w-0 flex-1" />
-                    <span className="text-muted-foreground">–</span>
-                    <Time24Input value={s[to]} onChange={(e) => set(to, e.target.value)} className={`${inputCls} num`} wrapperClassName="min-w-0 flex-1" />
-                  </div>
-                </UiInput2>
-              ))}
-            </div>
-          </div>
-        </div>
-        {/* กติกาที่เจ้าของยืนยัน 29 ก.ย. 2569 — คิดตามเวลางานอย่างเดียว ไม่หักกลบกับการอยู่เลยเวลา */}
       </UiCard>
-
-      <SaveBar
-        dirty={d.dirty || r.dirty}
-        isDefault={d.isDefault && modeOf(r.saved.lateMode) === "wage"}
-        invalid={bad}
-        onSave={() => {
-          if (d.dirty) d.save();
-          if (r.dirty) r.save();
-        }}
-        onCancel={() => {
-          d.cancel();
-          r.cancel();
-        }}
-        onDefault={() => d.toDefault()}
-      />
+      {/* แถบบันทึกอยู่ล่างสุดของหน้าการคำนวณเงินเดือนแถบเดียว (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
     </>
   );
 }

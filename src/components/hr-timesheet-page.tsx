@@ -299,7 +299,7 @@ export function HrTimesheetPage() {
               /* ช่วงทดสอบกับลูกค้า: ปิดรอบได้แม้มีข้อเตือน ยกเว้นช่วงทับรอบที่ปิดแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569)
                  วันลาที่มีเช็คอินที่ยังไม่ยืนยัน กันปิดเมื่อ TESTING_ALLOW_CLOSE = false (ผู้ใช้สั่ง 15 ต.ค. 2569)
                  TODO: ⚠️ เปลี่ยน TESTING_ALLOW_CLOSE เป็น false ก่อนขึ้นระบบจริง (@/lib/hr-clash) */
-              disabled={Boolean(clash) || clashBlock}
+              /* ปุ่มกดได้เสมอ เปิดกล่องให้เห็นว่าติดอะไร · ปุ่มยืนยันในกล่องกดไม่ได้จนกว่าจะแก้ครบ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
               title={closeWhy}
               onClick={() => setClosing(true)}
             >
@@ -391,7 +391,6 @@ export function HrTimesheetPage() {
               /* ช่วงทดสอบกับลูกค้า: ปิดรอบได้แม้มีข้อเตือน ยกเว้นช่วงทับรอบที่ปิดแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569)
                  วันลาที่มีเช็คอินที่ยังไม่ยืนยัน กันปิดเมื่อ TESTING_ALLOW_CLOSE = false (ผู้ใช้สั่ง 15 ต.ค. 2569)
                  TODO: ⚠️ เปลี่ยน TESTING_ALLOW_CLOSE เป็น false ก่อนขึ้นระบบจริง (@/lib/hr-clash) */
-              disabled={Boolean(clash) || clashBlock}
               onClick={() => setClosing(true)}
             >
               ปิดรอบ
@@ -454,7 +453,7 @@ export function HrTimesheetPage() {
           range={cycle}
           group={group}
           onConfirm={() => (isDay ? closeDailyTime(dayRange, today) : closePeriod(month, today, group))}
-          blocked={Boolean(clash) || clashBlock}
+          blocked={Boolean(closeWhy)}
           why={closeWhy}
           people={list.length}
           sum={sumOf(list)}
@@ -641,6 +640,39 @@ function Num({ label, v, fixed2 }: { label: string; v: number; fixed2?: boolean 
 
 // ─── รายละเอียดรายวันของคนเดียว ───────────────────────────────────
 
+/**
+ * เวลาเข้า-ออกของวันหนึ่ง — ใช้ทั้งกล่องรายวันของหน้านี้และหน้าเวลาเข้างาน (ผู้ใช้สั่ง 30 ต.ค. 2569)
+ * ลำดับ: ที่ฝ่ายบุคคลแก้ไว้ → ตอกบัตรจริง → ไม่มีลงเวลา = ว่าง · ไม่ลงออก = ว่างช่องออก · มาสาย = เวลาเข้าจริง
+ */
+export function dayTimes(emp: Employee, rec: TimeRec, fixes: DayFix[], punch: Record<string, PunchDay> | undefined, d: string) {
+  const sch = scheduleFor(emp);
+  const start = sch.start;
+  const end = sch.end;
+  const leaveOf = (x: string) => rec.leave.find((r) => r.d === x);
+  const f = fixes.find((x) => x.d === d);
+  if (f) return { in: f.in, out: f.out };
+  const p = punch?.[d];
+  if (p) return { in: p.in, out: p.out };
+  const issue = rec.issues.find((x) => x.d === d);
+  if (issue?.in || issue?.out) return { in: issue.in ?? start, out: issue.out ?? "" };
+  if (issue?.kind === "norecord") return { in: "", out: "" };
+  const late = rec.late.find((x) => x.d === d);
+  const lv = leaveOf(d);
+  /* ลาทั้งวันและไม่มีร่องรอยการตอกบัตร — ไม่เติมเวลาสมมติให้ */
+  if (lv?.span === "full" && !late && !issue) return { in: "", out: "" };
+  /* เวลาจริงไม่ตรงเป๊ะทุกวัน — เข้าก่อนเวลา 1–15 นาที ออกหลังเวลา 0–40 นาที คงที่ตามคนและวัน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
+  let h = 0;
+  for (const ch of emp.id + d) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  let tin = late ? addMin(start, late.min) : addMin(start, -(1 + (h % 15)));
+  let tout = issue?.kind === "nopair" ? "" : addMin(end, (h >>> 5) % 41);
+  /* ลาครึ่งวันที่ไม่มีการตอกจริง — เวลาสมมติต้องไม่ทับช่วงลา ไม่งั้นจะฟ้องผิด */
+  if (!late && !issue && lv?.span === "half") {
+    if (lv.half === "am") tin = sch.lunchEnd;
+    if (lv.half === "pm") tout = sch.lunchStart;
+  }
+  return { in: tin, out: tout };
+}
+
 function DayDetail({
   emp,
   label,
@@ -677,33 +709,8 @@ function DayDetail({
    * · เวลาทำงานของคนนั้นตามตำแหน่ง — แม่บ้าน 08:00–17:00 (ผู้ใช้สั่ง 16 ต.ค. 2569)
    */
   const sch = scheduleFor(emp);
-  const start = sch.start;
-  const end = sch.end;
   const leaveOf = (d: string) => rec.leave.find((x) => x.d === d);
-  const initial = (d: string) => {
-    const f = fixes.find((x) => x.d === d);
-    if (f) return { in: f.in, out: f.out };
-    const p = punch?.[d];
-    if (p) return { in: p.in, out: p.out };
-    const issue = rec.issues.find((x) => x.d === d);
-    if (issue?.in || issue?.out) return { in: issue.in ?? start, out: issue.out ?? "" };
-    if (issue?.kind === "norecord") return { in: "", out: "" };
-    const late = rec.late.find((x) => x.d === d);
-    const lv = leaveOf(d);
-    /* ลาทั้งวันและไม่มีร่องรอยการตอกบัตร — ไม่เติมเวลาสมมติให้ */
-    if (lv?.span === "full" && !late && !issue) return { in: "", out: "" };
-    /* เวลาจริงไม่ตรงเป๊ะทุกวัน — เข้าก่อนเวลา 1–15 นาที ออกหลังเวลา 0–40 นาที คงที่ตามคนและวัน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
-    let h = 0;
-    for (const ch of emp.id + d) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    let tin = late ? addMin(start, late.min) : addMin(start, -(1 + (h % 15)));
-    let tout = issue?.kind === "nopair" ? "" : addMin(end, (h >>> 5) % 41);
-    /* ลาครึ่งวันที่ไม่มีการตอกจริง — เวลาสมมติต้องไม่ทับช่วงลา ไม่งั้นจะฟ้องผิด */
-    if (!late && !issue && lv?.span === "half") {
-      if (lv.half === "am") tin = sch.lunchEnd;
-      if (lv.half === "pm") tout = sch.lunchStart;
-    }
-    return { in: tin, out: tout };
-  };
+  const initial = (d: string) => dayTimes(emp, rec, fixes, punch, d);
   const [rows, setRows] = useState(() => Object.fromEntries(days.map((d) => [d, initial(d)])));
   /* วันลาทั้งวันที่มีเวลาตอกค้างอยู่ตอนเปิดกล่อง — เปิดช่องให้แก้ (ล้างเวลาออก) แทนข้อความ "ลาทั้งวัน" */
   const [fullWithPunch] = useState(
@@ -859,6 +866,7 @@ function DayDetail({
                       <Time24Input
                         wrapperClassName="w-[120px]"
                         value={r.in}
+                        openAt={sch.start}
                         disabled={locked}
                         onChange={(e) => setRows((v) => ({ ...v, [d]: { ...v[d], in: e.target.value } }))}
                         aria-label={`เวลาเข้างาน ${thaiDate(d)}`}
@@ -870,6 +878,7 @@ function DayDetail({
                       <Time24Input
                         wrapperClassName="w-[120px]"
                         value={r.out}
+                        openAt={sch.end}
                         disabled={locked}
                         onChange={(e) => setRows((v) => ({ ...v, [d]: { ...v[d], out: e.target.value } }))}
                         aria-label={`เวลาออกงาน ${thaiDate(d)}`}

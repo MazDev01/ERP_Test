@@ -274,6 +274,8 @@ const ACC: NavItem[] = [
 const HR: NavItem[] = [
   { group: "ฝ่ายบุคคล", label: "แดชบอร์ด", icon: "accboard", href: "/hr/dashboard" },
   { group: "ฝ่ายบุคคล", label: "พนักงาน", icon: "team", href: "/hr/employees" },
+  /* ดูเวลาเข้า-ออกงานของทุกคน รวมนักศึกษาฝึกงาน แยกจากรอบเงินเดือน (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  { group: "ฝ่ายบุคคล", label: "เวลาเข้างาน", icon: "pin", href: "/hr/attendance" },
   /* ต้นแบบมีรายการเดียวคือ "รอบเงินเดือน" แล้วข้ามขั้นด้วยแถบขั้นตอนในหน้า (dose-erp-maz/hr-*.html)
      มีเมนูย่อย "พนักงาน" | "ทดลองงาน" แยกกลุ่มการจ่าย (PAY_SUB · ผู้ใช้สั่ง 5 ต.ค. 2569) */
   { group: "ฝ่ายบุคคล", label: "รอบเงินเดือน", icon: "clock", href: "/hr/timesheet", sub: PAY_SUB },
@@ -335,7 +337,17 @@ const GM: NavItem[] = [
  */
 const CEO: NavItem[] = [
   { group: "ผู้บริหาร", label: "แดชบอร์ด", icon: "chart", href: "/ceo/dashboard" },
-  { group: "ผู้บริหาร", label: "คำขออนุมัติ", icon: "approve", href: "/ceo/approvals" },
+  /* คำขออนุมัติเงินเดือนเป็นเมนูย่อยใต้คำขออนุมัติ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  {
+    group: "ผู้บริหาร",
+    label: "คำขออนุมัติ",
+    icon: "approve",
+    href: "/ceo/approvals",
+    sub: [
+      { label: "ลาและโอที", href: "/ceo/approvals", title: "คำขออนุมัติ" },
+      { label: "เงินเดือน", href: "/ceo/approvals/payroll" },
+    ],
+  },
   { group: "ภาพรวมระบบ", label: "งานขาย", icon: "deals", href: "/ceo/sales" },
   { group: "ภาพรวมระบบ", label: "บัญชี", icon: "ledger", href: "/ceo/acc" },
   /* ยอดเงินเดือนแบบดูอย่างเดียวเป็นเมนูย่อยของบุคคล ไม่ใช่คำขออนุมัติ (ผู้ใช้สั่ง 14 ต.ค. 2569) */
@@ -532,6 +544,18 @@ export function mobileHomeOf(role: Role) {
 }
 
 /**
+ * ช่อง "ตารางงาน" ของแถบล่างบนมือถือ (ผู้ใช้สั่ง 29 ต.ค. 2569) — ใช้หน้าตารางงานของบทบาทเอง
+ * บทบาทที่ไม่มีตารางงานของตัวเอง (บัญชี · บุคคล · ฝึกงาน · แม่บ้าน) ใช้ตารางงานของฉัน (/my-schedule)
+ */
+export function mobileScheduleOf(role: Role) {
+  if (role === "sales") return "/sales-schedule";
+  if (role === "ps") return "/presales-schedule";
+  if (role === "pm") return "/pm/schedule";
+  if (role === "gm") return "/gm/calendar";
+  return "/my-schedule";
+}
+
+/**
  * หน้าแรกหลังล็อกอิน — ปกติคือหน้าตอกบัตร ถ้าบทบาทนี้ไม่มีหน้าตอกบัตรไปเมนูแรกของตัวเอง
  * บนมือถือ (phone) CEO กับทีมงานมีหน้าหลักการ์ดเมนูของตัวเอง (ต้นแบบ ceo-home.html · my-home.html)
  */
@@ -725,7 +749,10 @@ const EXTRA_OWNER: Record<string, Role | Role[]> = {
   "/my-home": "staff",
   "/leads-quotes": "sales",
   /* ทุกบทบาทเปิด /home ได้ — บทบาทที่มีหน้าหลักของตัวเอง (ทีมงาน · CEO) ถูกพาไปหน้านั้นต่อ (HomePage) */
-  "/home": ["sales", "ps", "pm", "acc", "hr", "gm", "staff", "ceo"],
+  /* แม่บ้านเพิ่มเข้ามา — ช่อง "โฮม" ของแถบล่างมือถือพาไป /home (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  "/home": ["sales", "ps", "pm", "acc", "hr", "gm", "staff", "ceo", "maid"],
+  /* ช่อง "ตารางงาน" ของแถบล่างมือถือ — บทบาทที่ไม่มีตารางงานของตัวเองเปิดหน้านี้ได้ ไม่เพิ่มในเมนูข้าง (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+  "/my-schedule": ["staff", "acc", "hr", "intern", "maid"],
 };
 
 /**
@@ -774,6 +801,8 @@ export function pageTitle(pathname: string, role: Role) {
  * ช่วงต้นของเส้นทางบนแถบบน (ผู้ใช้สั่ง 12 ต.ค. 2569) — เมนูแม่ › เมนูย่อย › หน้านอกเมนูที่อยู่ใต้เมนูนั้น
  * ช่วงท้ายที่ลึกกว่านี้ (ชื่อลูกค้า เลขที่เอกสาร) หน้าเติมเองด้วย useCrumb (crumb.ts)
  */
+const DAILY_LABEL: Record<string, string> = { "/hr/payroll": "คำนวณค่าจ้าง", "/hr/payslip": "สลิปค่าจ้าง" };
+
 export function navCrumbs(pathname: string, role: Role, q: URLSearchParams): { label: string; href: string }[] {
   const item = findItem(pathname, role);
   if (!item) return [];
@@ -785,7 +814,9 @@ export function navCrumbs(pathname: string, role: Role, q: URLSearchParams): { l
   /* หน้านอกเมนู (คำนวณเงินเดือน) อยู่ใต้เมนูแม่ — เมนูย่อยคั่นกลาง แล้วจบที่ชื่อหน้าเอง */
   if (parent) {
     if (sub) out.push({ label: sub.label, href: sub.href });
-    out.push({ label: item.label, href: item.href });
+    /* กลุ่มทดลองงานจ่ายรายวัน ใช้คำว่าค่าจ้างแทนเงินเดือน (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+    const label = q.get("g") === "daily" ? (DAILY_LABEL[path] ?? item.label) : item.label;
+    out.push({ label, href: item.href });
     return out;
   }
   out.push({ label: item.label, href: item.href });

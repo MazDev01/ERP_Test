@@ -67,6 +67,18 @@ import { CredentialsDialog, PassBox, RolePicker, tempPass } from "./account-part
 import { lockScroll } from "@/lib/scroll-lock";
 import "@/styles/mobile/hr-employees.css";
 
+
+/* ชื่อกับนามสกุลกรอกแยกช่อง แต่เก็บรวมเป็น name ช่องเดียว (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+function splitName(name: string) {
+  const t = name.trim();
+  const i = t.search(/\s/);
+  return i < 0 ? { first: t, last: "" } : { first: t.slice(0, i), last: t.slice(i).trim() };
+}
+function withNamePart<T extends { first: string; last: string; name: string }>(v: T, k: "first" | "last", value: string): T {
+  const n = { ...v, [k]: value };
+  return { ...n, name: `${n.first.trim()} ${n.last.trim()}`.trim() };
+}
+
 export function HrEmployeesPage() {
   const hr = useHr();
   /* ปุ่มย้อนกลับบนมือถือพากลับหน้าหลักการ์ดเมนูของบทบาท (ผู้ใช้สั่ง 13 ต.ค. 2569) */
@@ -826,6 +838,7 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
 
   const [f, setF] = useState({
     name: emp.name,
+    ...splitName(emp.name),
     nick: emp.nick,
     sex: emp.sex,
     birth: emp.birth,
@@ -924,8 +937,11 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
       <div onClick={() => setPicker("")}>
         <Sect title="ประวัติส่วนตัว">
           <div className="grid gap-3.5 sm:grid-cols-2">
-            <Field label="ชื่อ-สกุล" required>
-              <Input value={f.name} onChange={set("name")} />
+            <Field label="ชื่อ" required>
+              <Input value={f.first} onChange={(e) => setF((v) => withNamePart(v, "first", e.target.value))} />
+            </Field>
+            <Field label="นามสกุล" required>
+              <Input value={f.last} onChange={(e) => setF((v) => withNamePart(v, "last", e.target.value))} />
             </Field>
             <Field label="ชื่อเล่น">
               <Input value={f.nick} onChange={set("nick")} />
@@ -979,17 +995,20 @@ function EditDialog({ emp, today, onClose }: { emp: Employee; today: string; onC
           </div>
         </Sect>
 
-        {/* บัญชีรับเงินเดือน — ใช้ในตารางสรุปเงินเดือนที่ CEO ใช้โอน (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
-        <Sect title="บัญชีรับเงินเดือน">
-          <div className="grid gap-3.5 sm:grid-cols-2">
-            <Field label="ธนาคาร">
-              <Input value={f.bankName} onChange={set("bankName")} placeholder="เช่น กสิกรไทย" />
-            </Field>
-            <Field label="เลขที่บัญชี">
-              <Input inputMode="numeric" value={f.bankNo} onChange={set("bankNo")} placeholder="xxx-x-xxxxx-x" />
-            </Field>
-          </div>
-        </Sect>
+        {/* บัญชีรับเงินเดือน — ใช้ในตารางสรุปเงินเดือนที่ CEO ใช้โอน (ผู้ใช้สั่ง 16 ต.ค. 2569)
+            ฝึกงานไม่มีเงินเดือน จึงไม่มีช่องบัญชี (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
+        {emp.type !== "intern" && (
+          <Sect title="บัญชีรับเงินเดือน">
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label="ธนาคาร">
+                <Input value={f.bankName} onChange={set("bankName")} placeholder="เช่น กสิกรไทย" />
+              </Field>
+              <Field label="เลขที่บัญชี">
+                <Input inputMode="numeric" value={f.bankNo} onChange={set("bankNo")} placeholder="xxx-x-xxxxx-x" />
+              </Field>
+            </div>
+          </Sect>
+        )}
 
         {/* ผู้ติดต่อฉุกเฉินแยกเป็นกล่องของตัวเอง ไม่ปนกับข้อมูลติดต่อทั่วไป (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
         <Sect title="ผู้ติดต่อฉุกเฉิน">
@@ -1315,6 +1334,8 @@ function AddDialog({
 }) {
   const [f, setF] = useState({
     name: "",
+    first: "",
+    last: "",
     nick: "",
     sex: optionsOf("sex")[0] ?? "ไม่ระบุ",
     birth: "",
@@ -1366,10 +1387,10 @@ function AddDialog({
   /* ช่องที่ยังไม่ผ่านของขั้น 1 — ขึ้นกรอบแดงพร้อมบอกใต้ช่อง (ผู้ใช้สั่ง 15 ต.ค. 2569) */
   const name = f.name.trim();
   const err1 = {
-    name: !name
-      ? "กรอกชื่อและนามสกุล"
-      : name.split(/\s+/).length < 2
-        ? "กรอกทั้งชื่อและนามสกุล"
+    name: !f.first.trim()
+      ? "กรอกชื่อ"
+      : !f.last.trim()
+        ? "กรอกนามสกุล"
         : hr.emp.some((e) => e.name === name)
           ? "มีพนักงานชื่อนี้ในระบบแล้ว ตรวจสอบก่อนบันทึก"
           : "",
@@ -1388,6 +1409,9 @@ function AddDialog({
     login.length < 4 ? "ชื่อผู้ใช้ต้องยาวอย่างน้อย 4 ตัวอักษร" : taken.includes(login) ? "ชื่อผู้ใช้นี้มีคนใช้แล้ว" : "";
   const e1 = (k: keyof typeof err1) => (tried1 ? err1[k] : "");
   const bad = "!border-destructive bg-[var(--destructive-soft)]";
+  /* ชื่อว่าง = แดงที่ช่องชื่อ · นามสกุลว่างหรือชื่อซ้ำ = แดงที่ช่องนามสกุล */
+  const firstErr = e1("name") && !f.first.trim() ? e1("name") : "";
+  const lastErr = e1("name") && !firstErr ? e1("name") : "";
   const hint = (msg: string) => (msg ? <span className="text-destructive">{msg}</span> : undefined);
 
   /** เลื่อนกล่องกลับขึ้นบนสุดตอนสลับขั้น */
@@ -1495,15 +1519,26 @@ function AddDialog({
         <div hidden={step !== 1} className={reached2 ? "step-in-back" : ""}>
           <Sect title="ข้อมูลตัวบุคคล">
             <div className="grid gap-3.5 sm:grid-cols-2">
-              <Field label="ชื่อและนามสกุล" required hint={hint(e1("name"))}>
+              <Field label="ชื่อ" required hint={hint(firstErr)}>
                 <Input
-                  value={f.name}
-                  onChange={set("name")}
-                  placeholder="เช่น สมชาย ใจดี"
-                  aria-label="ชื่อและนามสกุล"
-                  aria-invalid={!!e1("name") || undefined}
-                  data-miss={e1("name") ? "1" : undefined}
-                  className={e1("name") ? bad : ""}
+                  value={f.first}
+                  onChange={(e) => setF((v) => withNamePart(v, "first", e.target.value))}
+                  placeholder="เช่น สมชาย"
+                  aria-label="ชื่อ"
+                  aria-invalid={!!firstErr || undefined}
+                  data-miss={firstErr ? "1" : undefined}
+                  className={firstErr ? bad : ""}
+                />
+              </Field>
+              <Field label="นามสกุล" required hint={hint(lastErr)}>
+                <Input
+                  value={f.last}
+                  onChange={(e) => setF((v) => withNamePart(v, "last", e.target.value))}
+                  placeholder="เช่น ใจดี"
+                  aria-label="นามสกุล"
+                  aria-invalid={!!lastErr || undefined}
+                  data-miss={lastErr ? "1" : undefined}
+                  className={lastErr ? bad : ""}
                 />
               </Field>
               <Field label="ชื่อเล่น">
@@ -1619,17 +1654,20 @@ function AddDialog({
             </div>
           </Sect>
 
-          {/* บัญชีรับเงินเดือน — ไม่บังคับ ว่างได้ ตารางสรุปเงินเดือนแสดง "—" (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
-          <Sect title="บัญชีรับเงินเดือน">
-            <div className="grid gap-3.5 sm:grid-cols-2">
-              <Field label="ธนาคาร">
-                <Input value={f.bankName} onChange={set("bankName")} placeholder="เช่น กสิกรไทย" aria-label="ธนาคาร" />
-              </Field>
-              <Field label="เลขที่บัญชี">
-                <Input inputMode="numeric" value={f.bankNo} onChange={set("bankNo")} placeholder="xxx-x-xxxxx-x" aria-label="เลขที่บัญชี" />
-              </Field>
-            </div>
-          </Sect>
+          {/* บัญชีรับเงินเดือน — ไม่บังคับ ว่างได้ ตารางสรุปเงินเดือนแสดง "—" (ผู้ใช้สั่ง 16 ต.ค. 2569)
+              เลือกฝึกงานไม่มีช่องบัญชี (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
+          {f.type !== "intern" && (
+            <Sect title="บัญชีรับเงินเดือน">
+              <div className="grid gap-3.5 sm:grid-cols-2">
+                <Field label="ธนาคาร">
+                  <Input value={f.bankName} onChange={set("bankName")} placeholder="เช่น กสิกรไทย" aria-label="ธนาคาร" />
+                </Field>
+                <Field label="เลขที่บัญชี">
+                  <Input inputMode="numeric" value={f.bankNo} onChange={set("bankNo")} placeholder="xxx-x-xxxxx-x" aria-label="เลขที่บัญชี" />
+                </Field>
+              </div>
+            </Sect>
+          )}
 
           {/* ผู้ติดต่อฉุกเฉินเป็นกล่องของตัวเอง แยกจากข้อมูลติดต่อทั่วไป (ผู้ใช้สั่ง 15 ต.ค. 2569) */}
           <Sect title="ผู้ติดต่อฉุกเฉิน">

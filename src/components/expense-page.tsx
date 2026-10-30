@@ -62,7 +62,6 @@ import {
   RotateIcon,
   TrashIcon,
 } from "./icons";
-import { ApproverNote } from "./approver-note";
 import { Sheet } from "./lead-dialogs";
 
 import { DateField } from "./thai-date-picker";
@@ -269,7 +268,6 @@ function ClaimList({
       <div className="bar">
         <div>
           <h1>เบิกค่าใช้จ่าย</h1>
-          <ApproverNote kind="expense" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <button type="button" className="btn solid btn-solid btn-block-mobile shrink-0" onClick={() => setChoose(true)}>
@@ -591,7 +589,6 @@ function ClaimForm({
       <div className="bar no-print">
         <div>
           <h1>{title}</h1>
-          <ApproverNote kind="expense" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
 

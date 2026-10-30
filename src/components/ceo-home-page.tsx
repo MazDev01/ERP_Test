@@ -95,12 +95,14 @@ export function RoleHomePage() {
   /* การ์ดหน้าหลัก (มือถือ) รวม "ผู้สนใจ" กับ "ใบเสนอราคา" เป็นการ์ดเดียว (ผู้ใช้สั่ง 29 ก.ย. 2569)
      จอคอมยังใช้สองเมนูเดิมในแถบข้าง — รวมเฉพาะเมื่อเห็นทั้งสองเมนู (ผู้ดูแลอาจปิดเมนูใดเมนูหนึ่งไว้) */
   const items = useMemo(() => {
-    const lead = menu.find((i) => i.href === "/leads");
-    if (!lead || !menu.some((i) => i.href === "/quotations")) return menu;
-    return menu
+    /* การลาอยู่ในแถบล่างแล้ว ไม่ต้องมีการ์ดซ้ำในหน้าโฮม — ยกเว้น CEO ที่แถบล่างไม่มีปุ่มลา (ผู้ใช้สั่ง 29 ต.ค. 2569) */
+    const base = role === "ceo" ? menu : menu.filter((i) => i.href !== "/leave");
+    const lead = base.find((i) => i.href === "/leads");
+    if (!lead || !base.some((i) => i.href === "/quotations")) return base;
+    return base
       .filter((i) => i.href !== "/quotations")
       .map((i) => (i === lead ? { ...i, label: "ผู้สนใจและใบเสนอราคา", icon: "quotation" as const, href: "/leads-quotes" } : i));
-  }, [menu]);
+  }, [menu, role]);
   /*
    * บทบาทผู้บริหารยังไม่มีชื่อจริงในทะเบียน เดิมจึงทักว่า "สวัสดี, CEO" ซึ่งอ่านเหมือนชื่อตำแหน่ง
    * ใช้ชื่อที่ผู้ดูแลตั้งไว้ในผู้อนุมัติระดับผู้บริหารก่อน ยังไม่ได้ตั้งค่อยใช้คำเรียกตำแหน่ง

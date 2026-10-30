@@ -17,7 +17,7 @@ import { AdminOptionsPage } from "./admin-options-page";
 import { AdminPositionsPane } from "./admin-positions-page";
 import { AdminLeavePage } from "./admin-leave-page";
 import { AdminHolidaysPage } from "./admin-holidays-page";
-import { AdminAttendancePage, PayAndLate } from "./admin-attendance-page";
+import { AdminAttendancePage } from "./admin-attendance-page";
 import { AdminRatesPage } from "./admin-rates-page";
 import { AdminCompanyPage } from "./admin-company-page";
 import { AdminLogPage } from "./admin-log-page";
@@ -49,7 +49,7 @@ function Section({ tab }: { tab: SettingsTabKey }) {
       return <AdminLeavePage />;
     case "payroll":
       /* รอบเงินเดือน เริ่มนับโอที การหักมาสาย ขึ้นบนสุดของแท็บ ใต้หัวหน้า (ผู้ใช้สั่ง 13 ต.ค. 2569) */
-      return <AdminRatesPage top={<PayAndLate />} />;
+      return <AdminRatesPage payLate />;
     case "expense":
       return <AdminOptionsPage only="expenseKind" />;
     case "info":

@@ -15,6 +15,7 @@ import { baht, commaInput, thaiMonth, todayIso } from "@/lib/format";
 import {
   dailyRoundRange,
   extraOf,
+  hasPayCuts,
   hrCycle,
   hrPos,
   isDailyRoundKey,
@@ -22,6 +23,7 @@ import {
   payKeyLabel,
   PAY_CUT_ITEMS,
   PAY_INCOME_ITEMS,
+  standingCuts,
   type Employee,
   type PayItemKey,
   type PayItems,
@@ -30,6 +32,9 @@ import { saveExtra, useHr } from "@/lib/hr-store";
 import { useComSource, useHrTime } from "@/lib/hr-link";
 import { Sheet } from "./lead-dialogs";
 import { Field, Input } from "./ui";
+
+/* รายการหักที่ระบบเติมให้ทุกรอบ */
+const STANDING: PayItemKey[] = ["guarantee", "studentLoan"];
 
 export function EditExtra({
   emp,
@@ -47,9 +52,20 @@ export function EditExtra({
 }) {
   const src = useComSource();
   const saved = extraOf(hr.extras, emp.id, runKey).items;
-  const all = [...PAY_INCOME_ITEMS, ...PAY_CUT_ITEMS];
+  const range = isDailyRoundKey(runKey) ? dailyRoundRange(runKey) : hrCycle(runKey);
+  /* ทดลองงานจ่ายรายวันและฝึกงานไม่มีเงินประกันผลงานกับ กยศ. (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  const cutsOn = hasPayCuts(emp, range);
+  const incomeItems = PAY_INCOME_ITEMS.filter(({ k }) => cutsOn || k !== "guaranteeBack");
+  const cutItems = PAY_CUT_ITEMS.filter(({ k }) => cutsOn || !STANDING.includes(k));
+  const all = [...incomeItems, ...cutItems];
+  const auto = standingCuts(emp, range, hr.extras);
   const [raw, setRaw] = useState<Record<string, string>>(() =>
-    Object.fromEntries(all.map(({ k }) => [k, saved[k] ? commaInput(String(saved[k])) : ""])),
+    Object.fromEntries(
+      all.map(({ k }) => {
+        const v = saved[k] ?? auto[k] ?? 0;
+        return [k, v ? commaInput(String(v)) : saved[k] === 0 ? "0" : ""];
+      }),
+    ),
   );
   /** กดบันทึกทั้งที่กรอกไม่ถูก — ขึ้นคำเตือนแทนการกดไม่ลงเฉย ๆ */
   const [warn, setWarn] = useState(false);
@@ -57,10 +73,14 @@ export function EditExtra({
   const parsed = all.map(({ k }) => [k, num(raw[k] ?? "")] as const);
   const valid = parsed.every(([, v]) => v !== null && v >= 0);
   const items: PayItems = {};
-  for (const [k, v] of parsed) if (v) items[k as PayItemKey] = v;
+  for (const [k, v] of parsed) {
+    /* ยอดเท่ากับที่ระบบเติมให้ = ไม่ต้องเก็บ ยอดจะได้ตามค่าที่ตั้งไว้ · ต่างจากนั้น (รวม 0 = เว้นรอบนี้) จึงเก็บเป็นยอดของรอบนี้ */
+    if (STANDING.includes(k)) {
+      if (v !== null && v !== (auto[k] ?? 0)) items[k] = v;
+    } else if (v) items[k] = v;
+  }
 
   /* ยอดสุทธิก่อน/หลังแก้ — คิดด้วยสูตรเดียวกับหน้าคำนวณเงินเดือน (รวมภาษีหัก ณ ที่จ่ายของทดลองงาน) */
-  const range = isDailyRoundKey(runKey) ? dailyRoundRange(runKey) : hrCycle(runKey);
   const now = payIn(emp, range, time, hr.extras, todayIso(), src);
   const preview = payIn(
     emp,
@@ -111,7 +131,7 @@ export function EditExtra({
       </p>
 
       <p className="mt-4 text-[12.5px] font-semibold text-muted-foreground">รายได้</p>
-      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{PAY_INCOME_ITEMS.map(field)}</div>
+      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{incomeItems.map(field)}</div>
       {now.com > 0 && (
         /* ค่าคอมจากยอดขายคิดอัตโนมัติอยู่แล้ว ช่อง ค่า commission คือยอดที่กรอกเพิ่ม — สลิปรวมสองก้อนในบรรทัดเดียว */
         <p className="mt-1.5 text-[12px] text-muted-foreground">
@@ -122,7 +142,7 @@ export function EditExtra({
       <hr className="my-4 border-border" />
 
       <p className="text-[12.5px] font-semibold text-muted-foreground">รายการหัก</p>
-      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{PAY_CUT_ITEMS.map(field)}</div>
+      <div className="mt-1.5 grid gap-3 sm:grid-cols-2">{cutItems.map(field)}</div>
       <p className="mt-1.5 text-[12px] text-muted-foreground">
         หักมาสาย ประกันสังคม และภาษีหัก ณ ที่จ่าย คิดจากสูตร ไม่ต้องกรอก
       </p>

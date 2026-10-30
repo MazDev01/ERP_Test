@@ -292,7 +292,7 @@ export function HrPayrollPage() {
       {/* ขั้นตอนย้ายไปเป็นแท็บที่หัวแผงตาราง ตัวกรองอยู่ขวาบนของหน้า (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
       <div className="bar">
         {/* ชื่อหน้ามุมซ้ายบน — แถบบนจอคอมเป็นเส้นทางแล้ว (ผู้ใช้สั่ง 12 ต.ค. 2569) */}
-        <h1 className="page-h1">คำนวณเงินเดือน</h1>
+        <h1 className="page-h1">{isDay ? "คำนวณค่าจ้าง" : "คำนวณเงินเดือน"}</h1>
         <div className="tools ml-auto">
           {isDay ? (
             <DayRangePicker value={dayRange} max={today} onChange={pickDayRange} rounds={hr.dailyRounds} />
@@ -350,7 +350,7 @@ export function HrPayrollPage() {
             <div className="my-2 ml-auto flex flex-wrap items-center gap-2 max-md:my-0 max-md:ml-0 max-md:w-full max-md:justify-center max-md:hidden">
               {canSend && (
                 <button type="button" className="btn glass-thin" style={{ height: 38 }} onClick={sendToCeo}>
-                  {ap.status === "draft" && !ap.reason ? "ส่งให้ Chief Executive Officer อนุมัติ" : "ส่งใหม่"}
+                  {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
                 </button>
               )}
               <CeoTag ap={ap} drifted={drifted} />
@@ -589,7 +589,7 @@ export function HrPayrollPage() {
             <CeoTag ap={ap} drifted={drifted} />
             {canSend && (
               <button type="button" className="btn glass-thin" onClick={sendToCeo}>
-                {ap.status === "draft" && !ap.reason ? "ส่งให้ Chief Executive Officer อนุมัติ" : "ส่งใหม่"}
+                {ap.status === "draft" && !ap.reason ? "ส่งให้ CEO อนุมัติ" : "ส่งใหม่"}
               </button>
             )}
             <button

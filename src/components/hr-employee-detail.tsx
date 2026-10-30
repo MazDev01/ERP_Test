@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { baht, thaiDate } from "@/lib/format";
+import { baht, commaInput, thaiDate } from "@/lib/format";
 import { useHydrated } from "@/lib/pwa";
 import { lockScroll } from "@/lib/scroll-lock";
 import { useRole } from "@/lib/role";
@@ -26,11 +26,15 @@ import {
   probLine,
   probPayNote,
   cycleMonthOfDay,
+  guaranteeHeld,
+  hasPayCuts,
   hrCycle,
+  lineIn,
   type Employee,
 } from "@/lib/hr-data";
-import { useHr } from "@/lib/hr-store";
+import { setEmpPayCuts, useHr } from "@/lib/hr-store";
 import { CloseIcon, PhoneIcon } from "./icons";
+import { Field, Input } from "./ui";
 
 /**
  * ช่องรูปพนักงาน — ยังไม่มีที่ให้อัปโหลดรูป จึงเป็นกรอบว่างบอกตรง ๆ ว่ายังไม่มีรูป
@@ -133,7 +137,8 @@ export function EmployeeDetail({
   /* เงินเดือนเป็นข้อมูลค่าจ้างของคนอื่น — เปิดให้เฉพาะฝ่ายบุคคลกับผู้บริหาร */
   /* บัญชีคือคนเดียวกับฝ่ายบุคคล (E12) เห็นเหมือนฝ่ายบุคคล (ผู้ใช้สั่ง 13 ต.ค. 2569) */
   const seePay = role === "hr" || role === "acc" || role === "ceo";
-  const tabs = TABS.filter((t) => t.k !== "pay" || seePay);
+  /* ฝึกงานไม่มีเงินเดือน จึงไม่มีแท็บเงินเดือน (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  const tabs = TABS.filter((t) => t.k !== "pay" || (seePay && emp.type !== "intern"));
   const onProbation = emp.type === "probat" && emp.status === "active";
   /* ผ่านทดลองงานกลางรอบ — บอกจนจบรอบแรกที่เริ่มเงินเดือน (ผู้ใช้สั่ง 13 ต.ค. 2569) */
   const passNote =
@@ -306,13 +311,15 @@ export function EmployeeDetail({
                     <Row k="ที่อยู่" v={emp.address || "—"} />
                   </Kv>
                 </Sect>
-                {/* บัญชีรับเงินเดือน (ผู้ใช้สั่ง 16 ต.ค. 2569) */}
-                <Sect title="บัญชีรับเงินเดือน">
-                  <Kv>
-                    <Row k="ธนาคาร" v={emp.bankName || "—"} />
-                    <Row k="เลขที่บัญชี" v={emp.bankNo || "—"} num />
-                  </Kv>
-                </Sect>
+                {/* บัญชีรับเงินเดือน (ผู้ใช้สั่ง 16 ต.ค. 2569) · ฝึกงานไม่มี (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
+                {emp.type !== "intern" && (
+                  <Sect title="บัญชีรับเงินเดือน">
+                    <Kv>
+                      <Row k="ธนาคาร" v={emp.bankName || "—"} />
+                      <Row k="เลขที่บัญชี" v={emp.bankNo || "—"} num />
+                    </Kv>
+                  </Sect>
+                )}
                 <SosCard sos={emp.sos} />
               </div>
             )}
@@ -364,13 +371,16 @@ export function EmployeeDetail({
               </Sect>
             )}
 
-            {tab === "pay" && seePay && (
+            {tab === "pay" && seePay && emp.type !== "intern" && (
               <Sect title="ประวัติตำแหน่งและเงินเดือน">
                 <p className="mb-2.5 text-[12.5px] text-muted-foreground">
                   เงินเดือนปัจจุบัน <b className="num text-foreground">{baht(cur.salary)}</b> บาท
                 </p>
                 <History emp={emp} />
               </Sect>
+            )}
+            {tab === "pay" && seePay && hasPayCuts(emp, hrCycle(cycleMonthOfDay(today))) && (
+              <PayCuts key={emp.id} emp={emp} canEdit={role === "hr" || role === "acc"} />
             )}
           </div>
         </div>
@@ -441,6 +451,67 @@ function SosCard({ sos }: { sos: { name: string; rel: string; phone: string } })
         <p className="text-[13.5px] text-muted-foreground">ยังไม่ได้บันทึก</p>
       )}
     </section>
+  );
+}
+
+/** หัก กยศ. + ยอดยกมาเงินประกันผลงาน — HR กรอกเอง · ยอดสะสมคิดถึงรอบล่าสุดที่ปิดแล้ว (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+function PayCuts({ emp, canEdit }: { emp: Employee; canEdit: boolean }) {
+  const hr = useHr();
+  const text = (v?: number) => (v ? commaInput(String(v)) : "");
+  const [loan, setLoan] = useState(text(emp.studentLoan));
+  const [opening, setOpening] = useState(text(emp.guaranteeOpening));
+  const [warn, setWarn] = useState(false);
+  const closed = hr.payruns.filter((p) => lineIn(p, "month", emp.id)).map((p) => p.month).sort().pop();
+  const held = closed ? guaranteeHeld(emp, closed, hr.extras) : (emp.guaranteeOpening ?? 0);
+  const amount = (raw: string) => {
+    const v = raw.replace(/,/g, "").trim();
+    if (!v) return 0;
+    return /^\d+(\.\d+)?$/.test(v) ? Number(v) : null;
+  };
+  const a = amount(loan);
+  const b = amount(opening);
+  const dirty = a !== (emp.studentLoan ?? 0) || b !== (emp.guaranteeOpening ?? 0);
+  return (
+    <Sect title="รายการหักประจำ">
+      {canEdit ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="หัก กยศ. ต่อเดือน (บาท)">
+              <Input value={loan} onChange={(e) => setLoan(commaInput(e.target.value))} inputMode="decimal" placeholder="0" />
+            </Field>
+            <Field label="ยอดยกมาเงินประกันผลงาน (บาท)">
+              <Input value={opening} onChange={(e) => setOpening(commaInput(e.target.value))} inputMode="decimal" placeholder="0" />
+            </Field>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[13px]">
+              ยอดเงินประกันสะสม <b className="num">{baht(held)}</b> บาท
+            </p>
+            {dirty && (
+              <button
+                type="button"
+                className="btn solid btn-solid"
+                onClick={() => {
+                  if (a === null || b === null) return setWarn(true);
+                  setWarn(false);
+                  setEmpPayCuts(emp.id, { studentLoan: a, guaranteeOpening: b });
+                }}
+              >
+                บันทึก
+              </button>
+            )}
+          </div>
+          {warn && (a === null || b === null) && (
+            <p className="mt-2 text-[12.5px] text-destructive">กรอกเป็นตัวเลขไม่ติดลบ หรือเว้นว่างไว้</p>
+          )}
+        </>
+      ) : (
+        <Kv>
+          <Row k="หัก กยศ. ต่อเดือน" v={`${baht(emp.studentLoan ?? 0)} บาท`} num />
+          <Row k="ยอดเงินประกันสะสม" v={`${baht(held)} บาท`} num />
+        </Kv>
+      )}
+    </Sect>
   );
 }
 

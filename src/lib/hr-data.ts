@@ -349,6 +349,10 @@ export type Employee = {
    */
   bankName?: string;
   bankNo?: string;
+  /** หัก กยศ. ต่อเดือน — HR กรอกตามที่ กยศ. แจ้ง ระบบเติมให้ทุกรอบ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  studentLoan?: number;
+  /** เงินประกันผลงานที่หักไว้ก่อนเริ่มใช้ระบบ — HR กรอกครั้งเดียว (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  guaranteeOpening?: number;
 };
 
 /** "ธนาคาร · เลขบัญชี" — ไม่มีทั้งคู่ = "—" (ผู้ใช้สั่ง 16 ต.ค. 2569) */
@@ -1161,7 +1165,7 @@ export type Adjust = { amt: number; why: string };
  * มาสาย ประกันสังคม ค่าล่วงเวลา ภาษีหัก ณ ที่จ่าย ยังคิดจากสูตรเหมือนเดิม
  */
 export type PayItemKey =
-  | "position" | "fuel" | "living" | "phone" | "food" | "diligence" | "commission" | "incentive" | "otherInc"
+  | "position" | "fuel" | "living" | "phone" | "food" | "diligence" | "commission" | "incentive" | "otherInc" | "guaranteeBack"
   | "absent" | "sick" | "personal" | "otherCut" | "welfare" | "advance" | "otherPay" | "guarantee" | "studentLoan";
 
 export const PAY_INCOME_ITEMS: { k: PayItemKey; label: string }[] = [
@@ -1175,6 +1179,8 @@ export const PAY_INCOME_ITEMS: { k: PayItemKey; label: string }[] = [
   { k: "incentive", label: "ค่า Incentive" },
   /* รายได้ที่ไม่ตรงบรรทัดใด (ย้ายมาจากรายการปรับปรุงเก่า) — ต่อท้าย ค่า Incentive บนสลิป */
   { k: "otherInc", label: "รายได้อื่นๆ" },
+  /* HR ตัดสินเองว่าใครได้คืนเท่าไหร่ ระบบหักออกจากยอดสะสมให้ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  { k: "guaranteeBack", label: "คืนเงินประกันผลงาน" },
 ];
 
 export const PAY_CUT_ITEMS: { k: PayItemKey; label: string }[] = [
@@ -1250,7 +1256,8 @@ export function normalizeExtra(raw: unknown): Extra {
   if (o.items && typeof o.items === "object") {
     const items: PayItems = {};
     for (const [k, v] of Object.entries(o.items as Record<string, unknown>))
-      if (typeof v === "number" && Number.isFinite(v) && v) items[k as PayItemKey] = v;
+      /* หัก กยศ./ประกันผลงาน: 0 = HR สั่งเว้นรอบนี้ ไม่ใช่ว่าง จึงต้องเก็บไว้ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+      if (typeof v === "number" && Number.isFinite(v) && (v || k === "guarantee" || k === "studentLoan")) items[k as PayItemKey] = v;
     return { items };
   }
   return { items: itemsOfLegacy(o) };
@@ -1692,6 +1699,66 @@ export function isDaily(e: Employee, at?: Cycle | string) {
   return d < payFrom;
 }
 
+/*
+ * ─── รายการหักประจำ (ผู้ใช้สั่ง 30 ต.ค. 2569) ─────────────────────
+ * เงินประกันผลงาน: ระบบหักเองตั้งแต่รอบแรกที่จ่ายรายเดือน จนยอดสะสมถึงเพดาน
+ * กยศ.: HR กรอกยอดที่ประวัติพนักงาน ระบบเติมให้ทุกรอบ
+ * ยอดในกล่องแก้ค่าตอบแทนของรอบนั้นชนะเสมอ · 0 = เว้นรอบนี้
+ * ทดลองงานจ่ายรายวันและฝึกงานไม่มีสองรายการนี้
+ *
+ * ก่อน GUARANTEE_FROM ไม่หักเอง — ยอดเก่าอยู่ใน "ยอดยกมา" แล้ว และรอบที่ปิดไปแล้วไม่มีบรรทัดนี้
+ * รอบที่ปิดแล้วเก็บยอดจริงลง extras ตอนปิด (freezeGuarantee) ยอดสะสมจึงไม่ขยับตามค่าที่แก้ทีหลัง
+ */
+export const GUARANTEE_FROM = "2026-11";
+
+export function hasPayCuts(e: Employee, c: Cycle) {
+  return e.type !== "intern" && !isDaily(e, c);
+}
+
+/** ยอดหักอัตโนมัติของเดือนหนึ่ง ถ้า held คือยอดสะสมก่อนเดือนนั้น — รอบสุดท้ายของคนที่พ้นสภาพไม่หัก */
+function guaranteeAuto(e: Employee, month: string, held: number) {
+  const c = hrCycle(month);
+  if (month < GUARANTEE_FROM || !hasPayCuts(e, c) || !inRange(e, c) || (e.leftAt && e.leftAt <= c.to)) return 0;
+  const r = ratesOn(c.to);
+  return Math.max(0, Math.min(r.guaranteePerMonth, round2(r.guaranteeCap - held)));
+}
+
+/** ยอดสะสมก่อนเดือนนี้ = ยอดยกมา + ยอดหัก − ยอดคืน นับต่อเนื่องข้ามปี */
+function guaranteeBefore(e: Employee, month: string, extras: Record<string, Record<string, Extra>>) {
+  const typed = Object.keys(extras).filter((m) => /^\d{4}-\d{2}$/.test(m) && m < GUARANTEE_FROM);
+  const list = [...typed, ...monthsBetween(GUARANTEE_FROM, month)].filter((m) => m < month).sort();
+  let held = e.guaranteeOpening ?? 0;
+  for (const m of list) {
+    const it = extraOf(extras, e.id, m).items;
+    held = round2(held + (it.guarantee ?? guaranteeAuto(e, m, held)) - (it.guaranteeBack ?? 0));
+  }
+  return held;
+}
+
+/** ยอดเงินประกันสะสมถึงสิ้นรอบเดือนนี้ — ใช้ทั้งประวัติพนักงาน สลิป และตารางสรุปเงินเดือน */
+export function guaranteeHeld(e: Employee, month: string, extras: Record<string, Record<string, Extra>>) {
+  const held = guaranteeBefore(e, month, extras);
+  const it = extraOf(extras, e.id, month).items;
+  return round2(held + (it.guarantee ?? guaranteeAuto(e, month, held)) - (it.guaranteeBack ?? 0));
+}
+
+/** ยอดที่ระบบเติมให้ในรอบนี้ถ้า HR ไม่ได้แก้ */
+export function standingCuts(e: Employee, c: Cycle, extras: Record<string, Record<string, Extra>>): PayItems {
+  if (!hasPayCuts(e, c)) return {};
+  const month = monthKeyOf(c);
+  return { guarantee: guaranteeAuto(e, month, guaranteeBefore(e, month, extras)), studentLoan: e.studentLoan ?? 0 };
+}
+
+/** ตอนปิดรอบ เก็บยอดหักเงินประกันจริงของรอบนั้น */
+export function freezeGuarantee(extras: Record<string, Record<string, Extra>>, month: string, lines: CycleLine[]) {
+  const round = { ...(extras[month] ?? {}) };
+  for (const l of lines) {
+    const it = extraOf(extras, l.id, month).items;
+    round[l.id] = { items: { ...it, guarantee: l.items?.guarantee ?? 0 } };
+  }
+  return { ...extras, [month]: round };
+}
+
 /**
  * วันเริ่มจ่ายรายเดือนหลังผ่านทดลองงาน = วันแรกของรอบเงินเดือนถัดไปหลังวันที่มีผล
  * วันที่มีผลตรงกับวันแรกของรอบพอดี = เริ่มรอบนั้นเลย (ผู้ใช้สั่ง 13 ต.ค. 2569)
@@ -1967,7 +2034,8 @@ export function payIn(
   /* รายการตามแบบสลิป (ผู้ใช้สั่ง 16 ต.ค. 2569) — Incentive/ค่าตำแหน่งยังแยกช่องไว้ให้หน้าที่รวมยอดเดิมอ่านได้ */
   /* หักลาเกินสิทธิ์ของรายเดือนบวกเข้าบรรทัดหักลาของสลิป (ผู้ใช้สั่ง 19 ต.ค. 2569) */
   const leaveOver = leaveOverCut(e, c, time);
-  const items = withLeaveCut(extraOf(extras, e.id, extraKeyOf(e, c)).items, leaveOver);
+  const typed = extraOf(extras, e.id, extraKeyOf(e, c)).items;
+  const items = withLeaveCut({ ...standingCuts(e, c, extras), ...typed }, leaveOver);
   const inc = items.incentive ?? 0;
   const allow = items.position ?? 0;
   const more = round2(itemSum(items, PAY_INCOME_ITEMS) - inc - allow);

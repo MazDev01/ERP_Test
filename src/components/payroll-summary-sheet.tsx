@@ -10,7 +10,7 @@
  *
  * คอลัมน์:
  *   อัตราเงินเดือน = เงินเดือนที่จ่ายรอบนี้ (หลังเฉลี่ยตามวันที่อยู่ในรอบ) · ค่า OT แยก ×1.5 / ×2 (โอที 3 เท่าวันแรงงานรวมใน ×2)
- *   เงินประกันผลงาน = "หัก ประกันผลงาน" ของเดือนนี้ · สรุปเงินประกัน = ผลรวมตั้งแต่ต้นปีปฏิทินถึงเดือนนี้
+ *   เงินประกันผลงาน = "หัก ประกันผลงาน" ของเดือนนี้ · สรุปเงินประกัน = ยอดสะสมถึงเดือนนี้ นับต่อเนื่องข้ามปี
  *   หักอื่นๆ = รายการหักที่กรอกเองทุกช่อง ยกเว้นประกันผลงานและ กยศ. · คงเหลือ = ยอดสุทธิ
  *   รายได้ที่ไม่มีคอลัมน์ (ค่าคอม Incentive ค่าครองชีพ ฯลฯ ค่าใช้จ่ายคืน) บอกในหมายเหตุ ยอดคงเหลือจะได้ตรวจย้อนได้
  */
@@ -21,8 +21,7 @@ import { issuerOf } from "@/lib/crm-data";
 import {
   bankText,
   BUILTIN_HR_DEPT,
-  dailyPayLines,
-  dailyRoundRange,
+  guaranteeHeld,
   hrCycle,
   hrDept,
   hrDepts,
@@ -161,22 +160,6 @@ function useSummaryData(month: string) {
     return linesOfGroup(payLines(hr.emp, c, time, hr.extras, today, src, run, m), "month", c);
   };
 
-  /* สรุปเงินประกัน — หัก ประกันผลงาน ตั้งแต่ต้นปีปฏิทินถึงรอบนี้ ทั้งรอบเดือนและรอบจ่ายรายวัน */
-  const year = month.slice(0, 4);
-  const guarYtd = new Map<string, number>();
-  const addGuar = (id: string, v: number) => {
-    if (v) guarYtd.set(id, r2((guarYtd.get(id) ?? 0) + v));
-  };
-  for (const m of hr.periods.map((p) => p.month)) {
-    if (m.slice(0, 4) !== year || m > month) continue;
-    for (const { e, c } of linesOf(m)) addGuar(e.id, c.items.guarantee ?? 0);
-  }
-  for (const r of hr.dailyRounds) {
-    if (r.to.slice(0, 4) !== year || r.to > range.to) continue;
-    const c = dailyRoundRange(r.id);
-    for (const l of dailyPayLines(hr.emp, c, time, hr.extras, today, src, r)) addGuar(l.e.id, l.c.items.guarantee ?? 0);
-  }
-
   const rowOf = (e: Employee, c: PaySlipCalc): SumRow => {
     const it = c.items;
     const ot = otSplit(e, range, time, c.ot);
@@ -203,7 +186,7 @@ function useSummaryData(month: string) {
         loan: it.studentLoan ?? 0,
         late: c.late,
         net: c.net,
-        guarYtd: guarYtd.get(e.id) ?? 0,
+        guarYtd: guaranteeHeld(e, month, hr.extras),
       },
     };
   };

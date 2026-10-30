@@ -24,10 +24,11 @@ import { hrCycle, probRoundLabel, weekRangeFor, type Cycle, type DailyRound } fr
 import { CalendarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import { DateField } from "./thai-date-picker";
 
-const STEPS = [
+const STEPS: { href: string; label: string; day?: string }[] = [
   { href: "/hr/timesheet", label: "สรุปเวลาทำงาน" },
-  { href: "/hr/payroll", label: "คำนวณเงินเดือน" },
-  { href: "/hr/payslip", label: "ออกสลิปเงินเดือน" },
+  /* กลุ่มทดลองงานจ่ายรายวัน ใช้คำว่าค่าจ้างแทนเงินเดือน (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  { href: "/hr/payroll", label: "คำนวณเงินเดือน", day: "คำนวณค่าจ้าง" },
+  { href: "/hr/payslip", label: "ออกสลิปเงินเดือน", day: "ออกสลิปค่าจ้าง" },
   /* ชื่อขั้นเต็ม "ประวัติรอบจ่าย" (ผู้ใช้สั่ง 6 ต.ค. 2569) */
   { href: "/hr/cycles", label: "ประวัติรอบจ่าย" },
 ];
@@ -77,7 +78,7 @@ export function HrSteps({
               on ? "on bg-card text-primary" : "text-muted-foreground hover:text-primary"
             } ${s.href === "/hr/timesheet" ? "" : "border-l border-border"}`}
           >
-            {s.label}
+            {group === "daily" ? (s.day ?? s.label) : s.label}
           </Link>
         );
       })}
@@ -110,7 +111,7 @@ export function HrStepTabs({
             aria-current={on ? "page" : undefined}
             className={on ? "on" : ""}
           >
-            {s.label}
+            {group === "daily" ? (s.day ?? s.label) : s.label}
           </Link>
         );
       })}

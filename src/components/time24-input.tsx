@@ -79,6 +79,8 @@ export type Time24InputProps = {
   id?: string;
   "aria-label"?: string;
   placeholder?: string;
+  /** ช่องว่างอยู่ เปิดรายการเวลาที่เวลานี้ "HH:MM" — ไม่ส่ง = 09:00 (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  openAt?: string;
 };
 
 export function Time24Input({
@@ -93,6 +95,7 @@ export function Time24Input({
   id,
   "aria-label": ariaLabel,
   placeholder = "--:--",
+  openAt = "09:00",
 }: Time24InputProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -177,7 +180,8 @@ export function Time24Input({
   const times: string[] = [];
   for (let t = 0; t < 24 * 60; t += listStep) times.push(`${pad(Math.floor(t / 60))}:${pad(t % 60)}`);
   const cur = parseTime(value);
-  const curMin = cur ? Number(cur.slice(0, 2)) * 60 + Number(cur.slice(3)) : 9 * 60;
+  const start = cur ?? openAt;
+  const curMin = Number(start.slice(0, 2)) * 60 + Number(start.slice(3));
   const near = times.reduce((best, t) => {
     const m = Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
     const b = Number(best.slice(0, 2)) * 60 + Number(best.slice(3));

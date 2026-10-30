@@ -26,7 +26,6 @@ import {
   CloseIcon,
   PlusIcon,
 } from "./icons";
-import { ApproverNote } from "./approver-note";
 import { OtDialog } from "./ot-dialog";
 import { stackNo } from "@/lib/stack-no";
 
@@ -127,7 +126,6 @@ export function OtPage() {
       <div className="bar">
         <div>
           <h1>โอทีของฉัน</h1>
-          <ApproverNote kind="ot" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <div className="mo glass-thin w-full justify-center sm:w-auto">
@@ -318,9 +316,6 @@ export function OtPage() {
         >
           <CalendarIcon strokeWidth={2} />
         </button>
-      </div>
-      <div className="m-ot-approver">
-        <ApproverNote kind="ot" />
       </div>
 
       {day && (

@@ -118,6 +118,9 @@ export type RateSettings = {
   fuelPerKm: number;
   /** จ่ายคืนค่าน้ำมันมอเตอร์ไซค์กิโลเมตรละกี่บาท — คนละอัตรากับรถยนต์ (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   fuelMotoPerKm: number;
+  /** เงินประกันผลงาน: หักเดือนละกี่บาท และหักจนยอดสะสมถึงเท่าไหร่ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  guaranteePerMonth: number;
+  guaranteeCap: number;
   /** ลาพักร้อนที่เหลือยกไปปีถัดไปได้สูงสุดกี่วัน — 0 = ไม่ยกยอด หมดสิ้นปี (ตั้งที่ /admin/leave) */
   vacationCarryMax: number;
   /** วันเริ่มรอบปีการลา "MM-DD" — รอบขึ้นใหม่เองทุกปีในวันนี้ (ตั้งที่ /admin/leave) */
@@ -386,6 +389,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     probationMonths: 3,
     fuelPerKm: 5,
     fuelMotoPerKm: 2.5,
+    guaranteePerMonth: 1000,
+    guaranteeCap: 5000,
     /* ตั้งต้นไม่ยกยอด ตาม ERD (HR-BR-13 ไม่สะสมข้ามปี) — ผู้ดูแลเปิดได้ที่หน้าประเภทการลา */
     vacationCarryMax: 0,
     leaveYearStart: "01-01",

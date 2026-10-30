@@ -246,8 +246,8 @@ export function ApprovalsPage() {
     if (myRoles.includes("hr"))
       for (const r of hr.internLeave) {
         const e = hr.emp.find((x) => x.id === r.emp);
-        /* ใบที่มาถึงฝ่ายบุคคลมีแต่ของนักศึกษาฝึกงาน — ใต้ชื่อขึ้นว่าฝึกงานเหมือนกันทุกใบ ไม่ใช่ตำแหน่งงาน (ผู้ใช้สั่ง 8 ต.ค. 2569) */
-        out.push(fromIntern(r, e?.name ?? r.emp, "นักศึกษาฝึกงาน"));
+        /* ตำแหน่งที่ฝึกงานจริง — "นักศึกษาฝึกงาน" เป็นประเภทพนักงาน ไม่ใช่ตำแหน่ง (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+        out.push(fromIntern(r, e?.name ?? r.emp, e ? hrPos(e.pos).label : ""));
       }
     return out.sort((a, b) => a.at.localeCompare(b.at));
   }, [duties, leaves, ots, claims, extra, hr.emp, hr.internLeave, myRoles]);
@@ -504,13 +504,15 @@ export function ApprovalsBoard({
                         </span>
                       </span>
                     </span>
-                    <span
-                      className={`flex-none text-right text-[12px] whitespace-nowrap ${
-                        hot ? "font-semibold text-destructive" : "text-muted-foreground"
-                      }`}
-                    >
-                      {wait <= 0 ? "วันนี้" : wait === 1 ? "เมื่อวาน" : `${wait} วันก่อน`}
-                    </span>
+                    {item.status === "pending" && (
+                      <span
+                        className={`flex-none text-right text-[12px] whitespace-nowrap ${
+                          hot ? "font-semibold text-destructive" : "text-muted-foreground"
+                        }`}
+                      >
+                        {wait <= 0 ? "วันนี้" : wait === 1 ? "เมื่อวาน" : `${wait} วันก่อน`}
+                      </span>
+                    )}
                     <span aria-hidden className="flex-none text-[18px] leading-none text-muted-foreground">
                       ›
                     </span>
@@ -538,7 +540,8 @@ export function ApprovalsBoard({
                 <th style={{ width: 240 }}>คำขอ</th>
                 {/* วันที่ส่งแยกคอลัมน์ · ไม่แสดงรหัสคำขอ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                 <th style={{ width: 140 }}>วันที่ส่ง</th>
-                <th style={{ width: 130 }}>ส่งเมื่อ</th>
+                {/* ส่งเมื่อมีเฉพาะแท็บคำขอที่ยังรอตัดสิน (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
+                {view === "req" && <th style={{ width: 130 }}>ส่งเมื่อ</th>}
                 {/* คอลัมน์ปุ่ม: ดูรายละเอียด · ไม่อนุมัติ · อนุมัติ (ผู้ใช้สั่ง 5 ต.ค. 2569) */}
                 <th aria-label="จัดการ" />
               </tr>
@@ -589,13 +592,15 @@ export function ApprovalsBoard({
                       <td data-label="วันที่ส่ง" className="num text-[12.5px] whitespace-nowrap text-muted-foreground">
                         {thaiDate(item.at.split(" ")[0])}
                       </td>
-                      <td
-                        data-label="ส่งเมื่อ"
-                        className={`text-[12.5px] whitespace-nowrap ${hot ? "font-semibold text-destructive" : "text-muted-foreground"}`}
-                        title={hot ? `รอนานเกิน ${WAIT_HOT} วัน` : undefined}
-                      >
-                        {wait <= 0 ? "วันนี้" : wait === 1 ? "เมื่อวาน" : `${wait} วันก่อน`}
-                      </td>
+                      {view === "req" && (
+                        <td
+                          data-label="ส่งเมื่อ"
+                          className={`text-[12.5px] whitespace-nowrap ${hot ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+                          title={hot ? `รอนานเกิน ${WAIT_HOT} วัน` : undefined}
+                        >
+                          {wait <= 0 ? "วันนี้" : wait === 1 ? "เมื่อวาน" : `${wait} วันก่อน`}
+                        </td>
+                      )}
                       <td data-label="" className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
@@ -748,6 +753,8 @@ function RequestDialog({
             </>
           }
         />
+        {/* วันยื่นอยู่ใต้ผู้ยื่นทุกประเภทคำขอ (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
+        <Kv label="ยื่นเมื่อ" value={thaiStamp(item.at)} />
         {/* ใบลา: แถว "วันที่" (ช่วงวันลา + ช่วงเวลาของลาไม่เต็มวัน) แทน "ประเภท: การลา" (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
         {item.kind === "leave" && item.when ? (
           <Kv label="วันที่" value={<span className="num">{item.when}</span>} />
@@ -794,7 +801,6 @@ function RequestDialog({
         {(item.kind === "leave" || Boolean(item.note)) && (
           <Kv label="เหตุผลของผู้ยื่น" value={item.note || "ไม่ได้เขียนเหตุผล"} />
         )}
-        <Kv label="ยื่นเมื่อ" value={thaiStamp(item.at)} />
         {/* ไม่มีแถว "ถึงคุณในฐานะ" แล้ว (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
         {done && (
           <Kv

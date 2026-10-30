@@ -28,6 +28,7 @@ import { AdminHead, IconBtn, Input2, SaveBar, inputCls, thCls, trCls, useSection
 import { PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { Sheet } from "./lead-dialogs";
 import { DateField } from "./thai-date-picker";
+import { PayAndLate, usePayAndLate } from "./admin-attendance-page";
 
 type NumKey = Exclude<keyof RateSettings, "lateMode" | "latePerMinute" | "lateFreeMinutes" | "leaveYearStart" | "vacationCarryMax">;
 type Field = { key: NumKey; label: string; unit: string; hint: string; min: number; max: number; step: number };
@@ -49,6 +50,9 @@ const PAY: Field[] = [
   /* รถยนต์กับมอเตอร์ไซค์คิดคนละอัตรา (ผู้ใช้สั่ง 29 ต.ค. 2569) */
   { key: "fuelPerKm", label: "ค่าน้ำมันรถยนต์ต่อกิโลเมตร", unit: "บาท/กม.", hint: "ใช้คิดยอดในใบเบิกค่าน้ำมันรถยนต์", min: 0, max: 50, step: 0.5 },
   { key: "fuelMotoPerKm", label: "ค่าน้ำมันมอเตอร์ไซค์ต่อกิโลเมตร", unit: "บาท/กม.", hint: "ใช้คิดยอดในใบเบิกค่าน้ำมันมอเตอร์ไซค์", min: 0, max: 50, step: 0.5 },
+  /* ใช้กติกาเดียวกันทุกคน ระบบหักเอง (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+  { key: "guaranteePerMonth", label: "เงินประกันผลงานต่อเดือน", unit: "บาท", hint: "หักตั้งแต่รอบแรกที่จ่ายรายเดือน", min: 0, max: 100000, step: 100 },
+  { key: "guaranteeCap", label: "เพดานเงินประกันผลงาน", unit: "บาท", hint: "ยอดสะสมถึงเท่านี้แล้วหยุดหัก", min: 0, max: 1000000, step: 100 },
 ];
 function describeSs(a: SsCeiling[], b: SsCeiling[]) {
   const out: string[] = [];
@@ -85,7 +89,8 @@ function useExtraTaxes() {
 const RATE_COLS = "grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_40px] sm:grid-cols-[28px_minmax(0,1.4fr)_minmax(0,1fr)_40px]";
 
 /* top = การ์ดที่ขึ้นบนสุดใต้หัวหน้า (รอบเงินเดือน เริ่มนับโอที การหักมาสาย) (ผู้ใช้สั่ง 13 ต.ค. 2569) */
-export function AdminRatesPage({ taxOnly = false, top }: { taxOnly?: boolean; top?: ReactNode } = {}) {
+export function AdminRatesPage({ taxOnly = false, payLate = false }: { taxOnly?: boolean; payLate?: boolean } = {}) {
+  const pl = usePayAndLate();
   const extraTax = useExtraTaxes();
   const extraPay = useExtraPay();
   const extras = taxOnly ? extraTax : extraPay;
@@ -136,16 +141,10 @@ export function AdminRatesPage({ taxOnly = false, top }: { taxOnly?: boolean; to
       <AdminHead
         title={taxOnly ? "ภาษี" : "การคำนวณเงินเดือน"}
         desc={taxOnly ? "อัตราภาษีที่ใช้ในใบเสนอราคาและเอกสาร" : "ค่าที่ใช้คำนวณเงินเดือนและค่าจ้างรายวัน"}
-      >
-        {(
-          <button type="button" className="btn solid btn-solid" onClick={() => setTaxEdit("new")}>
-            <PlusIcon className="size-4" strokeWidth={2.4} />
-            เพิ่มรายการ
-          </button>
-        )}
-      </AdminHead>
+        /* ไม่มีปุ่มเพิ่มรายการ — รายการที่เพิ่มเองไม่มีส่วนไหนเอาไปคำนวณ แก้ได้แค่ค่าของรายการที่มีอยู่ (ผู้ใช้สั่ง 30 ต.ค. 2569) */
+      />
 
-      {top}
+      {payLate && <PayAndLate pl={pl} />}
 
       {/* ตารางแบบเดียวกับตารางตัวเลือกในรายการ: # | ชื่อ | ค่า | ดินสอ (ผู้ใช้สั่ง 13 ต.ค. 2569) */}
       <section className="glass overflow-hidden rounded-[18px]">
@@ -308,16 +307,24 @@ export function AdminRatesPage({ taxOnly = false, top }: { taxOnly?: boolean; to
       </section>
 
       {/* ไม่มีตัวอย่างการคำนวณและข้อความอธิบายการทำงานของระบบ (ผู้ใช้สั่ง 6 ต.ค. 2569) */}
+      {/* แถบเดียวของทั้งหน้า — รวมการ์ดรอบเงินเดือนด้านบนด้วย (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
       <SaveBar
-        dirty={ss.dirty}
-        isDefault={history.length === 0 && ss.isDefault}
-        invalid={badSs}
-        onSave={() => ss.save()}
-        onCancel={() => ss.cancel()}
+        dirty={ss.dirty || (payLate && pl.dirty)}
+        isDefault={history.length === 0 && ss.isDefault && (!payLate || pl.isDefault)}
+        invalid={badSs || (payLate ? pl.bad : "")}
+        onSave={() => {
+          if (ss.dirty) ss.save();
+          if (payLate) pl.save();
+        }}
+        onCancel={() => {
+          ss.cancel();
+          if (payLate) pl.cancel();
+        }}
         onDefault={() => {
           saveRatesFrom(today, DEFAULT_SETTINGS.rates, "คืนค่าตั้งต้น");
           logChange("อัตราและภาษี", `คืนค่าตั้งต้น · มีผล ${thaiDate(today)}`);
           ss.toDefault();
+          if (payLate) pl.toDefault();
         }}
       />
 

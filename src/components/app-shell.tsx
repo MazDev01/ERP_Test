@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { bottomNav, canVisit, canVisitAny, findItem, homeOf, mobileHomeOf, navGroupsOf, navItemsOf, pageTitle, useMenuAccess, type IconName, type NavItem } from "@/lib/nav";
+import { bottomNav, canVisit, canVisitAny, findItem, homeOf, mobileHomeOf, mobileScheduleOf, navGroupsOf, navItemsOf, pageTitle, useMenuAccess, type IconName, type NavItem } from "@/lib/nav";
 import { BillingNavDot } from "./acc-ui";
 import { PmNavDot } from "./pm-nav-dot";
 import { useMyMine, useMyRoles } from "@/lib/hr-link";
@@ -18,6 +18,7 @@ import {
   PinIcon,
   ShieldIcon,
   BillingIcon,
+  CalendarIcon,
   ChartIcon,
   ChevronLeftIcon,
   ClockIcon,
@@ -187,6 +188,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const base = fixed ?? saved ?? botnavDefault(items, role);
     return base.map((href) => (allow.has(href) ? href : BOTNAV_EMPTY));
   })();
+  /*
+   * ทุกบทบาทยกเว้นผู้บริหารใช้แถบล่างชุดเดียวกัน 5 ช่อง: โฮม · ตารางงาน · ลงเวลา · ลา · โปรไฟล์ (ผู้ใช้สั่ง 29 ต.ค. 2569)
+   * ผู้บริหารคงแถบเดิม (botSlots) · ลงเวลาเป็นปุ่มกลางเหมือนเดิม
+   */
+  const sameTabs =
+    role === "ceo"
+      ? null
+      : [
+          { href: mobileHomeOf(role), label: "โฮม", Icon: HomeIcon, acc: "home" },
+          { href: mobileScheduleOf(role), label: "ตารางงาน", Icon: CalendarIcon, acc: "" },
+          { href: "/leave", label: "ลา", Icon: LeaveIcon, acc: "/leave" },
+          { href: "/profile", label: "โปรไฟล์", Icon: UserIcon, acc: "/profile" },
+        ];
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -442,12 +456,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         /* บางบทบาทไม่มีแดชบอร์ด ช่องเมนูจึงเหลือสี่ — แบ่งคอลัมน์ตามจำนวนจริง ไม่ให้เหลือช่องว่าง */
         /* ช่องที่ไม่ได้เลือกอะไรไว้จะไม่ขึ้น — แบ่งคอลัมน์ตามจำนวนช่องที่มีจริง ไม่ให้เหลือที่ว่าง */
         style={
-          newMobile
+          sameTabs
+            ? { gridTemplateColumns: `repeat(${sameTabs.length + 1}, 1fr)` }
+            : newMobile
             ? { gridTemplateColumns: `repeat(${botSlots.filter(Boolean).length + (tabPunch ? 1 : 0)}, 1fr)` }
             : undefined
         }
       >
-        {newMobile ? (
+        {sameTabs ? (
+          /* ชุดเดียวกันทุกบทบาท (ผู้ใช้สั่ง 29 ต.ค. 2569) — ซ้ายสองช่อง · ปุ่มกลางลงเวลา · ขวาสองช่อง */
+          <>
+            {sameTabs.slice(0, 2).map((t) => (
+              <SameTab key={t.label} {...t} role={role} pathname={pathname} />
+            ))}
+            <Link href={tabPunch?.href ?? "/"} className="bn-mid" aria-label="ลงเวลา">
+              <i>
+                <ClockIcon className="size-[26px]" strokeWidth={2.3} />
+              </i>
+              <span>ลงเวลา</span>
+            </Link>
+            {sameTabs.slice(2).map((t) => (
+              <SameTab key={t.label} {...t} role={role} pathname={pathname} />
+            ))}
+          </>
+        ) : newMobile ? (
           /*
             ตามแบบมือถือ: หน้าหลัก · แดชบอร์ด · ลงเวลา (ปุ่มกลาง) · การลา · โปรไฟล์
             ลงเวลาอยู่ตรงกลางเป็นปุ่มกลมยกนูน เพราะเป็นสิ่งที่ทุกคนกดทุกวัน
@@ -508,6 +540,38 @@ const ACC_TAB_ICONS: Record<string, React.ReactNode> = {
   "/expense": (<><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6M9 16h3" /></>),
   "/profile": (<><circle cx="12" cy="8" r="3.6" /><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" /></>),
 };
+
+/* หนึ่งช่องของแถบล่างชุดเดียวกันทุกบทบาท (ผู้ใช้สั่ง 29 ต.ค. 2569) — บัญชีคงไอคอนเส้นตามต้นแบบ checkin.html */
+function SameTab({
+  href,
+  label,
+  Icon,
+  acc,
+  role,
+  pathname,
+}: {
+  href: string;
+  label: string;
+  Icon: (p: { className?: string }) => React.ReactNode;
+  acc: string;
+  role: Role;
+  pathname: string;
+}) {
+  const on = pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
+  const accPaths = role === "acc" && acc ? ACC_TAB_ICONS[acc] : undefined;
+  return (
+    <Link href={href} aria-current={on ? "page" : undefined} className={on ? "on" : undefined}>
+      {accPaths ? (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {accPaths}
+        </svg>
+      ) : (
+        <Icon className="size-[22px]" />
+      )}
+      <span>{label}</span>
+    </Link>
+  );
+}
 
 function BotTab({
   href,

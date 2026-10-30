@@ -27,7 +27,6 @@ import {
 } from "@/lib/leave-store";
 import { formatMinutesOfDay } from "@/lib/work-schedule";
 import { useNoLeaveQuota } from "@/lib/hr-link";
-import { ApproverNote } from "./approver-note";
 import { LeaveDialog } from "./leave-dialog";
 import { Sheet } from "./lead-dialogs";
 import { CalendarIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, LeaveIcon, PlusIcon } from "./icons";
@@ -143,7 +142,6 @@ export function LeavePage() {
       <div className="bar">
         <div>
           <h1>การลาของฉัน</h1>
-          <ApproverNote kind="leave" />
         </div>
         <div className="tools w-full flex-wrap sm:w-auto">
           <div className="mo glass-thin w-full justify-center sm:w-auto">
@@ -244,11 +242,7 @@ export function LeavePage() {
                   </i>
                   <b className="min-w-0 text-[13.5px] leading-tight font-semibold">{leaveLabel(t)}</b>
                 </span>
-                {/* จอแคบไม่ต้องมีป้ายสิทธิ์ต่อปี — บรรทัด "ใช้ไปแล้ว x จาก y วัน" บอกอยู่แล้ว
-                    เอาออกแล้วชื่อประเภทการลาได้ความกว้างเต็ม ไม่ถูกตัดท้าย */}
-                <em className="glass-thin flex-none rounded-full px-[9px] py-0.5 text-[11.5px] font-semibold text-muted-foreground not-italic max-md:hidden">
-                  {base} วัน/ปี
-                </em>
+                {/* ไม่มีป้ายสิทธิ์ต่อปี (ผู้ใช้สั่ง 30 ต.ค. 2569) */}
               </div>
               {/* ตัวเลขวันคงเหลือ ใต้ตัวเลขเป็นแค่ลักษณนาม แบบแดชบอร์ด PM (ผู้ใช้สั่ง 9 ต.ค. 2569) */}
               {/* ลาเกินโควต้า ตัวเลขเป็นสีแดง (ผู้ใช้สั่ง 19 ต.ค. 2569) */}
@@ -669,9 +663,6 @@ function CancelLeaveDialog({ row, onClose }: { row: LeaveRecord; onClose: () => 
       <div className="m-lv-cancel">
       <p className="text-[13.5px] leading-[1.7] text-muted-foreground">
         {leaveLabel(row.type)} {thaiRange(row.date, row.toDate)} รวม {fmtLeaveHours(leaveHoursOf(row))}
-        <span className="mt-1 block">
-          ใบลานี้จะไม่ถูกลบ แต่เปลี่ยนเป็นสถานะ “ยกเลิก”
-        </span>
       </p>
       <label htmlFor="leave-cancel-why" className="mt-3.5 mb-1.5 block text-[12.5px] font-semibold text-muted-foreground">
         เหตุผลที่ยกเลิก
